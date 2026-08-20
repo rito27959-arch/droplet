@@ -118,6 +118,50 @@ if [ -n "$SUSPECTS" ]; then
 fi
 echo "  ✓ aucun secret dans les fichiers suivis"
 
+echo
+echo "═══ 5. Ce qui deviendra public ═══"
+#
+# ⚠️ UN SECRET N'EST PAS LA SEULE CHOSE QU'ON REGRETTE D'AVOIR POUSSÉE.
+#
+# Le dépôt contient un rapport de stage, un guide de projet et des
+# captures d'écran de l'application. Sur un dépôt PUBLIC, tout cela
+# devient consultable, indexable et copiable — et un « git push » ne se
+# reprend pas : les forks, les caches et les archives en gardent trace
+# même après suppression.
+#
+# Les captures montrent de vraies conversations. Le rapport porte
+# vraisemblablement votre nom, votre établissement et celui de votre
+# encadrant. Rien de tout cela n'est nécessaire pour distribuer une
+# application.
+#
+# On ne décide pas à votre place : on montre, et on donne la commande.
+PERSO=$(git ls-files | grep -iE '^captures/|\.docx$|\.pdf$|Rapport' || true)
+if [ -n "$PERSO" ]; then
+  N=$(echo "$PERSO" | grep -c .)
+  POIDS=$(echo "$PERSO" | xargs du -ch 2>/dev/null | tail -1 | cut -f1)
+  echo "  ⚠️  $N fichiers personnels suivis ($POIDS) :"
+  echo "$PERSO" | head -6 | sed 's/^/      /'
+  [ "$N" -gt 6 ] && echo "      … et $((N - 6)) autres"
+  cat <<'AVERT'
+
+      Sur un dépôt PUBLIC, tout cela devient consultable et indexable.
+      Les captures montrent de vraies conversations ; le rapport porte
+      probablement votre nom et votre établissement. Un « git push » ne
+      se reprend pas.
+
+      Pour les retirer du dépôt sans les effacer de votre disque :
+
+        printf 'captures/\n*.docx\n*.pdf\nRAPPORT_*.md\n' >> .gitignore
+        git rm -r --cached captures *.docx *.pdf RAPPORT_*.md
+        git commit -m "Retire les documents personnels du dépôt"
+
+      Ou gardez-les, et créez le dépôt en PRIVÉ sur GitHub.
+
+AVERT
+else
+  echo "  ✓ aucun document personnel suivi"
+fi
+
 VERSION="v$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
 
 cat <<FIN
