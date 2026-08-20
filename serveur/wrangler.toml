@@ -1,0 +1,23 @@
+name = "droplet-licences"
+main = "index.js"
+compatibility_date = "2026-08-01"
+
+# ⚠️ AUCUN SECRET DANS CE FICHIER — il part dans le dépôt.
+# Les quatre valeurs sensibles se posent avec `wrangler secret put` :
+#
+#   FAPSHI_USER    votre « apiuser » Fapshi
+#   FAPSHI_KEY     votre « apikey » Fapshi
+#   LICENCE_D      la graine privée Ed25519, en base64url
+#   LICENCE_X      la clé publique Ed25519, en base64url
+#
+# ⚠️ SANS `FAPSHI_BASE`, LE WORKER RESTE EN BAC À SABLE. C'est
+# délibéré : un Worker déployé par erreur ne doit pas se mettre à
+# débiter de l'argent réel. Validez tout le parcours avec des
+# transactions fictives, PUIS décommentez le bloc ci-dessous.
+#
+# [vars]
+# FAPSHI_BASE = "https://live.fapshi.com/"
+
+[[kv_namespaces]]
+binding = "DEJA_SERVI"
+id = "à_remplacer_après_wrangler_kv_namespace_create"

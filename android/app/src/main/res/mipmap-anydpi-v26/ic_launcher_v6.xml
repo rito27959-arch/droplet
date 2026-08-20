@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Variante 6 de l'icône de Droplet.
+
+  Une icône adaptative : le système découpe lui-même la forme (cercle,
+  carré arrondi, goutte…) selon le téléphone. D'où les couches séparées,
+  et la marge autour du dessin — seuls les 72 dp centraux des 108 dp
+  sont garantis visibles.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_v6_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_v6_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_v6_monochrome" />
+</adaptive-icon>

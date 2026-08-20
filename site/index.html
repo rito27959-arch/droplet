@@ -1,0 +1,2313 @@
+<title>Droplet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   JETONS — le thème clair est complet ici, le sombre ne redéfinit
+   que les couleurs. Aucune couleur n'est déclarée UNIQUEMENT dans un
+   bloc de thème : sinon la page s'affiche sans, chez les visiteurs
+   qui n'ont fait aucun choix explicite.
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+  --goutte:      #0066E0;
+  --goutte-doux: rgba(0, 102, 224, 0.10);
+  --goutte-trait:rgba(0, 102, 224, 0.28);
+  --encre:       #0A1420;
+  --fond:        #F3F6FA;
+  --surface:     #FFFFFF;
+  --brume:       #55677D;
+  --trait:       rgba(10, 20, 32, 0.12);
+  --trait-fin:   rgba(10, 20, 32, 0.07);
+  --relais:      #C77800;
+  --vif:         #17843D;
+
+  /* L'encart nocturne du héros : volontairement identique dans les
+     deux thèmes. C'est une fenêtre sur un écran de téléphone la nuit,
+     pas une surface de la page. */
+  --nuit:        #060D17;
+  --nuit-trait:  rgba(255, 255, 255, 0.10);
+  --nuit-texte:  #C9D8EA;
+  --nuit-faible: #62768E;
+  --nuit-goutte: #3B9BFF;
+  --nuit-relais: #FFB020;
+  --nuit-vif:    #34D964;
+
+  --mesure: 68ch;
+  --marge: clamp(20px, 5vw, 56px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --goutte:      #3B9BFF;
+    --goutte-doux: rgba(59, 155, 255, 0.12);
+    --goutte-trait:rgba(59, 155, 255, 0.30);
+    --encre:       #E8EFF7;
+    --fond:        #070E18;
+    --surface:     #0E1826;
+    --brume:       #8C9FB6;
+    --trait:       rgba(232, 239, 247, 0.14);
+    --trait-fin:   rgba(232, 239, 247, 0.08);
+    --relais:      #FFB020;
+    --vif:         #34D964;
+  }
+}
+
+:root[data-theme="dark"] {
+  --goutte:      #3B9BFF;
+  --goutte-doux: rgba(59, 155, 255, 0.12);
+  --goutte-trait:rgba(59, 155, 255, 0.30);
+  --encre:       #E8EFF7;
+  --fond:        #070E18;
+  --surface:     #0E1826;
+  --brume:       #8C9FB6;
+  --trait:       rgba(232, 239, 247, 0.14);
+  --trait-fin:   rgba(232, 239, 247, 0.08);
+  --relais:      #FFB020;
+  --vif:         #34D964;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BASE
+   ══════════════════════════════════════════════════════════════════ */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  /* Fond explicite : sans lui, la page emprunte le fond de son hôte. */
+  background: var(--fond);
+  color: var(--encre);
+  font-family: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, .affiche {
+  font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  text-wrap: balance;
+  margin: 0;
+}
+
+/* ⚠️ LES MINIMUMS SONT BAS EXPRÈS.
+   `clamp(2.6rem, …)` garantissait 41,6 px même sur un écran de 360 px :
+   « Le réseau tombe. » y mesurait plus large que la colonne, et
+   débordait. Un titre coupé est le premier chose que voit un visiteur
+   sur téléphone — c'est-à-dire la majorité, ici. La borne basse suit
+   donc la largeur (`vw`) bien plus tôt. */
+h1 { font-size: clamp(2.05rem, 8.6vw, 4.6rem); font-weight: 800; }
+h2 { font-size: clamp(1.55rem, 5.4vw, 2.7rem); }
+h3 { font-size: 1.16rem; letter-spacing: -0.015em; line-height: 1.28; }
+
+p { margin: 0 0 1.05em; }
+p:last-child { margin-bottom: 0; }
+
+a { color: var(--goutte); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible {
+  outline: 2px solid var(--goutte);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+code, .donnee {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 0.88em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mesure { max-width: var(--mesure); }
+.enveloppe {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: var(--marge);
+}
+
+/* Étiquette technique en petites capitales espacées. */
+.etiquette {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.685rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brume);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   NAVIGATION — un filet, pas une barre.
+   ══════════════════════════════════════════════════════════════════ */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--fond) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--trait-fin);
+}
+.nav-int {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: 13px var(--marge);
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+.marque {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: "Archivo", sans-serif;
+  font-weight: 700;
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+  color: var(--encre);
+  text-decoration: none;
+  margin-right: auto;
+}
+.nav-liens { display: flex; gap: 22px; }
+.nav-liens a {
+  color: var(--brume);
+  text-decoration: none;
+  font-size: 0.905rem;
+  font-weight: 500;
+  transition: color 0.16s;
+}
+.nav-liens a:hover { color: var(--encre); }
+/* ── ⚠️ LA NAVIGATION NE DISPARAÎT PLUS SUR TÉLÉPHONE ──────────
+   Elle était simplement masquée sous 720 px. Sur une page aussi
+   longue, cela laissait le visiteur téléphone — la majorité — sans
+   aucun moyen d'atteindre « Télécharger » autrement qu'en faisant
+   défiler huit sections.
+
+   Elle devient donc une bande qui se fait glisser du pouce. Pas de
+   menu à tiroir : un menu caché derrière trois traits demande un
+   appui de plus et se remarque moins qu'une rangée de mots déjà
+   visibles. */
+@media (max-width: 760px) {
+  .nav-int {
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    padding-bottom: 9px;
+  }
+  .nav-liens {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    gap: 16px;
+    padding-bottom: 2px;
+    /* Sur iOS, l'inertie du défilement rend la bande naturelle. */
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-liens::-webkit-scrollbar { display: none; }
+  .nav-liens a { white-space: nowrap; font-size: 0.86rem; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   HÉROS
+   ══════════════════════════════════════════════════════════════════ */
+.heros {
+  padding: clamp(56px, 9vw, 104px) 0 clamp(40px, 6vw, 64px);
+}
+.heros h1 { margin-bottom: 22px; }
+.heros h1 em {
+  font-style: normal;
+  color: var(--goutte);
+}
+.chapeau {
+  font-size: clamp(1.08rem, 2.1vw, 1.28rem);
+  color: var(--brume);
+  max-width: 54ch;
+  margin-bottom: 32px;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.bouton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.96rem;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: transform 0.14s, background 0.16s;
+}
+.bouton:hover { transform: translateY(-1px); }
+.bouton-plein { background: var(--goutte); color: #fff; }
+.bouton-vide { border-color: var(--trait); color: var(--encre); }
+.bouton-vide:hover { background: var(--goutte-doux); border-color: var(--goutte-trait); }
+
+/* ── L'ENCART NOCTURNE ─────────────────────────────────────────
+   La démonstration. Nuit dans les deux thèmes, parce que ce n'est
+   pas une surface de la page : c'est une fenêtre sur ce qui se
+   passe entre les téléphones. */
+.scene {
+  margin-top: clamp(38px, 6vw, 62px);
+  background: var(--nuit);
+  border: 1px solid var(--nuit-trait);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.scene-tete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--nuit-trait);
+  flex-wrap: wrap;
+}
+.scene-tete .etiquette { color: var(--nuit-faible); }
+#etat {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--nuit-texte);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+#etat .puce {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--nuit-relais);
+  flex: none;
+}
+#etat.arrive .puce { background: var(--nuit-vif); }
+canvas { display: block; width: 100%; height: 300px; }
+@media (max-width: 620px) { canvas { height: 236px; } }
+
+.scene-pied {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border-top: 1px solid var(--nuit-trait);
+}
+.mesure-cell {
+  padding: 15px 20px;
+  border-right: 1px solid var(--nuit-trait);
+}
+.mesure-cell:last-child { border-right: none; }
+.mesure-cell .etiquette { color: var(--nuit-faible); display: block; margin-bottom: 4px; }
+.mesure-cell b {
+  font-family: "Archivo", sans-serif;
+  font-size: 1.32rem;
+  font-weight: 700;
+  color: var(--nuit-texte);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SECTIONS — marquées par un arc de portée, pas par un numéro.
+   ══════════════════════════════════════════════════════════════════ */
+section { padding: clamp(58px, 8vw, 96px) 0; }
+section + section { border-top: 1px solid var(--trait-fin); }
+
+.tete-section { margin-bottom: clamp(30px, 4.5vw, 46px); }
+.tete-section .etiquette {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.arc { flex: none; color: var(--goutte); }
+.tete-section h2 { margin-bottom: 14px; }
+.tete-section p { color: var(--brume); max-width: 60ch; }
+
+/* ══════════════════════════════════════════════════════════════════
+   GRILLES
+   ══════════════════════════════════════════════════════════════════ */
+.grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 1px;
+  background: var(--trait-fin);
+  border: 1px solid var(--trait-fin);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.carte {
+  background: var(--surface);
+  padding: 26px 24px 28px;
+}
+.carte h3 { margin-bottom: 8px; }
+.carte p { color: var(--brume); font-size: 0.945rem; margin: 0; }
+.carte .icone {
+  width: 34px; height: 34px;
+  margin-bottom: 16px;
+  color: var(--goutte);
+}
+
+/* ── Les trois transports ── */
+.transports {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 30px;
+}
+.transport {
+  background: var(--surface);
+  border: 1px solid var(--trait-fin);
+  border-radius: 14px;
+  padding: 22px;
+}
+.transport .etiquette { display: block; margin-bottom: 9px; color: var(--goutte); }
+.transport b {
+  font-family: "Archivo", sans-serif;
+  font-size: 1.05rem;
+  display: block;
+  margin-bottom: 6px;
+}
+.transport span { color: var(--brume); font-size: 0.9rem; }
+.portee {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--trait-fin);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--brume);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Le tableau comparatif ── */
+.defilant { overflow-x: auto; margin-top: 30px; }
+table {
+  width: 100%;
+  /* Assez pour que les trois colonnes restent lisibles, et le
+     conteneur `.defilant` le fait défiler latéralement plutôt que la
+     page entière. */
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+th, td {
+  text-align: left;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--trait-fin);
+  vertical-align: top;
+}
+thead th {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.685rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brume);
+  font-weight: 500;
+  border-bottom-color: var(--trait);
+}
+tbody th { font-weight: 600; width: 34%; }
+td { color: var(--brume); }
+td.oui { color: var(--encre); }
+
+/* ── Le schéma comparatif ── */
+.schema {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  margin-top: 32px;
+}
+.volet {
+  background: var(--surface);
+  border: 1px solid var(--trait-fin);
+  border-radius: 16px;
+  padding: 22px;
+}
+.volet .etiquette { display: block; margin-bottom: 16px; }
+.volet svg { width: 100%; height: auto; display: block; }
+.volet figcaption {
+  margin-top: 16px;
+  font-size: 0.9rem;
+  color: var(--brume);
+}
+
+/* ── Bande de chiffres ── */
+.chiffres {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1px;
+  background: var(--trait-fin);
+  border: 1px solid var(--trait-fin);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-top: 32px;
+}
+.chiffre-cell { background: var(--surface); padding: 26px 24px; }
+.chiffre-cell .val {
+  font-family: "Archivo", sans-serif;
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--goutte);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin-bottom: 10px;
+}
+.chiffre-cell .lib { color: var(--brume); font-size: 0.92rem; }
+
+/* ── Liste de faits (sécurité) ── */
+.faits { display: grid; gap: 1px; background: var(--trait-fin); border-radius: 14px; overflow: hidden; border: 1px solid var(--trait-fin); margin-top: 28px; }
+.fait {
+  background: var(--surface);
+  padding: 18px 22px;
+  display: grid;
+  grid-template-columns: minmax(140px, 190px) 1fr;
+  gap: 20px;
+}
+@media (max-width: 620px) { .fait { grid-template-columns: 1fr; gap: 5px; } }
+.fait dt { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; color: var(--goutte); letter-spacing: 0.03em; padding-top: 3px; }
+.fait dd { margin: 0; font-size: 0.945rem; }
+
+/* ── Les limites : l'encadré le plus important du site ── */
+.limites {
+  margin-top: 30px;
+  border: 1px solid var(--trait);
+  border-radius: 16px;
+  padding: 4px 26px 24px;
+  background: var(--surface);
+}
+.limites li {
+  list-style: none;
+  padding: 18px 0 0 30px;
+  position: relative;
+  border-top: 1px solid var(--trait-fin);
+  margin-top: 18px;
+  color: var(--brume);
+  font-size: 0.95rem;
+}
+.limites li:first-child { border-top: none; margin-top: 0; padding-top: 22px; }
+.limites li b { color: var(--encre); display: block; font-weight: 600; margin-bottom: 3px; font-size: 1rem; }
+.limites li::before {
+  content: "";
+  position: absolute;
+  left: 4px; top: 25px;
+  width: 9px; height: 9px;
+  border-radius: 2px;
+  background: var(--relais);
+}
+.limites li:first-child::before { top: 29px; }
+.limites ul { margin: 0; padding: 0; }
+
+/* ══════════════════════════════════════════════════════════════════
+   PHASE DE TEST
+   ------------------------------------------------------------------
+   ⚠️ CE BANDEAU EST EN HAUT, ET IL Y RESTE.
+   Une application en test présentée comme finie est un abus de
+   confiance — et le premier plantage le prouve à l'utilisateur, qui
+   ne revient pas. Le dire d'emblée coûte quelques visiteurs et en
+   garde beaucoup plus : celui qui sait qu'il essuie les plâtres
+   pardonne un défaut, celui qui croyait acheter du fini ne pardonne
+   rien.
+   ══════════════════════════════════════════════════════════════════ */
+.bandeau-test {
+  background: var(--goutte);
+  color: #fff;
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 9px var(--marge);
+  line-height: 1.4;
+}
+.bandeau-test b { font-weight: 600; }
+.bandeau-test a { color: #fff; text-decoration-thickness: 1.5px; }
+
+/* La pastille « bêta » à côté de la marque. */
+.beta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--goutte-trait);
+  color: var(--goutte);
+  font-weight: 500;
+}
+
+/* ── Les premiers testeurs ── */
+.testeurs {
+  background: var(--surface);
+  border: 1px solid var(--goutte-trait);
+  border-radius: 18px;
+  padding: clamp(26px, 4vw, 40px);
+  margin-top: 32px;
+}
+.rangs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 22px;
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid var(--trait-fin);
+}
+.rangs h3 { font-size: 1.02rem; margin-bottom: 6px; }
+.rangs p { color: var(--brume); font-size: 0.91rem; margin: 0; }
+
+/* Le protocole de signalement, en étapes numérotées.
+   Numérotées ici, et nulle part ailleurs sur ce site : c'est le seul
+   contenu de la page qui soit VRAIMENT une séquence — chaque étape
+   dépend de la précédente. */
+.protocole { counter-reset: pas; margin: 26px 0 0; padding: 0; list-style: none; }
+.protocole li {
+  counter-increment: pas;
+  position: relative;
+  padding: 0 0 20px 46px;
+  color: var(--brume);
+  font-size: 0.95rem;
+}
+.protocole li:last-child { padding-bottom: 0; }
+.protocole li::before {
+  content: counter(pas);
+  position: absolute;
+  left: 0; top: -1px;
+  width: 29px; height: 29px;
+  border-radius: 50%;
+  background: var(--goutte-doux);
+  color: var(--goutte);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: grid;
+  place-items: center;
+}
+/* Le filet qui relie les étapes : il dit « la suite existe ». */
+.protocole li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 14px; top: 32px; bottom: 6px;
+  width: 1px;
+  background: var(--trait-fin);
+}
+.protocole li b { color: var(--encre); display: block; margin-bottom: 2px; }
+
+.contacts { display: grid; gap: 10px; margin-top: 26px; }
+.contact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--fond);
+  border: 1px solid var(--trait-fin);
+  border-radius: 12px;
+  padding: 13px 15px;
+  text-decoration: none;
+  color: var(--encre);
+  transition: border-color 0.18s, transform 0.18s;
+}
+.contact:hover { border-color: var(--goutte-trait); transform: translateX(2px); }
+.contact svg { flex: none; color: var(--goutte); }
+.contact .quoi {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+.contact .via { display: block; font-size: 0.72rem; color: var(--brume); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
+
+/* Un <button> ne ressemble pas à un <a> par défaut : sans ces trois
+   lignes, « Google Play » aurait la police du système et un fond gris. */
+button.bouton {
+  font-family: inherit;
+  cursor: pointer;
+  background: transparent;
+}
+
+/* ── Soutenir ── */
+.dons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
+  margin-top: 32px;
+}
+.don {
+  background: var(--surface);
+  border: 1px solid var(--trait-fin);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.don-tete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.don h3 { font-size: 1.08rem; }
+.don .note { color: var(--brume); font-size: 0.9rem; margin: 0; }
+
+/* La marque du moyen : une pastille de couleur, pas un logo importé.
+   Reproduire les logos MTN ou Orange sans autorisation serait un
+   emprunt de marque ; une pastille dit la même chose sans le risque. */
+.jeton {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex: none;
+}
+.jeton.local { background: var(--goutte-doux); color: var(--goutte); }
+.jeton.libre { background: color-mix(in srgb, var(--vif) 14%, transparent); color: var(--vif); }
+
+/* Le bloc à copier. `user-select: all` pour qu'un appui long
+   sélectionne l'adresse entière : c'est le secours quand le
+   presse-papiers est refusé par le navigateur. */
+.valeur {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--fond);
+  border: 1px solid var(--trait-fin);
+  border-radius: 10px;
+  padding: 11px 13px;
+}
+.valeur span {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  user-select: all;
+  flex: 1;
+}
+.valeur.vide span { color: var(--brume); user-select: none; }
+.copier {
+  flex: none;
+  border: 1px solid var(--trait);
+  background: transparent;
+  color: var(--encre);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.copier:hover:not(:disabled) { background: var(--goutte); color: #fff; border-color: var(--goutte); }
+.copier:disabled { opacity: 0.4; cursor: not-allowed; }
+.copier.fait { background: var(--vif); border-color: var(--vif); color: #fff; }
+
+.marches {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.88rem;
+  color: var(--brume);
+}
+.marches li { display: flex; gap: 9px; }
+.marches li b {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+  color: var(--goutte);
+  flex: none;
+  padding-top: 2px;
+  min-width: 1.4em;
+}
+
+/* Les façons d'aider qui ne coûtent rien. */
+.gratuit {
+  margin-top: 34px;
+  border-top: 1px solid var(--trait-fin);
+  padding-top: 34px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 26px;
+}
+.gratuit h3 { margin-bottom: 7px; }
+.gratuit p { color: var(--brume); font-size: 0.93rem; margin: 0; }
+.gratuit .rang {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  color: var(--goutte);
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* ── Téléchargement ── */
+.telecharger {
+  background: var(--surface);
+  border: 1px solid var(--trait-fin);
+  border-radius: 18px;
+  padding: clamp(26px, 4vw, 40px);
+  margin-top: 30px;
+}
+.telecharger h3 { margin-bottom: 10px; font-size: 1.34rem; }
+.telecharger p { color: var(--brume); }
+.avis {
+  margin-top: 22px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--goutte-doux);
+  border: 1px solid var(--goutte-trait);
+  font-size: 0.92rem;
+}
+.avis b { display: block; margin-bottom: 3px; }
+
+/* ── Pied ── */
+footer {
+  border-top: 1px solid var(--trait-fin);
+  padding: 46px 0 60px;
+  color: var(--brume);
+  font-size: 0.9rem;
+}
+.pied-grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 30px;
+  margin-bottom: 34px;
+}
+.pied-grille b { display: block; color: var(--encre); font-size: 0.82rem; margin-bottom: 10px; font-family: "JetBrains Mono", monospace; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500; }
+.pied-grille a { display: block; color: var(--brume); text-decoration: none; padding: 3px 0; }
+.pied-grille a:hover { color: var(--goutte); }
+
+/* ══════════════════════════════════════════════════════════════════
+   MOUVEMENT
+   ------------------------------------------------------------------
+   ⚠️ TOUT PART DE L'ÉTAT VISIBLE, ET REVIENT À LUI SI LE JAVASCRIPT
+   NE S'EXÉCUTE PAS.
+   La faute classique est de cacher les éléments en CSS puis de les
+   révéler en JS : au moindre script bloqué, la page reste blanche et
+   illisible. Ici, la classe `.anime` n'est POSÉE que par le script,
+   juste avant l'observation. Sans JS, rien n'est jamais caché.
+   ══════════════════════════════════════════════════════════════════ */
+.anime {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.62s cubic-bezier(.22,.61,.36,1),
+              transform 0.62s cubic-bezier(.22,.61,.36,1);
+}
+.anime.vu { opacity: 1; transform: none; }
+
+/* Le décalage en cascade : les éléments d'un même groupe arrivent
+   l'un après l'autre, jamais tous ensemble. C'est ce décalage qui
+   impose un ordre de lecture — tout faire apparaître d'un coup donne
+   un mur que l'œil survole. */
+.anime[data-rang="1"] { transition-delay: 0.07s; }
+.anime[data-rang="2"] { transition-delay: 0.14s; }
+.anime[data-rang="3"] { transition-delay: 0.21s; }
+.anime[data-rang="4"] { transition-delay: 0.28s; }
+.anime[data-rang="5"] { transition-delay: 0.35s; }
+
+/* ── L'ENTRÉE DU TITRE ──
+   Chaque mot monte derrière un cache. C'est le seul effet d'arrivée
+   de la page, et il dure moins d'une seconde. */
+.mot { display: inline-block; overflow: hidden; vertical-align: bottom; }
+.mot > i {
+  display: inline-block;
+  font-style: inherit;
+  transform: translateY(105%);
+  animation: monte 0.86s cubic-bezier(.19,1,.22,1) forwards;
+}
+@keyframes monte { to { transform: none; } }
+
+/* ── LES ARCS QUI SE TRACENT ──
+   Le marqueur de section n'apparaît pas : il se DESSINE, comme une
+   portée qui s'établit. */
+.arc path { stroke-dasharray: 20; stroke-dashoffset: 20; }
+.vu .arc path { animation: tracer 0.9s ease forwards 0.1s; }
+@keyframes tracer { to { stroke-dashoffset: 0; } }
+.arc circle { transform-origin: center; transform: scale(0); }
+.vu .arc circle { animation: pointer 0.4s cubic-bezier(.34,1.56,.64,1) forwards 0.55s; }
+@keyframes pointer { to { transform: scale(1); } }
+
+/* ── LES CARTES ──
+   Le liseré prend la couleur d'accent et la carte se soulève d'un
+   point. Un seul point : au-delà, l'ombre porte plus que l'objet. */
+.carte, .transport, .don, .volet {
+  transition: transform 0.24s cubic-bezier(.22,.61,.36,1),
+              border-color 0.24s, box-shadow 0.24s;
+}
+.carte:hover, .transport:hover, .don:hover, .volet:hover {
+  transform: translateY(-3px);
+  border-color: var(--goutte-trait);
+  box-shadow: 0 10px 30px -14px rgba(0, 60, 140, 0.28);
+}
+.carte .icone { transition: transform 0.32s cubic-bezier(.34,1.56,.64,1); }
+.carte:hover .icone { transform: scale(1.12) rotate(-4deg); }
+
+/* ── LE BOUTON QUI ÉMET ──
+   Une onde part du bouton principal, comme une portée radio. Elle ne
+   tourne PAS en boucle : trois battements à l'arrivée à l'écran, puis
+   plus rien. Un bouton qui pulse en permanence devient un bruit, et
+   on apprend à ne plus le voir. */
+.bouton-plein { position: relative; overflow: visible; }
+.bouton-plein::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1.5px solid var(--goutte);
+  opacity: 0;
+  pointer-events: none;
+}
+.bouton-plein.emet::after { animation: onde 1.5s ease-out 3; }
+@keyframes onde {
+  0%   { transform: scale(1);    opacity: 0.55; }
+  100% { transform: scale(1.42); opacity: 0; }
+}
+
+/* ── LA NAVIGATION ──
+   La section en cours est soulignée. C'est une information, pas une
+   décoration : sur une page longue, elle dit où l'on est. */
+.nav-liens a { position: relative; padding-bottom: 2px; }
+.nav-liens a::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 100%; bottom: 0;
+  height: 1.5px;
+  background: var(--goutte);
+  transition: right 0.28s cubic-bezier(.22,.61,.36,1);
+}
+.nav-liens a.ici { color: var(--encre); }
+.nav-liens a.ici::after { right: 0; }
+
+/* Les chiffres qui défilent ne doivent JAMAIS bousculer la mise en
+   page en changeant de largeur — d'où les chiffres tabulaires. */
+.chiffre-cell .val { font-variant-numeric: tabular-nums; }
+
+/* ── LE POINT D'ANCRAGE LOTTIE ──
+   Vide et invisible tant qu'aucun fichier n'est déposé. Voir la note
+   du chargeur, plus bas. */
+[data-lottie] { min-height: 0; }
+
+/* ══════════════════════════════════════════════════════════════════
+   TÉLÉPHONE
+   ------------------------------------------------------------------
+   ⚠️ CE N'EST PAS LE CAS MARGINAL, C'EST LE CAS PRINCIPAL.
+   Droplet s'adresse à des gens dont le réseau ne passe pas et dont les
+   données coûtent cher : ils arrivent sur ce site depuis un téléphone,
+   pas depuis un bureau. Ces règles ne « rattrapent » donc pas un
+   affichage cassé — elles décrivent l'usage normal.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+
+  /* Une grille qui tente deux colonnes sous 560 px donne des cartes de
+     150 px où plus rien ne tient. On force la colonne unique. */
+  .grille,
+  .transports,
+  .schema,
+  .dons,
+  .chiffres,
+  .gratuit,
+  .pied-grille {
+    grid-template-columns: 1fr;
+  }
+
+  /* Les quatre mesures sous la scène : deux par deux plutôt qu'en
+     colonne, sinon l'encart devient une longue bande vide. */
+  .scene-pied { grid-template-columns: 1fr 1fr; }
+  .mesure-cell:nth-child(2n) { border-right: none; }
+  .mesure-cell:nth-child(-n + 2) { border-bottom: 1px solid var(--nuit-trait); }
+
+  /* Les boutons prennent toute la largeur : deux boutons côte à côte
+     sur 320 px donnent deux cibles trop étroites pour le pouce. */
+  .actions { flex-direction: column; align-items: stretch; }
+  .bouton { justify-content: center; }
+
+  .chiffre-cell .val { font-size: 2.1rem; }
+  .limites { padding-inline: 18px; }
+  .telecharger, .testeurs { padding: 22px 18px; }
+  .protocole li { padding-left: 40px; }
+
+  /* L'état du vol passait sous l'étiquette et serrait la scène. */
+  .scene-tete { gap: 6px; }
+  #etat { font-size: 0.72rem; }
+}
+
+/* Les très petits écrans — encore courants au Cameroun. */
+@media (max-width: 360px) {
+  :root { --marge: 16px; }
+  h1 { font-size: 1.9rem; }
+  .chapeau { font-size: 1rem; }
+  .beta { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  /* ⚠️ Ne pas se contenter de raccourcir les durées : il faut aussi
+     ANNULER les états de départ, sinon un mot resté à `translateY(105%)`
+     ne remonte jamais et le titre est illisible. */
+  .anime { opacity: 1 !important; transform: none !important; }
+  .mot > i { transform: none !important; }
+  .arc path { stroke-dashoffset: 0 !important; }
+  .arc circle { transform: scale(1) !important; }
+  .bouton-plein.emet::after { animation: none !important; }
+}
+</style>
+
+<div class="bandeau-test">
+  <b>Droplet est en phase de test.</b> Vous n'utilisez pas une version
+  finie — vous en écrivez la première page. <a href="#testeurs">Ce que
+  ça implique</a>
+</div>
+
+<nav class="nav">
+  <div class="nav-int">
+    <a class="marque" href="#haut">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" style="color: var(--goutte)" aria-hidden="true">
+        <path d="M12 2.4c3.6 4.2 6.4 7.6 6.4 10.9A6.4 6.4 0 0 1 12 19.7a6.4 6.4 0 0 1-6.4-6.4C5.6 10 8.4 6.6 12 2.4Z"/>
+      </svg>
+      Droplet
+      <span class="beta">Bêta</span>
+    </a>
+    <div class="nav-liens">
+      <a href="#fonctionnement">Fonctionnement</a>
+      <a href="#capacites">Capacités</a>
+      <a href="#trajet">Trajet</a>
+      <a href="#securite">Sécurité</a>
+      <a href="#limites">Limites</a>
+      <a href="#telecharger">Télécharger</a>
+      <a href="#testeurs">Testeurs</a>
+      <a href="#soutenir">Soutenir</a>
+    </div>
+  </div>
+</nav>
+
+<main id="haut">
+
+  <!-- ═══ HÉROS ═══ -->
+  <header class="heros">
+    <div class="enveloppe">
+      <h1 id="titre">Le réseau tombe.<br>Le message, <em>non</em>.</h1>
+      <p class="chapeau">
+        Droplet fait passer vos messages de téléphone en téléphone, par
+        Bluetooth et par Wi-Fi. Sans antenne, sans opérateur, sans
+        forfait, sans compte — et sans le moindre serveur.
+      </p>
+      <div class="actions">
+        <a class="bouton bouton-plein" href="#telecharger">Obtenir Droplet</a>
+        <a class="bouton bouton-vide" href="#fonctionnement">Comment ça marche</a>
+      </div>
+
+      <figure class="scene" style="margin-block-end:0">
+        <div class="scene-tete">
+          <span class="etiquette">Propagation d'un message · en direct</span>
+          <span id="etat"><span class="puce"></span><span id="etat-txt">Recherche d'un chemin…</span></span>
+        </div>
+        <canvas id="toile" aria-label="Un message part d'un téléphone, ne joint pas son destinataire directement, trouve un relais et arrive."></canvas>
+        <div class="scene-pied">
+          <div class="mesure-cell">
+            <span class="etiquette">Sauts</span>
+            <b id="m-sauts">0</b>
+          </div>
+          <div class="mesure-cell">
+            <span class="etiquette">Joignables</span>
+            <b id="m-joignables">1</b>
+          </div>
+          <div class="mesure-cell">
+            <span class="etiquette">Serveurs</span>
+            <b>0</b>
+          </div>
+          <div class="mesure-cell">
+            <span class="etiquette">Données mobiles</span>
+            <b>0 Ko</b>
+          </div>
+        </div>
+      </figure>
+    </div>
+  </header>
+
+  <!-- ═══ LE PROBLÈME ═══ -->
+  <section id="probleme">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Le point de départ
+        </span>
+        <h2>Une messagerie suppose toujours&nbsp;<br>que le réseau est là</h2>
+      </div>
+      <div class="mesure">
+        <p>
+          WhatsApp, Telegram, Signal : tous excellents, et tous bâtis sur
+          la même hypothèse. Votre message part vers un centre de données,
+          souvent à un continent de distance, avant de redescendre vers
+          quelqu'un qui se trouve peut-être dans la pièce d'à côté.
+        </p>
+        <p>
+          Tant que la couverture tient et que le forfait est chargé, cette
+          hypothèse est invisible. Le jour où l'une des deux lâche —
+          coupure, panne, zone blanche, catastrophe, crédit épuisé — elles
+          s'arrêtent toutes ensemble, exactement au moment où l'on a le
+          plus besoin de joindre quelqu'un.
+        </p>
+        <p>
+          Droplet part de l'hypothèse inverse : <strong>il n'y a pas de
+          réseau</strong>. Tout le reste en découle.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FONCTIONNEMENT ═══ -->
+  <section id="fonctionnement">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Fonctionnement
+        </span>
+        <h2>Les téléphones se parlent<br>directement</h2>
+        <p>
+          Votre téléphone possède déjà deux radios capables d'atteindre
+          un autre téléphone sans passer par quoi que ce soit. Droplet ne
+          fait rien d'autre que s'en servir.
+        </p>
+      </div>
+
+      <div class="schema">
+        <figure class="volet">
+          <span class="etiquette">Une messagerie ordinaire</span>
+          <svg viewBox="0 0 320 162" role="img" aria-label="Deux téléphones proches communiquent en passant par un serveur lointain.">
+            <g stroke="var(--trait)" stroke-width="1.5" fill="none" stroke-dasharray="4 4">
+              <path d="M46 106 C 46 30, 160 22, 160 40"/>
+              <path d="M274 106 C 274 30, 160 22, 160 40"/>
+            </g>
+            <rect x="128" y="28" width="64" height="34" rx="6" fill="var(--surface)" stroke="var(--trait)" stroke-width="1.5"/>
+            <g fill="var(--brume)">
+              <rect x="138" y="38" width="44" height="3" rx="1.5"/>
+              <rect x="138" y="46" width="30" height="3" rx="1.5"/>
+            </g>
+            <g fill="var(--surface)" stroke="var(--trait)" stroke-width="1.5">
+              <rect x="32" y="94" width="28" height="46" rx="5"/>
+              <rect x="260" y="94" width="28" height="46" rx="5"/>
+            </g>
+            <text x="160" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">serveur</text>
+            <text x="46" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">vous</text>
+            <text x="274" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">Michel</text>
+          </svg>
+          <figcaption>
+            Deux mètres séparent les téléphones. Le message, lui, fait
+            plusieurs milliers de kilomètres — et n'arrive plus du tout
+            si le lien vers le serveur est coupé.
+          </figcaption>
+        </figure>
+
+        <figure class="volet">
+          <span class="etiquette">Droplet</span>
+          <svg viewBox="0 0 320 162" role="img" aria-label="Deux téléphones proches communiquent directement, et un relais intermédiaire prolonge la portée.">
+            <g stroke="var(--goutte)" stroke-width="1.6" fill="none">
+              <path d="M60 117 L 146 117"/>
+              <path d="M174 117 L 260 117"/>
+            </g>
+            <circle cx="160" cy="117" r="26" fill="none" stroke="var(--goutte-trait)" stroke-width="1.2" stroke-dasharray="3 3"/>
+            <circle cx="160" cy="117" r="40" fill="none" stroke="var(--goutte-trait)" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>
+            <g fill="var(--surface)" stroke="var(--goutte)" stroke-width="1.6">
+              <rect x="32" y="94" width="28" height="46" rx="5"/>
+              <rect x="146" y="94" width="28" height="46" rx="5"/>
+              <rect x="260" y="94" width="28" height="46" rx="5"/>
+            </g>
+            <circle cx="103" cy="117" r="4.5" fill="var(--goutte)"/>
+            <text x="46" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">vous</text>
+            <text x="160" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">relais</text>
+            <text x="274" y="152" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">Michel</text>
+            <text x="160" y="52" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" fill="var(--brume)">aucun serveur</text>
+          </svg>
+          <figcaption>
+            Le message va d'un téléphone au suivant. Hors de portée
+            directe, il emprunte les appareils qui se trouvent entre les
+            deux — jusqu'à cinq de suite.
+          </figcaption>
+        </figure>
+      </div>
+
+      <div class="transports">
+        <div class="transport">
+          <span class="etiquette">Radio 1</span>
+          <b>Bluetooth LE</b>
+          <span>Toujours actif, très peu gourmand. C'est lui qui trouve les appareils autour de vous et qui porte les messages quand il n'y a plus rien d'autre.</span>
+          <div class="portee">Portée ~10 à 100 m</div>
+        </div>
+        <div class="transport">
+          <span class="etiquette">Radio 2</span>
+          <b>Wi-Fi local</b>
+          <span>Sur un même réseau Wi-Fi — une box, un partage de connexion, un routeur sans internet — les appareils se découvrent et échangent bien plus vite.</span>
+          <div class="portee">Débit élevé · fichiers et appels</div>
+        </div>
+        <div class="transport">
+          <span class="etiquette">Radio 3</span>
+          <b>Wi-Fi Direct</b>
+          <span>Deux téléphones montent un lien Wi-Fi entre eux, sans box ni point d'accès. C'est ce qui permet d'envoyer une vidéo là où il n'y a rigoureusement aucune infrastructure.</span>
+          <div class="portee">Portée ~50 à 200 m</div>
+        </div>
+      </div>
+
+      <div class="mesure" style="margin-top:44px">
+        <h3 style="margin-bottom:10px">Et si personne n'est là&nbsp;?</h3>
+        <p>
+          C'est le cas le plus fréquent, et celui que la plupart des
+          systèmes maillés traitent le plus mal. Droplet garde le message.
+          Il attend, en mémoire, sur votre téléphone. Dès qu'un appareil
+          passe à portée — dans la rue, dans un taxi, au marché — le
+          message repart par lui.
+        </p>
+        <p>
+          C'est ce qu'on appelle le <strong>stockage et retransmission</strong>.
+          Votre destinataire n'a même pas besoin d'avoir été là au moment
+          de l'envoi : le message voyage dans la poche de quelqu'un
+          d'autre, chiffré, illisible pour lui, jusqu'à trouver son chemin.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CAPACITÉS ═══ -->
+  <section id="capacites">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Capacités
+        </span>
+        <h2>Une vraie messagerie,<br>pas un dépannage</h2>
+        <p>
+          Fonctionner sans réseau ne veut pas dire se contenter de texte
+          brut. Tout ce qu'on attend d'une messagerie est là.
+        </p>
+      </div>
+
+      <div class="grille">
+        <div class="carte">
+          <svg class="icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 21l1.9-4.9A8.3 8.3 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"/></svg>
+          <h3>Conversations et groupes</h3>
+          <p>Réponses citées, réactions, accusés de réception, recherche. En groupe, un message reçu avant sa clé n'est pas perdu : la clé manquante est rattrapée.</p>
+        </div>
+        <div class="carte">
+          <svg class="icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M15.5 10.5 21 7v10l-5.5-3.5Z"/><rect x="3" y="6" width="12.5" height="12" rx="2.5"/></svg>
+          <h3>Appels audio et vidéo</h3>
+          <p>En tête-à-tête ou à plusieurs. Ils demandent une liaison Wi-Fi : le Bluetooth, à dix-neuf octets par écriture, ne peut pas porter de la voix.</p>
+        </div>
+        <div class="carte">
+          <svg class="icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="m4 17 5-4.2 4.2 3.4L17 13l3 2.6"/></svg>
+          <h3>Photos, vidéos, fichiers</h3>
+          <p>Et des notes vocales avec leur vraie forme d'onde, lisibles en 1×, 1,5× ou 2×. Les vidéos trop lourdes sont recoupées avant d'être envoyées.</p>
+        </div>
+        <div class="carte">
+          <svg class="icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18" stroke-dasharray="3 2.5"/></svg>
+          <h3>Statuts</h3>
+          <p>Une photo, une vidéo ou un mot, diffusés au voisinage et relayés de proche en proche. Ils s'effacent au bout de vingt-quatre heures.</p>
+        </div>
+        <div class="carte">
+          <svg class="icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>
+          <h3>Carte hors ligne</h3>
+          <p>Les zones consultées restent sur le téléphone et s'affichent ensuite sans internet. Les positions partagées arrivent par le maillage, chiffrées.</p>
+        </div>
+        <div class="carte">
+          <svg class="icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3 4.5 6.2v5.4c0 4.4 3.2 8.2 7.5 9.4 4.3-1.2 7.5-5 7.5-9.4V6.2L12 3Z"/><path d="m9.2 12 2 2 3.6-3.8"/></svg>
+          <h3>Signal de sécurité</h3>
+          <p>« Je vais bien », diffusé à tout le voisinage en un appui, avec ou sans position approximative. Et un mode d'urgence qui insiste jusqu'à passer.</p>
+        </div>
+      </div>
+
+      <div class="defilant">
+        <table>
+          <caption class="etiquette" style="text-align:left;padding:26px 0 12px">Ce qui change, concrètement</caption>
+          <thead>
+            <tr><th scope="col">&nbsp;</th><th scope="col">Messagerie ordinaire</th><th scope="col">Droplet</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Sans couverture réseau</th><td>Ne fonctionne pas</td><td class="oui">Fonctionne</td></tr>
+            <tr><th scope="row">Sans forfait de données</th><td>Ne fonctionne pas</td><td class="oui">Fonctionne</td></tr>
+            <tr><th scope="row">Coût par message</th><td>Données mobiles</td><td class="oui">Aucun</td></tr>
+            <tr><th scope="row">Compte à créer</th><td>Numéro de téléphone</td><td class="oui">Aucun</td></tr>
+            <tr><th scope="row">Où sont vos messages</th><td>Sur des serveurs</td><td class="oui">Sur votre téléphone</td></tr>
+            <tr><th scope="row">Qui peut vous couper</th><td>L'opérateur, l'éditeur</td><td class="oui">Personne</td></tr>
+            <tr><th scope="row">Portée</th><td>Mondiale</td><td>Le voisinage, étendu par les relais</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ LE TRAJET ═══ -->
+  <section id="trajet">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Le trajet
+        </span>
+        <h2>Droplet vous dit<br>par où c'est passé</h2>
+        <p>
+          Touchez l'heure d'un message reçu : son état, le délai réel jusqu'à
+          la lecture, et les appareils qui l'ont fait suivre, dans l'ordre.
+          Aucune autre messagerie ne peut afficher cela — chez les autres, la
+          réponse est toujours « par nos serveurs ».
+        </p>
+      </div>
+
+      <div class="chiffres">
+        <div class="chiffre-cell">
+          <span class="val">5</span>
+          <span class="lib">relais au maximum. Passé ce compte, le message cesse d'être propagé plutôt que de tourner en rond dans le réseau.</span>
+        </div>
+        <div class="chiffre-cell">
+          <span class="val">19</span>
+          <span class="lib">octets utiles par écriture Bluetooth, sans négociation. C'est cette contrainte, minuscule, qui a façonné tout le protocole.</span>
+        </div>
+        <div class="chiffre-cell">
+          <span class="val">0</span>
+          <span class="lib">serveur, compte, numéro de téléphone ou adresse e-mail. Il n'y a rien à créer, et rien à fermer.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ SÉCURITÉ ═══ -->
+  <section id="securite">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Sécurité
+        </span>
+        <h2>Vos messages traversent<br>les téléphones des autres</h2>
+        <p>
+          C'est le principe même du maillage — et c'est exactement pour
+          cela que le chiffrement n'est pas une option ici, mais la
+          condition pour que le reste tienne debout.
+        </p>
+      </div>
+
+      <dl class="faits">
+        <div class="fait">
+          <dt>Identité</dt>
+          <dd>Une paire de clés X25519 créée sur votre appareil, au premier lancement. La clé privée vit dans le coffre du système (Keystore Android) et ne figure dans aucune base de données.</dd>
+        </div>
+        <div class="fait">
+          <dt>Messages privés</dt>
+          <dd>Un secret partagé dérivé par ECDH, passé dans HKDF, puis chiffrement AES-256-GCM avec un nonce aléatoire par message.</dd>
+        </div>
+        <div class="fait">
+          <dt>Groupes</dt>
+          <dd>Un cliquet à clé d'expéditeur : chaque membre possède sa propre chaîne de clés, dérivée par HMAC à chaque message envoyé.</dd>
+        </div>
+        <div class="fait">
+          <dt>Les relais</dt>
+          <dd>Un téléphone qui fait suivre votre message transporte des octets qu'il ne peut pas lire. Il ne détient aucune clé le concernant.</dd>
+        </div>
+        <div class="fait">
+          <dt>Vérification</dt>
+          <dd>Un code de sécurité par contact, comparable en face à face ou par QR code, pour s'assurer que personne ne s'est intercalé.</dd>
+        </div>
+        <div class="fait">
+          <dt>Journal d'erreurs</dt>
+          <dd>Consultable dans les réglages, conservé sur l'appareil, jamais transmis. C'est vous qui décidez si vous l'envoyez, et à qui.</dd>
+        </div>
+        <div class="fait">
+          <dt>Sauvegarde</dt>
+          <dd>Votre identité s'exporte dans un fichier chiffré par mot de passe. Sans lui, une identité perdue l'est définitivement — il n'existe aucun serveur pour la restituer.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ═══ LIMITES ═══ -->
+  <section id="limites">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Limites
+        </span>
+        <h2>Ce que Droplet<br>ne sait pas faire</h2>
+        <p>
+          Une application qui ne parle que de ses qualités demande qu'on
+          la croie sur parole. Voici où elle s'arrête — pour que le reste
+          soit vérifiable.
+        </p>
+      </div>
+
+      <div class="limites">
+        <ul>
+          <li>
+            <b>Il ne remplace pas internet</b>
+            Droplet joint le voisinage, étendu par les relais. Il ne joindra
+            pas quelqu'un à l'autre bout du pays s'il n'existe aucune chaîne
+            d'appareils entre vous deux.
+          </li>
+          <li>
+            <b>Il ne cache pas votre présence</b>
+            Pour se trouver, les appareils doivent s'annoncer. Quelqu'un à
+            portée radio peut constater qu'un appareil Droplet est là. Le
+            contenu est illisible, la présence ne l'est pas.
+          </li>
+          <li>
+            <b>Il ne protège pas un téléphone déverrouillé</b>
+            Tout est chiffré au transport et rangé sur l'appareil. Qui tient
+            votre téléphone déverrouillé lit vos conversations, comme avec
+            n'importe quelle autre application.
+          </li>
+          <li>
+            <b>Il n'a rien pour vous rendre votre identité</b>
+            Pas de serveur signifie aussi pas de récupération de compte.
+            Sans sauvegarde exportée, un téléphone perdu emporte l'identité
+            et l'historique avec lui.
+          </li>
+          <li>
+            <b>Il est plus lent qu'un réseau</b>
+            Un message relayé attend qu'un chemin s'ouvre. Cela peut prendre
+            quelques secondes — ou plusieurs heures, jusqu'à ce que le bon
+            appareil passe à portée.
+          </li>
+          <li>
+            <b>Seul, il ne sert à rien</b>
+            C'est la limite la plus honnête de toutes. Un maillage se
+            construit à plusieurs : la première chose utile à faire après
+            l'installation est d'y amener quelqu'un.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ TÉLÉCHARGER ═══ -->
+  <section id="telecharger">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Obtenir Droplet
+        </span>
+        <h2>Y compris sans<br>connexion</h2>
+      </div>
+
+      <div class="telecharger">
+        <h3>Android</h3>
+        <p class="mesure">
+          Environ 55 Mo. Android 7.0 ou plus récent. Aucun compte à créer :
+          l'application est utilisable dans les secondes qui suivent
+          l'installation.
+        </p>
+        <p class="mesure">
+          <strong>C'est une version de test.</strong> Elle fonctionne, elle
+          n'est pas finie. Elle peut se fermer toute seule, rater un
+          message, vider la batterie plus vite que prévu.
+          <a href="#testeurs">Lisez ce qui est attendu de vous</a> avant de
+          l'installer.
+        </p>
+        <div class="actions" style="margin-top:22px">
+          <!-- ⚠️ L'ADRESSE POINTE VERS `latest`, PAS VERS UNE VERSION.
+               GitHub garde ce chemin valable à chaque nouvelle
+               publication : le site n'a donc jamais besoin d'être
+               retouché quand une version sort. Remplacez seulement
+               <compte> par le vôtre. -->
+          <a class="bouton bouton-plein" id="lien-apk"
+             href="https://github.com/&lt;compte&gt;/droplet/releases/latest/download/app-arm64-v8a-release.apk">
+            Télécharger l'APK
+          </a>
+          <!-- Google Play n'est pas un lien : rien ne s'y trouve encore.
+               Un bouton qui mène à une page « application introuvable »
+               fait douter de tout le reste. -->
+          <button class="bouton bouton-vide" id="bouton-play" type="button">
+            Google Play
+          </button>
+        </div>
+        <p id="avis-play" class="etiquette" hidden
+           style="margin-top:12px;color:var(--relais)">
+          Bientôt disponible sur Google Play — en attendant, l'APK
+          ci-dessus est la même application, signée de la même clé.
+        </p>
+
+        <div class="avis">
+          <b>Le partage se passe aussi d'internet</b>
+          Depuis l'application, Droplet envoie <em>son propre fichier
+          d'installation</em> par Bluetooth ou Wi-Fi Direct. Ni celui qui
+          donne ni celui qui reçoit n'a besoin de connexion — c'est le seul
+          moyen de distribution cohérent avec ce que fait l'application.
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ═══ LES PREMIERS TESTEURS ═══ -->
+  <section id="testeurs">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Phase de test
+        </span>
+        <h2>Vous seriez parmi<br>les tout premiers</h2>
+        <p>
+          Droplet n'est pas encore une application finie, et ce n'est pas
+          une précaution de langage : c'est ce qui rend votre place ici
+          intéressante.
+        </p>
+      </div>
+
+      <div class="testeurs">
+        <div class="mesure">
+          <p>
+            Une messagerie ordinaire est testée par une équipe, dans un
+            bureau, sur du bon matériel. Droplet ne peut pas l'être :
+            <strong>il n'existe que s'il y a plusieurs téléphones, à
+            plusieurs endroits, à portée les uns des autres.</strong>
+            Aucune salle d'essai ne reproduit une rue de Yaoundé un
+            vendredi soir, ni un quartier où le réseau vient de tomber.
+          </p>
+          <p>
+            Les premiers testeurs ne rendent donc pas un service : ils
+            sont la condition d'existence du réseau. Ce que vous
+            constaterez dans les prochaines semaines — un message qui met
+            trois heures, un appareil que le vôtre ne voit jamais, une
+            fermeture inexpliquée — est une information que personne
+            d'autre au monde ne détient.
+          </p>
+        </div>
+
+        <div class="rangs">
+          <div>
+            <h3>Votre nom, si vous le voulez</h3>
+            <p>
+              Les personnes qui auront signalé un défaut reproductible
+              figureront dans les remerciements de l'application. Sous le
+              pseudo de votre choix, ou pas du tout — c'est vous qui
+              décidez.
+            </p>
+          </div>
+          <div>
+            <h3>Vous voyez les versions d'abord</h3>
+            <p>
+              Chaque correction part aux testeurs avant tout le monde, et
+              vous saurez laquelle de vos remarques l'a provoquée.
+            </p>
+          </div>
+          <div>
+            <h3>Le réseau commence par vous</h3>
+            <p>
+              Les tout premiers utilisateurs d'un maillage en sont le
+              cœur : c'est autour de vos appareils que les suivants
+              pourront se connecter.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── LE PROTOCOLE ──
+           ⚠️ CES ÉTAPES SONT VÉRIFIÉES DANS L'APPLICATION, pas
+           supposées. Le libellé exact de la rangée est bien « Journal
+           des erreurs », et la feuille qui s'ouvre porte bien un bouton
+           « Copier ». Écrire un chemin approximatif ferait chercher les
+           gens à côté, et la plupart abandonneraient là. -->
+      <div class="tete-section" style="margin-top:clamp(46px,6vw,68px)">
+        <h2 style="font-size:clamp(1.5rem,3vw,2rem)">Ce qu'on vous demande</h2>
+        <p>
+          Une seule chose, et elle tient en deux appuis. Droplet n'a
+          aucun serveur : <strong>aucun rapport de plantage ne remonte
+          nulle part.</strong> Quand l'application se ferme toute seule
+          chez vous, la seule trace au monde est un fichier sur votre
+          téléphone. Si vous ne l'envoyez pas, le défaut n'existe pour
+          personne.
+        </p>
+      </div>
+
+      <ol class="protocole">
+        <li>
+          <b>Prenez l'habitude d'y jeter un œil</b>
+          Ouvrez <strong>Réglages → Journal des erreurs</strong>. Une ou
+          deux fois par semaine suffit — et systématiquement après une
+          fermeture inattendue de l'application.
+        </li>
+        <li>
+          <b>S'il est vide, tout va bien</b>
+          Un journal vide est une bonne nouvelle, et n'appelle aucun
+          message. Ne signalez que ce qui s'y trouve réellement.
+        </li>
+        <li>
+          <b>Appuyez sur « Envoyer »</b>
+          Le bouton est en bas de la feuille qui s'ouvre. Le partage du
+          téléphone apparaît : choisissez WhatsApp ou votre messagerie,
+          puis le contact ci-dessous. Le journal part en pièce jointe,
+          entier — les applications de messagerie coupent les textes
+          trop longs, un fichier arrive complet.
+        </li>
+        <li>
+          <b>Ajoutez une phrase</b>
+          <em>Ce que vous étiez en train de faire</em> au moment du
+          problème vaut souvent plus que le journal lui-même. « J'ouvrais
+          la carte », « j'envoyais une photo » : cela suffit à savoir où
+          chercher.
+        </li>
+        <li>
+          <b>Puis effacez-le</b>
+          Le bouton « Effacer » est juste à côté. Ainsi, la prochaine
+          fois, ce que vous verrez sera neuf — et non un mélange
+          d'anciens défauts déjà signalés.
+        </li>
+      </ol>
+
+      <div class="contacts">
+        <a class="contact" href="https://wa.me/237678963221">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.8-.8L3 21l1.9-4.9A8.3 8.3 0 0 1 3.6 11.5 8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4Z"/></svg>
+          <span>
+            <span class="via">WhatsApp ou SMS</span>
+            <span class="quoi">+237 678 963 221</span>
+          </span>
+        </a>
+        <a class="contact" href="mailto:migueleffi4@gmail.com?subject=Droplet%20%E2%80%94%20journal%20des%20erreurs">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></svg>
+          <span>
+            <span class="via">Courriel</span>
+            <span class="quoi">migueleffi4@gmail.com</span>
+          </span>
+        </a>
+      </div>
+
+      <div class="avis" style="margin-top:26px">
+        <b>Ce que contient le journal, et ce qu'il ne contient pas</b>
+        Il enregistre les erreurs techniques de l'application — des noms
+        de fonctions, des numéros de ligne, des horodatages. Il ne
+        contient <strong>ni vos messages, ni vos contacts, ni vos
+        clés</strong> : ceux-là ne quittent jamais votre téléphone, y
+        compris quand vous nous écrivez. Vous pouvez le relire avant de
+        l'envoyer, il est affiché en entier à l'écran.
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ SOUTENIR ═══ -->
+  <section id="soutenir">
+    <div class="enveloppe">
+      <div class="tete-section">
+        <span class="etiquette">
+          <svg class="arc" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 12a6 6 0 0 1 12 0" stroke-dasharray="2.4 2.4"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
+          Soutenir
+        </span>
+        <h2>Droplet n'a rien<br>à vous vendre</h2>
+        <p>
+          Pas de publicité, pas d'abonnement, pas de données revendues —
+          il n'y a même pas de serveur pour les collecter. Ce qui reste,
+          ce sont des coûts réels : un téléphone de test, une clé de
+          signature, du temps. Si l'application vous sert, voici comment
+          y contribuer.
+        </p>
+      </div>
+
+      <div class="dons">
+
+        <!-- ── MTN Mobile Money ── -->
+        <article class="don">
+          <div class="don-tete">
+            <h3>MTN Mobile Money</h3>
+            <span class="jeton local">Cameroun</span>
+          </div>
+          <div class="valeur vide" data-champ="momo">
+            <span>À renseigner</span>
+            <button class="copier" type="button" disabled>Copier</button>
+          </div>
+          <ul class="marches">
+            <li><b>1</b><span>Composez <code>*126#</code> sur votre téléphone.</span></li>
+            <li><b>2</b><span>Choisissez « Transfert d'argent », puis collez ou saisissez le numéro.</span></li>
+            <li><b>3</b><span>Entrez le montant, validez avec votre code secret.</span></li>
+          </ul>
+          <p class="note" data-nom="momo"></p>
+        </article>
+
+        <!-- ── Orange Money ── -->
+        <article class="don">
+          <div class="don-tete">
+            <h3>Orange Money</h3>
+            <span class="jeton local">Cameroun</span>
+          </div>
+          <div class="valeur vide" data-champ="orange">
+            <span>À renseigner</span>
+            <button class="copier" type="button" disabled>Copier</button>
+          </div>
+          <ul class="marches">
+            <li><b>1</b><span>Composez <code>#150#</code> sur votre téléphone.</span></li>
+            <li><b>2</b><span>Choisissez « Transfert d'argent », puis saisissez le numéro.</span></li>
+            <li><b>3</b><span>Entrez le montant, validez avec votre code secret.</span></li>
+          </ul>
+          <p class="note" data-nom="orange"></p>
+        </article>
+
+        <!-- ── Bitcoin, par BTCPay Server ──
+             Le seul moyen de cette page qui soit à la fois entièrement
+             libre et utilisable depuis n'importe quel pays. Voir la
+             note de configuration en tête du script. -->
+        <article class="don">
+          <div class="don-tete">
+            <h3>Bitcoin</h3>
+            <span class="jeton libre">Logiciel libre</span>
+          </div>
+          <div class="valeur vide" data-champ="btc">
+            <span>À renseigner</span>
+            <button class="copier" type="button" disabled>Copier</button>
+          </div>
+          <p class="note">
+            Vérifiez les quatre premiers et les quatre derniers caractères
+            après avoir collé l'adresse. Un virement en bitcoin ne
+            s'annule pas.
+          </p>
+          <div data-champ="btcpay"></div>
+        </article>
+      </div>
+
+      <!-- ── CE QUI NE COÛTE RIEN, ET QUI VAUT PLUS ──
+           Placé sous les dons, et non au-dessus : quelqu'un venu pour
+           donner ne doit pas avoir à traverser un paragraphe qui l'en
+           dissuade. Mais pour une application maillée, c'est bien ici
+           que se trouve la contribution la plus utile. -->
+      <div class="gratuit">
+        <div>
+          <span class="rang">Vaut plus qu'un don</span>
+          <h3>Amenez une personne</h3>
+          <p>
+            Un maillage à un seul appareil ne transporte rien. Chaque
+            installation autour de vous agrandit la portée pour tout le
+            voisinage — y compris la vôtre.
+          </p>
+        </div>
+        <div>
+          <span class="rang">Vaut plus qu'un don</span>
+          <h3>Dites ce qui casse</h3>
+          <p>
+            Droplet dépend de radios, de distances et de téléphones très
+            différents les uns des autres. Un rapport précis vaut des
+            semaines de suppositions.
+          </p>
+        </div>
+        <div>
+          <span class="rang">Vaut plus qu'un don</span>
+          <h3>Faites circuler le fichier</h3>
+          <p>
+            L'application envoie son propre fichier d'installation par
+            Bluetooth. Le transmettre ne consomme aucune donnée mobile,
+            ni chez vous, ni chez la personne qui le reçoit.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var immobile = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (immobile) return;
+
+  /* ══════════════════════════════════════════════════════════════
+     1. L'ENTRÉE DU TITRE
+     Chaque mot est enveloppé pour pouvoir monter derrière un cache.
+     Découpage fait EN JAVASCRIPT et non dans le HTML : le texte
+     source reste une phrase, donc lisible par un lecteur d'écran et
+     sélectionnable d'un bloc. Un titre découpé en <span> dans le
+     balisage se fait lire mot par mot, avec une pause à chaque
+     coupure.
+     ══════════════════════════════════════════════════════════════ */
+  var titre = document.getElementById("titre");
+  if (titre) {
+    var lu = titre.textContent;
+    var morceaux = [];
+    titre.childNodes.forEach(function (n) {
+      if (n.nodeName === "BR") { morceaux.push({ saut: true }); return; }
+      var accent = n.nodeName === "EM";
+      (n.textContent || "").split(/(\s+)/).forEach(function (t) {
+        if (t.trim() === "") { if (t) morceaux.push({ espace: true }); return; }
+        morceaux.push({ mot: t, accent: accent });
+      });
+    });
+
+    titre.textContent = "";
+    var i = 0;
+    morceaux.forEach(function (m) {
+      if (m.saut) { titre.appendChild(document.createElement("br")); return; }
+      if (m.espace) { titre.appendChild(document.createTextNode(" ")); return; }
+      var enveloppe = document.createElement("span");
+      enveloppe.className = "mot";
+      var interne = document.createElement("i");
+      interne.textContent = m.mot;
+      if (m.accent) interne.style.color = "var(--goutte)";
+      /* Le décalage est calculé, pas écrit à la main : ajouter un mot
+         au titre ne demande alors aucune retouche. */
+      interne.style.animationDelay = (0.05 + i * 0.06).toFixed(2) + "s";
+      enveloppe.appendChild(interne);
+      titre.appendChild(enveloppe);
+      i++;
+    });
+    /* Le titre découpé reste annoncé comme une seule phrase. */
+    titre.setAttribute("aria-label", lu);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     2. LES ARRIVÉES AU DÉFILEMENT
+     ══════════════════════════════════════════════════════════════ */
+  var cibles = document.querySelectorAll(
+    ".tete-section, .carte, .transport, .volet, .fait, .chiffre-cell, " +
+    ".don, .gratuit > div, .limites li, .telecharger, .defilant"
+  );
+
+  /* La classe n'est posée qu'ICI, une fois qu'on sait que le script
+     tourne. Voir la note en tête du bloc CSS. */
+  cibles.forEach(function (el) {
+    el.classList.add("anime");
+    /* Le rang au sein du groupe donne la cascade. */
+    var freres = el.parentElement ? Array.prototype.filter.call(
+      el.parentElement.children,
+      function (f) { return f.tagName === el.tagName; }
+    ) : [];
+    var rang = freres.indexOf(el);
+    if (rang > 0 && rang < 6) el.setAttribute("data-rang", String(rang));
+  });
+
+  var oeil = new IntersectionObserver(function (entrees) {
+    entrees.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add("vu");
+      /* On cesse d'observer : une animation d'arrivée ne se rejoue
+         pas quand on remonte, sinon la page clignote au moindre
+         va-et-vient. */
+      oeil.unobserve(e.target);
+    });
+  }, { rootMargin: "0px 0px -12% 0px", threshold: 0.12 });
+
+  cibles.forEach(function (el) { oeil.observe(el); });
+
+  /* ══════════════════════════════════════════════════════════════
+     3. LES CHIFFRES QUI MONTENT
+     ══════════════════════════════════════════════════════════════ */
+  document.querySelectorAll(".chiffre-cell .val").forEach(function (el) {
+    var fin = parseInt(el.textContent, 10);
+    if (isNaN(fin) || fin === 0) return;   /* « 0 » n'a rien à compter */
+    var oeil2 = new IntersectionObserver(function (ent) {
+      if (!ent[0].isIntersecting) return;
+      oeil2.disconnect();
+      var t0 = null, duree = 900;
+      (function pas(ts) {
+        if (t0 === null) t0 = ts;
+        var p = Math.min((ts - t0) / duree, 1);
+        /* Freinage à l'arrivée : un décompte linéaire s'arrête net,
+           celui-ci se pose. */
+        var e = 1 - Math.pow(1 - p, 3);
+        el.textContent = String(Math.round(fin * e));
+        if (p < 1) requestAnimationFrame(pas);
+      })(performance.now());
+    }, { threshold: 0.6 });
+    oeil2.observe(el);
+  });
+
+  /* ══════════════════════════════════════════════════════════════
+     4. L'ONDE DU BOUTON PRINCIPAL
+     Trois battements quand il arrive à l'écran, puis plus rien.
+     ══════════════════════════════════════════════════════════════ */
+  var cta = document.querySelector(".heros .bouton-plein");
+  if (cta) {
+    var oeil3 = new IntersectionObserver(function (ent) {
+      if (!ent[0].isIntersecting) return;
+      oeil3.disconnect();
+      setTimeout(function () { cta.classList.add("emet"); }, 900);
+    }, { threshold: 1 });
+    oeil3.observe(cta);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     5. LA SECTION EN COURS, DANS LA NAVIGATION
+     ══════════════════════════════════════════════════════════════ */
+  var liens = {};
+  document.querySelectorAll(".nav-liens a").forEach(function (a) {
+    var id = a.getAttribute("href").slice(1);
+    if (id) liens[id] = a;
+  });
+  var oeil4 = new IntersectionObserver(function (entrees) {
+    entrees.forEach(function (e) {
+      var a = liens[e.target.id];
+      if (!a) return;
+      if (e.isIntersecting) {
+        Object.keys(liens).forEach(function (k) { liens[k].classList.remove("ici"); });
+        a.classList.add("ici");
+      }
+    });
+  }, { rootMargin: "-45% 0px -50% 0px" });
+  Object.keys(liens).forEach(function (id) {
+    var sec = document.getElementById(id);
+    if (sec) oeil4.observe(sec);
+  });
+
+  /* ══════════════════════════════════════════════════════════════
+     6. LOTTIE — CHARGEMENT PARESSEUX
+     ------------------------------------------------------------------
+     ⚠️ POURQUOI LE RUNTIME N'EST PAS EMBARQUÉ DANS LA PAGE.
+     `lottie_light.min.js` pèse 168 Ko — presque trois fois le poids de
+     tout ce site. Le charger d'office sur le site d'une application
+     dont l'argument est de ne pas gaspiller les données de ses
+     utilisateurs se retournerait contre le propos, et le retournerait
+     surtout contre ceux qui paient leur méga-octet.
+     Il n'est donc téléchargé QUE si une animation existe vraiment ET
+     qu'elle arrive à l'écran. Sans fichier déposé, ce bloc ne coûte
+     rien du tout.
+
+     POUR AJOUTER UNE ANIMATION :
+       1. déposez `lottie_light.min.js` à la racine du site ;
+       2. déposez votre animation dans `animations/` ;
+       3. écrivez dans la page :
+          <div data-lottie="animations/relais.json" style="height:220px"></div>
+     ══════════════════════════════════════════════════════════════ */
+  var boites = document.querySelectorAll("[data-lottie]");
+  if (boites.length) {
+    var promesse = null;
+    function runtime() {
+      if (promesse) return promesse;
+      promesse = new Promise(function (ok, non) {
+        var s = document.createElement("script");
+        s.src = "lottie_light.min.js";
+        s.onload = ok;
+        s.onerror = non;
+        document.head.appendChild(s);
+      });
+      return promesse;
+    }
+    var oeil5 = new IntersectionObserver(function (entrees) {
+      entrees.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        oeil5.unobserve(e.target);
+        var boite = e.target;
+        runtime().then(function () {
+          window.lottie.loadAnimation({
+            container: boite,
+            renderer: "svg",
+            loop: true,
+            autoplay: true,
+            path: boite.getAttribute("data-lottie")
+          });
+        }).catch(function () {
+          /* Runtime absent (aperçu hors ligne, fichier non déposé) :
+             la boîte reste vide plutôt que d'afficher une erreur. Le
+             reste de la page ne s'en aperçoit pas. */
+          boite.style.display = "none";
+        });
+      });
+    }, { rootMargin: "200px" });
+    boites.forEach(function (b) { oeil5.observe(b); });
+  }
+})();
+</script>
+
+<footer>
+  <div class="enveloppe">
+    <div class="pied-grille">
+      <div>
+        <b>Le produit</b>
+        <a href="#fonctionnement">Fonctionnement</a>
+        <a href="#capacites">Capacités</a>
+        <a href="#trajet">Le trajet affiché</a>
+        <a href="#telecharger">Télécharger</a>
+        <a href="#soutenir">Soutenir Droplet</a>
+      </div>
+      <div>
+        <b>La confiance</b>
+        <a href="#securite">Chiffrement</a>
+        <a href="#limites">Limites connues</a>
+        <a href="#testeurs">Signaler un défaut</a>
+      </div>
+      <div>
+        <b>Le principe</b>
+        <a href="#probleme">Pourquoi sans serveur</a>
+      </div>
+    </div>
+    <p style="max-width:60ch">
+      Droplet ne collecte rien, ne mesure rien et n'envoie rien nulle part.
+      Il n'y a aucun serveur à interroger : la question de ce qu'on ferait
+      de vos données ne se pose pas.
+    </p>
+    <p class="etiquette" style="margin-top:20px">Conçu à Yaoundé</p>
+  </div>
+</footer>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   ▼▼▼  LES SIX VALEURS À RENSEIGNER  ▼▼▼
+   ------------------------------------------------------------------
+   C'est le SEUL endroit à modifier pour que les dons fonctionnent.
+   Laissez vide ce que vous n'avez pas : la carte correspondante
+   affichera « À renseigner » au lieu de casser ou de mentir.
+
+   ── ⚠️ POURQUOI PAS LIBERAPAY, COMME BRIAR ────────────────────────
+
+   Liberapay ne verse que par Stripe ou PayPal, et aucun des deux ne
+   permet d'ENCAISSER au Cameroun. Le montage habituel du logiciel
+   libre occidental ne vous est donc pas transposable : il collecterait
+   de l'argent que vous ne pourriez pas retirer.
+
+   D'où les deux familles ci-dessous, et leur ordre :
+
+     • Le MOBILE MONEY d'abord, parce que c'est ainsi que les gens
+       autour de vous paient réellement. Aucun intermédiaire, aucun
+       frais, aucune inscription : un numéro et un code USSD.
+
+     • BITCOIN ensuite, via BTCPay Server — le seul système de
+       paiement à la fois entièrement libre (licence MIT), auto-
+       hébergeable, sans commission et sans vérification d'identité,
+       parce qu'il ne dépend des rails bancaires d'aucun pays. C'est
+       ce qu'utilisent les projets libres qui refusent de dépendre
+       d'un intermédiaire.
+   ══════════════════════════════════════════════════════════════════ */
+var DONS = {
+  /* Votre numéro MTN Mobile Money, et le nom qui s'affichera à
+     l'expéditeur au moment de confirmer — c'est ce nom qui rassure. */
+  momoNumero:   "678963221",
+  momoNom:      "",
+
+  /* Idem pour Orange Money. */
+  orangeNumero: "696910012",
+  orangeNom:    "",
+
+  /* Votre adresse Bitcoin. */
+  bitcoin:      "",
+
+  /* L'adresse de votre instance BTCPay Server, si vous en montez une.
+     Renseignée, elle ajoute un vrai bouton de paiement (montant libre,
+     Lightning compris) au lieu de la simple adresse à recopier.
+     Exemple : "https://btcpay.exemple.org/api/v1/invoices?storeId=XXXX" */
+  btcpay:       ""
+};
+
+(function () {
+  "use strict";
+
+  /* ── Remplissage des cartes ─────────────────────────────────────
+     Tout est piloté par l'objet ci-dessus : le HTML ne contient
+     aucune valeur en dur. Une valeur absente laisse la carte dans son
+     état « À renseigner », visiblement inactif — jamais un champ vide
+     qu'on pourrait prendre pour un bogue. */
+  function garnir(champ, valeur, affichage) {
+    var boite = document.querySelector('[data-champ="' + champ + '"]');
+    if (!boite || !valeur) return;
+    boite.classList.remove("vide");
+    boite.querySelector("span").textContent = affichage || valeur;
+    var bouton = boite.querySelector(".copier");
+    bouton.disabled = false;
+    /* ⚠️ ON COPIE LES CHIFFRES BRUTS, PAS CE QUI EST AFFICHÉ.
+       Le numéro est montré par groupes parce que c'est ainsi qu'on le
+       lit et qu'on le vérifie — mais collé tel quel dans un menu USSD,
+       avec ses espaces, il serait refusé. */
+    bouton.addEventListener("click", function () { copier(valeur, bouton); });
+  }
+
+  /* 6XX XX XX XX : le découpage camerounais usuel. */
+  function grouper(n) {
+    return n.length === 9
+      ? n.slice(0, 3) + " " + n.slice(3, 5) + " " + n.slice(5, 7) + " " + n.slice(7)
+      : n;
+  }
+
+  garnir("momo", DONS.momoNumero, grouper(DONS.momoNumero));
+  garnir("orange", DONS.orangeNumero, grouper(DONS.orangeNumero));
+  garnir("btc", DONS.bitcoin);
+
+  function nommer(cle, nom) {
+    var p = document.querySelector('[data-nom="' + cle + '"]');
+    if (!p) return;
+    p.textContent = nom ? "Le compte est au nom de " + nom + "." : "";
+  }
+  nommer("momo", DONS.momoNom);
+  nommer("orange", DONS.orangeNom);
+
+  /* Le bouton BTCPay n'apparaît QUE si une instance est renseignée.
+     C'est un formulaire HTML qui poste vers votre propre serveur :
+     aucun script tiers, rien à charger, et le site reste entièrement
+     statique. */
+  if (DONS.btcpay) {
+    var hote = document.querySelector('[data-champ="btcpay"]');
+    var f = document.createElement("form");
+    f.method = "POST";
+    f.action = DONS.btcpay;
+    f.target = "_blank";
+    f.rel = "noopener";
+    f.style.marginTop = "4px";
+    var b = document.createElement("button");
+    b.type = "submit";
+    b.className = "bouton bouton-plein";
+    b.style.width = "100%";
+    b.style.justifyContent = "center";
+    b.textContent = "Donner par BTCPay";
+    f.appendChild(b);
+    hote.appendChild(f);
+  }
+
+  /* ── Copier ─────────────────────────────────────────────────────
+     ⚠️ DEUX CHEMINS, ET LE SECOURS N'EST PAS DÉCORATIF.
+     `navigator.clipboard` exige un contexte sécurisé et se voit
+     refuser dans certains cadres embarqués. Sans le repli par
+     `execCommand`, le bouton ne ferait rien du tout chez une partie
+     des visiteurs — sur un numéro à recopier, c'est l'échec complet.
+     Et si les deux échouent, le bloc reste sélectionnable d'un appui
+     long grâce à `user-select: all`. */
+  function copier(texte, bouton) {
+    function reussi() {
+      var avant = bouton.textContent;
+      bouton.textContent = "Copié";
+      bouton.classList.add("fait");
+      setTimeout(function () {
+        bouton.textContent = avant;
+        bouton.classList.remove("fait");
+      }, 1600);
+    }
+    function secours() {
+      var z = document.createElement("textarea");
+      z.value = texte;
+      z.setAttribute("readonly", "");
+      z.style.position = "fixed";
+      z.style.opacity = "0";
+      document.body.appendChild(z);
+      z.select();
+      try { document.execCommand("copy"); reussi(); }
+      catch (e) { bouton.textContent = "Sélectionnez"; }
+      document.body.removeChild(z);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texte).then(reussi, secours);
+    } else {
+      secours();
+    }
+  }
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── GOOGLE PLAY : ANNONCER, PAS DÉCEVOIR ──────────────────────
+  //
+  // ⚠️ Le bouton ne mène nulle part, et c'est délibéré. Droplet n'est
+  // pas encore publié sur le Play Store ; un lien vers une fiche
+  // inexistante afficherait « application introuvable », ce qui fait
+  // douter de tout le reste de la page — y compris de l'APK, qui lui
+  // fonctionne.
+  //
+  // Il annonce donc, et renvoie vers ce qui existe vraiment.
+  var play = document.getElementById("bouton-play");
+  var avis = document.getElementById("avis-play");
+  if (play && avis) {
+    play.addEventListener("click", function () {
+      avis.hidden = false;
+      // On attire l'œil sur l'APK, qui est la réponse à ce que la
+      // personne cherchait.
+      var apk = document.getElementById("lien-apk");
+      if (apk) apk.classList.add("emet");
+    });
+  }
+})();
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  var toile = document.getElementById("toile");
+  if (!toile) return;
+  var ctx = toile.getContext("2d");
+
+  var etatBoite = document.getElementById("etat");
+  var etatTxt   = document.getElementById("etat-txt");
+  var mSauts    = document.getElementById("m-sauts");
+  var mJoign    = document.getElementById("m-joignables");
+
+  /* ── LE GRAPHE ─────────────────────────────────────────────────
+     Écrit à la main, en coordonnées normalisées. Un tirage au sort
+     donnerait une disposition différente à chaque visite, et une
+     fois sur deux la démonstration raterait son point : il FAUT que
+     le destinataire soit hors de portée directe. */
+  var NOEUDS = [
+    { x: 0.10, y: 0.52, nom: "vous",   moi: true  },
+    { x: 0.32, y: 0.27, nom: "relais"              },
+    { x: 0.35, y: 0.76, nom: "relais"              },
+    { x: 0.58, y: 0.44, nom: "relais"              },
+    { x: 0.74, y: 0.74, nom: "relais"              },
+    { x: 0.90, y: 0.34, nom: "Michel", cible: true }
+  ];
+  /* Le chemin que le message finit par emprunter. */
+  var CHEMIN = [0, 1, 3, 5];
+
+  var PORTEE = 0.235;            /* en fraction de la largeur */
+  var DUREE_SAUT = 620;          /* ms par saut */
+  var ATTENTE_DEBUT = 900;
+  var ATTENTE_FIN = 2100;
+
+  var reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var L = 0, H = 0;
+  function dimensionner() {
+    var r = toile.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    L = r.width; H = r.height;
+    toile.width = Math.round(L * dpr);
+    toile.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function pos(i) { return { x: NOEUDS[i].x * L, y: NOEUDS[i].y * H }; }
+
+  var debut = null;
+
+  function dessiner(ts) {
+    if (debut === null) debut = ts;
+    var t = ts - debut;
+    var cycle = ATTENTE_DEBUT + (CHEMIN.length - 1) * DUREE_SAUT + ATTENTE_FIN;
+    if (t > cycle) { debut = ts; t = 0; }
+
+    ctx.clearRect(0, 0, L, H);
+
+    /* Où en est le message ? */
+    var avancement = (t - ATTENTE_DEBUT) / DUREE_SAUT;
+    var sautFait = Math.max(0, Math.min(CHEMIN.length - 1, Math.floor(avancement)));
+    var fraction = Math.max(0, Math.min(1, avancement - sautFait));
+    var arrive = avancement >= CHEMIN.length - 1;
+    var parti = t >= ATTENTE_DEBUT;
+
+    /* ── Les cercles de portée ── */
+    var rayon = PORTEE * L;
+    ctx.setLineDash([3, 5]);
+    ctx.lineWidth = 1;
+    for (var i = 0; i < NOEUDS.length; i++) {
+      var p = pos(i);
+      var actif = parti && CHEMIN.indexOf(i) !== -1 && CHEMIN.indexOf(i) <= sautFait;
+      ctx.strokeStyle = actif ? "rgba(59,155,255,0.30)" : "rgba(255,255,255,0.07)";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rayon, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    /* ── Les liaisons du chemin déjà franchi ── */
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = "rgba(59,155,255,0.55)";
+    for (var s = 0; s < sautFait; s++) {
+      var a = pos(CHEMIN[s]), b = pos(CHEMIN[s + 1]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    /* La liaison en cours se trace au fur et à mesure. */
+    if (parti && !arrive) {
+      var d = pos(CHEMIN[sautFait]), f = pos(CHEMIN[sautFait + 1]);
+      ctx.beginPath(); ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x + (f.x - d.x) * fraction, d.y + (f.y - d.y) * fraction);
+      ctx.stroke();
+    }
+
+    /* ── Les appareils ── */
+    for (var j = 0; j < NOEUDS.length; j++) {
+      var q = pos(j);
+      var n = NOEUDS[j];
+      var rang = CHEMIN.indexOf(j);
+      var touche = parti && rang !== -1 && rang <= sautFait;
+      var estArrive = n.cible && arrive;
+
+      if (touche || estArrive) {
+        ctx.fillStyle = estArrive ? "rgba(52,217,100,0.16)" : "rgba(59,155,255,0.16)";
+        ctx.beginPath(); ctx.arc(q.x, q.y, 15, 0, Math.PI * 2); ctx.fill();
+      }
+
+      /* Le téléphone : un rectangle arrondi, dessiné et non importé. */
+      var w = n.moi || n.cible ? 15 : 12;
+      var h = n.moi || n.cible ? 25 : 20;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(q.x - w / 2, q.y - h / 2, w, h, 3.5);
+      else ctx.rect(q.x - w / 2, q.y - h / 2, w, h);
+      ctx.fillStyle = "#060D17";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = estArrive ? "#34D964" : (touche ? "#3B9BFF" : "rgba(255,255,255,0.22)");
+      ctx.stroke();
+
+      if (n.moi || n.cible) {
+        ctx.fillStyle = "#62768E";
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.textAlign = "center";
+        ctx.fillText(n.nom, q.x, q.y + h / 2 + 15);
+      }
+    }
+
+    /* ── Le paquet en vol ── */
+    if (parti && !arrive) {
+      var da = pos(CHEMIN[sautFait]), db = pos(CHEMIN[sautFait + 1]);
+      /* Adouci aux deux bouts : un déplacement linéaire a l'air
+         mécanique, une accélération puis un freinage a l'air d'un
+         objet lancé. */
+      var e = fraction < 0.5
+        ? 2 * fraction * fraction
+        : 1 - Math.pow(-2 * fraction + 2, 2) / 2;
+      var px = da.x + (db.x - da.x) * e;
+      var py = da.y + (db.y - da.y) * e;
+      ctx.fillStyle = "rgba(59,155,255,0.22)";
+      ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#3B9BFF";
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    /* ── Le compte rendu ── */
+    var sauts = parti ? Math.min(sautFait + (arrive ? 0 : 0), CHEMIN.length - 1) : 0;
+    var libelle;
+    if (!parti) { libelle = "Recherche d'un chemin…"; }
+    else if (arrive) { libelle = "Distribué · 3 sauts"; }
+    else { libelle = "Relais " + (sautFait + 1) + " sur " + (CHEMIN.length - 1); }
+
+    if (etatTxt.textContent !== libelle) etatTxt.textContent = libelle;
+    etatBoite.classList.toggle("arrive", arrive);
+    var nSauts = String(arrive ? CHEMIN.length - 1 : sauts);
+    if (mSauts.textContent !== nSauts) mSauts.textContent = nSauts;
+    var nJoign = String(parti ? Math.min(sautFait + 2, NOEUDS.length) : 1);
+    if (mJoign.textContent !== nJoign) mJoign.textContent = nJoign;
+
+    requestAnimationFrame(dessiner);
+  }
+
+  /* Un état fixe et lisible pour qui a demandé moins d'animation :
+     le chemin complet, déjà tracé. */
+  function statique() {
+    ctx.clearRect(0, 0, L, H);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = "rgba(59,155,255,0.55)";
+    for (var s = 0; s < CHEMIN.length - 1; s++) {
+      var a = pos(CHEMIN[s]), b = pos(CHEMIN[s + 1]);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    for (var j = 0; j < NOEUDS.length; j++) {
+      var q = pos(j), n = NOEUDS[j];
+      var sur = CHEMIN.indexOf(j) !== -1;
+      var w = n.moi || n.cible ? 15 : 12, h = n.moi || n.cible ? 25 : 20;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(q.x - w / 2, q.y - h / 2, w, h, 3.5);
+      else ctx.rect(q.x - w / 2, q.y - h / 2, w, h);
+      ctx.fillStyle = "#060D17"; ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = n.cible ? "#34D964" : (sur ? "#3B9BFF" : "rgba(255,255,255,0.22)");
+      ctx.stroke();
+      if (n.moi || n.cible) {
+        ctx.fillStyle = "#62768E";
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.textAlign = "center";
+        ctx.fillText(n.nom, q.x, q.y + h / 2 + 15);
+      }
+    }
+    etatTxt.textContent = "Distribué · 3 sauts";
+    etatBoite.classList.add("arrive");
+    mSauts.textContent = "3";
+    mJoign.textContent = "6";
+  }
+
+  function demarrer() {
+    dimensionner();
+    if (reduit) statique();
+  }
+
+  demarrer();
+  if (!reduit) requestAnimationFrame(dessiner);
+
+  var minuteur;
+  window.addEventListener("resize", function () {
+    clearTimeout(minuteur);
+    minuteur = setTimeout(demarrer, 120);
+  });
+})();
+</script>

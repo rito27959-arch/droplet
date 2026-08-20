@@ -1,0 +1,335 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <!-- Requis pour acquérir le MulticastLock nécessaire à la découverte
+         mDNS (NsdManager) du transport Wi-Fi local — sans elle, la
+         découverte échoue silencieusement (NsdError/securityIssue). -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- Depuis Android 13, l'accès aux fichiers est découpé par TYPE de
+         média : une seule permission « stockage » n'existe plus. Ces
+         trois-là couvrent le choix d'une photo, d'une vidéo et d'une
+         chanson pour accompagner un statut. Sans elles, le sélecteur
+         s'ouvre mais revient vide sur les appareils récents. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <!-- `tools:replace` est obligatoire ici : le plugin caméra déclare
+         la même permission avec `maxSdkVersion="28"`, et deux valeurs
+         différentes pour un même attribut font échouer la fusion des
+         manifestes. On impose la nôtre (29), qui couvre une version
+         d'Android de plus. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"
+        tools:replace="android:maxSdkVersion"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
+    <uses-feature android:name="android.hardware.wifi" android:required="false"/>
+    <uses-feature android:name="android.hardware.wifi.direct" android:required="false"/>
+
+    <application
+        android:label="Droplet"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <!-- Cible de partage : Droplet apparaît dans « Partager vers… »
+                 des autres apps Android, pour du texte comme n'importe quel
+                 fichier (voir receive_sharing_intent + ShareTargetScreen). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/*"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="*/*"/>
+            </intent-filter>
+        </activity>
+
+        <!--
+          LES POINTS D'ENTRÉE DE L'APPLICATION, un par icône.
+
+          Android fige l'icône d'une app dans son manifeste, lu à
+          l'installation : impossible de la remplacer à l'exécution. La
+          seule méthode officielle consiste à déclarer plusieurs alias
+          vers la MÊME activité, chacun avec sa propre icône, et à n'en
+          laisser qu'un activé — c'est ce que fait `MainActivity.kt`.
+
+          ⚠️ `LauncherDefault` est le seul avec `enabled="true"`. Si
+          aucun ne l'était, l'application n'apparaîtrait nulle part et
+          serait impossible à ouvrir.
+        -->
+        <activity-alias
+            android:name=".LauncherDefault"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="Droplet"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV1"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v1"
+            android:roundIcon="@mipmap/ic_launcher_v1_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV2"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v2"
+            android:roundIcon="@mipmap/ic_launcher_v2_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV3"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v3"
+            android:roundIcon="@mipmap/ic_launcher_v3_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV4"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v4"
+            android:roundIcon="@mipmap/ic_launcher_v4_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV5"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v5"
+            android:roundIcon="@mipmap/ic_launcher_v5_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV6"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v6"
+            android:roundIcon="@mipmap/ic_launcher_v6_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV7"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v7"
+            android:roundIcon="@mipmap/ic_launcher_v7_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV8"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v8"
+            android:roundIcon="@mipmap/ic_launcher_v8_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV9"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v9"
+            android:roundIcon="@mipmap/ic_launcher_v9_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV10"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v10"
+            android:roundIcon="@mipmap/ic_launcher_v10_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV11"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v11"
+            android:roundIcon="@mipmap/ic_launcher_v11_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV9"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v9"
+            android:roundIcon="@mipmap/ic_launcher_v9_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV10"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v10"
+            android:roundIcon="@mipmap/ic_launcher_v10_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV11"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v11"
+            android:roundIcon="@mipmap/ic_launcher_v11_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".LauncherV12"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_v12"
+            android:roundIcon="@mipmap/ic_launcher_v12_round"
+            android:label="Droplet"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+    </application>
+</manifest>

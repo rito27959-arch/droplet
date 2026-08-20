@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  L'icône « adaptative » d'Android.
+
+  Le système ne veut pas d'une image toute faite : il veut deux couches
+  séparées, un FOND et un DESSIN, pour pouvoir découper lui-même la forme
+  choisie par le fabricant du téléphone (cercle, carré arrondi, goutte,
+  écusson…). C'est aussi ce qui lui permet de faire bouger légèrement le
+  dessin par rapport au fond quand on incline l'appareil.
+
+  D'où la règle des deux tailles : les deux couches font 108 dp, mais
+  seuls les 72 dp du centre sont garantis visibles. Tout ce qui compte
+  reste donc bien au milieu, et le fond, lui, va jusqu'aux bords.
+
+  La couche `monochrome` sert aux icônes thématiques d'Android 13+ :
+  quand on demande des icônes assorties au fond d'écran, c'est cette
+  silhouette que le système recolore.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

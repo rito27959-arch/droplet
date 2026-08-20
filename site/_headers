@@ -1,0 +1,26 @@
+# ══════════════════════════════════════════════════════════════════
+# EN-TÊTES CLOUDFLARE PAGES
+# ------------------------------------------------------------------
+# Cloudflare lit ce fichier au déploiement. Il ne part jamais avec le
+# site : c'est une instruction pour le serveur, pas une ressource.
+# ══════════════════════════════════════════════════════════════════
+
+/*
+  # Empêche un autre site de charger le vôtre dans un cadre invisible
+  # pour piéger les clics — ici, sur des boutons de don.
+  X-Frame-Options: DENY
+  # Interdit au navigateur de deviner le type d'un fichier. Sans cela,
+  # un fichier mal étiqueté peut être interprété comme du script.
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  # Le site ne demande ni caméra, ni micro, ni position. On le déclare.
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
+
+# Les polices et le runtime d'animation ne changent jamais : un an de
+# cache, et le visiteur ne les retélécharge pas.
+/lottie_light.min.js
+  Cache-Control: public, max-age=31536000, immutable
+
+# La page, elle, doit pouvoir être mise à jour tout de suite.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate

@@ -1,0 +1,250 @@
+// ============================================================================
+// C'EST QUOI CE FICHIER ?
+// ----------------------------------------------------------------------------
+// C'est le fichier qui fait apparaître les petites bulles en haut de
+// l'écran du téléphone (les « notifications ») quand quelque chose
+// d'important se passe dans l'app — même quand Droplet n'est pas ouvert
+// à l'écran : « nouveau message », « appel manqué », « ton message n'a
+// pas pu être envoyé », « quelqu'un a publié un statut », etc. Exactement
+// comme le font WhatsApp, Messenger ou n'importe quelle app de discussion.
+//
+// Toute la classe est « statique » (pas besoin de créer un objet, on
+// appelle directement `NotificationService.showNewMessage(...)` de
+// n'importe où dans l'app) — un peu comme un panneau d'affichage public :
+// n'importe qui dans l'app peut y accrocher une annonce sans avoir à
+// demander la permission à un gardien.
+//
+// Règle importante respectée partout ici : on n'affiche JAMAIS de
+// notification pour quelque chose que l'utilisateur est déjà en train de
+// regarder à l'écran (par exemple, un message dans la conversation
+// actuellement ouverte) — ce serait comme sonner à la porte de quelqu'un
+// qui est déjà en train de te parler face à face.
+// ============================================================================
+
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+/// Notifications système Android réelles pour les événements applicatifs
+/// (message reçu, appel manqué, envoi échoué, statut/urgence publiés par un
+/// pair). Volontairement statique : appelée depuis des couches très
+/// différentes (providers Riverpod, repository mesh, UI) sans avoir à faire
+/// transiter une instance partout.
+class NotificationService {
+  NotificationService._();
+
+  static final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+  static bool _initialized = false;
+  static final _rng = Random();
+
+  /// Vrai tant que l'app est au premier plan (mise à jour par
+  /// [AppLifecycleObserver] dans main.dart) — on n'affiche jamais de
+  /// notification système pour un événement que l'utilisateur est déjà en
+  /// train de regarder à l'écran.
+  static bool isAppForeground = true;
+
+  /// Conversation actuellement ouverte à l'écran (peerId, groupId, ou
+  /// 'broadcast') — mise à jour par ChatScreen. Un message entrant pour
+  /// cette conversation précise n'a pas besoin de notification système
+  /// même si l'app est au premier plan (l'utilisateur la lit déjà).
+  static String? openConversationId;
+
+  /// Chemin go_router à ouvrir au tap sur une notification, consommé une
+  /// fois par main.dart après le premier frame.
+  static String? pendingNavigation;
+  static void Function(String path)? _onNavigate;
+
+  /// Enregistre la fonction qui sait naviguer dans l'app (fournie par
+  /// main.dart) — pour que, quand on tape sur une notification, l'app
+  /// sache emmener l'utilisateur directement au bon écran.
+  static void bindNavigation(void Function(String path) onNavigate) {
+    _onNavigate = onNavigate;
+  }
+
+  // Les « canaux » de notification servent à Android à grouper les
+  // notifications par catégorie, avec un niveau d'importance chacun — un
+  // peu comme trois casiers postaux différents : un pour les messages
+  // normaux, un pour les appels (plus urgent, ça doit vraiment attirer
+  // l'attention), un pour le mesh/l'urgence.
+  static const _channelMessages = AndroidNotificationChannel(
+    'droplet_messages',
+    'Messages',
+    description: 'Nouveaux messages et statuts mesh',
+    importance: Importance.high,
+  );
+  static const _channelCalls = AndroidNotificationChannel(
+    'droplet_calls',
+    'Appels',
+    description: 'Appels entrants et manqués',
+    importance: Importance.max,
+  );
+  static const _channelMesh = AndroidNotificationChannel(
+    'droplet_mesh',
+    'Mesh & urgence',
+    description: 'Service mesh actif, statuts et messages d\'urgence',
+    importance: Importance.defaultImportance,
+  );
+
+  /// À appeler une seule fois au démarrage de l'app : prépare le système
+  /// de notifications, crée les trois canaux, et demande la permission
+  /// d'afficher des notifications à l'utilisateur.
+  static Future<void> init() async {
+    if (_initialized) return;
+    _initialized = true;
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidInit);
+    await _plugin.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        final path = response.payload;
+        if (path == null || path.isEmpty) return;
+        final nav = _onNavigate;
+        if (nav != null) {
+          nav(path);
+        } else {
+          pendingNavigation = path;
+        }
+      },
+    );
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(_channelMessages);
+    await android?.createNotificationChannel(_channelCalls);
+    await android?.createNotificationChannel(_channelMesh);
+    await android?.requestNotificationsPermission();
+  }
+
+  /// Tire un numéro d'identité au hasard pour chaque nouvelle
+  /// notification — Android en a besoin pour savoir que c'est une
+  /// NOUVELLE bulle et pas la mise à jour d'une ancienne.
+  static int _nextId() => _rng.nextInt(1 << 31);
+
+  /// Est-ce qu'on doit garder le silence pour cette notification ? Oui,
+  /// si l'app est au premier plan ET que la conversation concernée est
+  /// justement celle actuellement ouverte à l'écran.
+  static bool _shouldSuppress(String? conversationId) {
+    if (!isAppForeground) return false;
+    if (conversationId == null) return false;
+    return openConversationId == conversationId;
+  }
+
+  /// La fonction commune qui affiche vraiment une bulle de notification
+  /// — toutes les fonctions `show...` publiques ci-dessous passent par
+  /// ici avec leur propre titre/texte/canal.
+  static Future<void> _show({
+    required String title,
+    required String body,
+    required AndroidNotificationChannel channel,
+    String? payload,
+  }) async {
+    try {
+      await _plugin.show(
+        id: _nextId(),
+        title: title,
+        body: body,
+        notificationDetails: NotificationDetails(
+          android: AndroidNotificationDetails(
+            channel.id,
+            channel.name,
+            channelDescription: channel.description,
+            importance: channel.importance,
+            priority: Priority.high,
+          ),
+        ),
+        payload: payload,
+      );
+    } catch (e) {
+      debugPrint('[NotificationService] échec affichage: $e');
+    }
+  }
+
+  /// Notification « nouveau message » — sauf si la conversation est déjà
+  /// ouverte à l'écran (voir [_shouldSuppress]).
+  static Future<void> showNewMessage({
+    required String conversationId,
+    required String pseudo,
+    required String preview,
+    required String routePath,
+  }) async {
+    if (_shouldSuppress(conversationId)) return;
+    await _show(
+      title: pseudo,
+      body: preview,
+      channel: _channelMessages,
+      payload: routePath,
+    );
+  }
+
+  /// Notification « appel entrant » — seulement si l'app n'est pas au
+  /// premier plan, car sinon un écran d'appel natif est déjà affiché en
+  /// plein écran, une notification en plus serait redondante.
+  static Future<void> showIncomingCall({
+    required String peerId,
+    required String pseudo,
+  }) async {
+    if (isAppForeground) return; // overlay natif déjà affiché à l'écran
+    await _show(
+      title: 'Appel entrant',
+      body: pseudo,
+      channel: _channelCalls,
+      payload: '/call/$peerId',
+    );
+  }
+
+  /// Notification « appel manqué » — envoyée quand un appel entrant n'a
+  /// jamais été décroché.
+  static Future<void> showMissedCall({
+    required String peerId,
+    required String pseudo,
+  }) async {
+    await _show(
+      title: 'Appel manqué',
+      body: pseudo,
+      channel: _channelCalls,
+      payload: '/chat/$peerId',
+    );
+  }
+
+  /// Notification « ton message n'est pas parti » — rassure l'utilisateur
+  /// que Droplet réessaiera automatiquement dès qu'un pair repasse à
+  /// portée, plutôt que de laisser croire que le message est perdu.
+  static Future<void> showSendFailed({
+    required String conversationId,
+    required String routePath,
+  }) async {
+    await _show(
+      title: 'Échec de l\'envoi',
+      body: 'Un message n\'a pas pu être envoyé — nouvel essai dès qu\'un pair est à portée.',
+      channel: _channelMessages,
+      payload: routePath,
+    );
+  }
+
+  /// Notification « quelqu'un a publié un statut ».
+  static Future<void> showStatusPublished({
+    required String pseudo,
+    required String authorId,
+  }) async {
+    await _show(
+      title: 'Nouveau statut',
+      body: '$pseudo a publié un statut',
+      channel: _channelMesh,
+      payload: '/status/$authorId',
+    );
+  }
+
+  /// Notification « message d'urgence/sécurité » — quand un contact
+  /// diffuse « Je suis en sécurité » sur le mesh.
+  static Future<void> showEmergency({required String pseudo}) async {
+    await _show(
+      title: 'Message d\'urgence',
+      body: '$pseudo a diffusé « Je suis en sécurité »',
+      channel: _channelMesh,
+      payload: '/safety',
+    );
+  }
+}

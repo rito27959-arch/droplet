@@ -1,0 +1,188 @@
+name: droplet
+description: Droplet — Messagerie et appels en réseau mesh hors ligne (P2P, sans Internet).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.8.1
+  flutter_animate: ^4.5.0
+
+  # Lecteur Lottie en pur Dart. Il sert ici à afficher les STICKERS
+  # ANIMÉS au format `.tgs` de Telegram — qui n'est rien d'autre qu'un
+  # JSON Bodymovin/Lottie compressé en gzip, avec un attribut `"tgs": 1`.
+  # Le paquet sait le décompresser lui-même (`LottieComposition.decodeGZip`),
+  # ce qui évite d'embarquer `rlottie` en natif comme le fait Telegram.
+  lottie: ^3.3.3
+  google_fonts: ^6.2.1
+  font_awesome_flutter: ^10.12.0
+  cupertino_icons: ^1.0.8
+  intl: ^0.20.2
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+  path_provider: ^2.1.5
+  share_plus: ^10.1.4
+  file_picker: ^8.0.0
+  bluetooth_low_energy: ^6.2.1
+  nsd: ^5.0.1
+  nearby_service: ^0.2.1
+  flutter_webrtc: ^1.5.2
+  drift: ^2.23.0
+  sqlite3_flutter_libs: ^0.5.0
+  sqlite3: ^2.4.0
+  record: ^6.2.1
+  audioplayers: ^6.4.0
+  battery_plus: ^6.2.1
+  cryptography: ^2.7.0
+  flutter_secure_storage: ^9.2.4
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^6.0.2
+  geolocator: ^13.0.2
+  flutter_foreground_task: ^10.0.0
+  flutter_local_notifications: ^22.2.0
+  receive_sharing_intent: 1.8.1
+  flutter_ringtone_player: ^4.0.0+4
+  permission_handler: 12.0.3
+  flutter_shaders: ^0.1.3
+  video_player: ^2.11.1
+  camera: ^0.12.0+2
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+  http: ^1.6.0
+  # LES RESSORTS D'APPLE, À L'IDENTIQUE.
+  #
+  # iOS n'anime presque rien avec une courbe et une durée : il lance un
+  # RESSORT, et laisse la physique décider du reste. La différence se
+  # sent surtout quand on interrompt un geste — une courbe repart de
+  # zéro, un ressort garde la vitesse en cours et rattrape la nouvelle
+  # cible sans à-coup. C'est toute la « fluidité » qu'on cherche.
+  #
+  # `motor` expose les réglages exacts de SwiftUI (`CupertinoMotion`
+  # .smooth / .snappy / .bouncy / .interactive) — pas une imitation
+  # approximative. Aucun coût GPU : c'est du calcul de position.
+  motor: ^1.1.0
+  # LE VRAI VERRE LIQUIDE D'iOS 26 — un shader qui RÉFRACTE le contenu
+  # passant dessous, avec reflets spéculaires et liseré lumineux.
+  #
+  # ⚠️ C'EST CHER, ET C'EST ASSUMÉ. Le paquet est expérimental, exige
+  # Impeller, et ses auteurs déconseillent de l'activer aveuglément
+  # partout. Droplet l'emploie donc à UN SEUL endroit — la capsule
+  # d'onglets, la seule pièce de châssis visible en permanence — et
+  # bascule tout seul sur le flou classique (`fake`) quand le téléphone
+  # chauffe. Voir `ouro_glass.dart`.
+  liquid_glass_renderer: ^0.2.0-dev.4
+  animated_emoji: ^3.2.1
+  photo_manager: ^3.12.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.23.0
+  build_runner: ^2.4.0
+
+flutter:
+  uses-material-design: true
+
+  # L'icône de l'app, embarquée pour l'écran de démarrage : c'est la même
+  # image que celle du lanceur, ce qui fait que l'icône sur laquelle on
+  # vient d'appuyer semble se prolonger dans l'app au lieu d'être
+  # remplacée par autre chose.
+  assets:
+    - assets/icon/droplet_icon.png
+    # Les neuf variantes d'icône, montrées dans la grille de choix des
+    # réglages. Elles sont AUSSI déclinées côté Android (voir
+    # `tool/build_icon_variants.py`) : ici c'est l'aperçu, là-bas
+    # l'icône réelle du lanceur.
+    - assets/icon/variants/
+    # Icônes premium
+    - assets/icon/premuim/
+
+
+    # ── Les 50 emojis animés de Noto (Google) ────────────────────────
+    #
+    # Ce sont de vraies animations Lottie, celles qu'on voit dans les
+    # applications de Google. Elles viennent du paquet `animated_emoji`,
+    # qui en embarque 694 — mais qui n'en DÉCLARE aucune : rien n'entre
+    # dans l'APK tant qu'on ne le demande pas ici.
+    #
+    # ⚠️ D'où cette liste écrite à la main plutôt qu'un
+    # `packages/animated_emoji/lottie/` global. Les 694 pèsent 53 Mo. La
+    # cinquantaine retenue en pèse 3,2 — et couvre ce qu'on utilise
+    # réellement dans une conversation. Pour en ajouter une, prenez son
+    # nom dans `~/.pub-cache/hosted/pub.dev/animated_emoji-*/lib/lottie/`.
+    #
+    # ⚠️ LICENCE : Noto Animated Emoji est publié sous CC BY 4.0, qui
+    # EXIGE l'attribution. Elle figure dans « À propos de Droplet »
+    # (`settings_screen.dart`). Ne la retirez pas : sans elle, l'usage
+    # devient une violation de licence.
+    - packages/animated_emoji/lottie/joy.json
+    - packages/animated_emoji/lottie/electricity.json
+    - packages/animated_emoji/lottie/heartEyes.json
+    - packages/animated_emoji/lottie/thumbsUp.json
+    - packages/animated_emoji/lottie/fire.json
+    - packages/animated_emoji/lottie/partyPopper.json
+    - packages/animated_emoji/lottie/beatingHeart.json
+    - packages/animated_emoji/lottie/brokenHeart.json
+    - packages/animated_emoji/lottie/cry.json
+    - packages/animated_emoji/lottie/loudlyCrying.json
+    - packages/animated_emoji/lottie/laughing.json
+    - packages/animated_emoji/lottie/grin.json
+    - packages/animated_emoji/lottie/wink.json
+    - packages/animated_emoji/lottie/blush.json
+    - packages/animated_emoji/lottie/cool.json
+    - packages/animated_emoji/lottie/clap.json
+    - packages/animated_emoji/lottie/foldedHands.json
+    - packages/animated_emoji/lottie/muscle.json
+    - packages/animated_emoji/lottie/rocket.json
+    - packages/animated_emoji/lottie/birthdayCake.json
+    - packages/animated_emoji/lottie/balloon.json
+    - packages/animated_emoji/lottie/glowingStar.json
+    - packages/animated_emoji/lottie/mindBlown.json
+    - packages/animated_emoji/lottie/thinkingFace.json
+    - packages/animated_emoji/lottie/sleep.json
+    - packages/animated_emoji/lottie/hotFace.json
+    - packages/animated_emoji/lottie/coldFace.json
+    - packages/animated_emoji/lottie/ghost.json
+    - packages/animated_emoji/lottie/alien.json
+    - packages/animated_emoji/lottie/dog.json
+    - packages/animated_emoji/lottie/wave.json
+    - packages/animated_emoji/lottie/checkMark.json
+    - packages/animated_emoji/lottie/crossMark.json
+    - packages/animated_emoji/lottie/warning.json
+    - packages/animated_emoji/lottie/exclamation.json
+    - packages/animated_emoji/lottie/salute.json
+    - packages/animated_emoji/lottie/starStruck.json
+    - packages/animated_emoji/lottie/relieved.json
+    - packages/animated_emoji/lottie/yawn.json
+    - packages/animated_emoji/lottie/shushingFace.json
+    - packages/animated_emoji/lottie/pleading.json
+    - packages/animated_emoji/lottie/kissingHeart.json
+    - packages/animated_emoji/lottie/melting.json
+    - packages/animated_emoji/lottie/skull.json
+    - packages/animated_emoji/lottie/eyes.json
+    - packages/animated_emoji/lottie/smile.json
+    - packages/animated_emoji/lottie/rainbow.json
+    - packages/animated_emoji/lottie/confettiBall.json
+    - packages/animated_emoji/lottie/handshake.json
+    - packages/animated_emoji/lottie/droplet.json
+    - packages/animated_emoji/lottie/luck.json
+
+    # Les stickers animés (.tgs de Telegram, ou .json Lottie).
+    #
+    # ⚠️ Ce dossier est VOLONTAIREMENT livré vide, avec pour seul
+    # contenu son fichier d'index. Les stickers de Telegram sont leur
+    # propriété : les embarquer dans une application publiée serait une
+    # contrefaçon. À vous d'y déposer des animations dont vous avez le
+    # droit d'usage — voir `assets/stickers/LISEZ-MOI.md`.
+    - assets/stickers/
+
+  # Shaders GLSL compilés à la construction et chargés à l'exécution —
+  # voir `lib/design_system/ouro_liquid.dart` pour leur utilisation.
+  shaders:
+    - shaders/liquid.frag

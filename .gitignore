@@ -1,0 +1,74 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ══════════════════════════════════════════════════════════════════
+# SECRETS — NE JAMAIS PUBLIER
+# ------------------------------------------------------------------
+# ⚠️ `key.properties` contient le mot de passe du keystore EN CLAIR.
+# Publié, il permet à n'importe qui de signer un APK au nom de Droplet :
+# le téléphone de vos utilisateurs l'accepterait alors comme une mise à
+# jour légitime de votre application. C'est la fuite la plus grave
+# possible dans un projet Android, et elle est irréparable — une clé de
+# signature ne se change pas sans casser toutes les installations
+# existantes.
+#
+# Les clés elles-mêmes vivent dans ~/.droplet-keys/, hors du dépôt. Ces
+# règles sont là pour le jour où quelqu'un en recopiera une ici « juste
+# pour essayer ».
+# ══════════════════════════════════════════════════════════════════
+/android/key.properties
+*.jks
+*.keystore
+*.p12
+licence.key
+worker-secrets.txt
+
+# Secrets locaux de Wrangler (Cloudflare)
+serveur/.dev.vars
+.wrangler/
+
+# Sortie de construction du site — régénérée par site/construire.py
+/site/public/

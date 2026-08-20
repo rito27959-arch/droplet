@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Écran de démarrage d'Android 12 et suivants.
+
+  À partir de cette version, ce n'est plus l'app qui dessine son écran de
+  lancement : c'est le système, et il le fait TOUJOURS, qu'on le
+  configure ou non. Sans ces lignes, il affiche l'icône du lanceur sur un
+  fond gris pris dans le thème par défaut — puis Droplet enchaîne sur son
+  propre écran, blanc, avec la même icône ailleurs et à une autre taille.
+  Deux images qui se remplacent, exactement l'à-coup qu'on cherche à
+  éviter.
+
+  En donnant ici le même fond et la même icône que l'écran Flutter qui
+  suit, le passage de l'un à l'autre devient invisible : le système
+  amène l'icône, Flutter la reprend au même endroit et poursuit
+  l'animation (voir `app_icon_intro.dart`).
+
+  ⚠️ LE PARENT DOIT RESTER CELUI DES AUTRES FICHIERS DE STYLE. Une
+  version antérieure de ce fichier héritait de `Theme.DeviceDefault`,
+  qui semblait le choix naturel pour un thème système moderne — sauf que
+  ce thème-là fournit une BARRE DE TITRE, là où les `NoTitleBar`
+  d'origine n'en ont pas. Résultat : un bandeau clair portant le nom
+  « Droplet » s'installait en haut de toutes les pages et repoussait
+  l'app vers le bas. Les attributs d'écran de démarrage ci-dessous sont
+  de simples attributs de plateforme : ils fonctionnent sur n'importe
+  quel thème, il n'y a donc aucune raison d'en changer.
+-->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">#FFFFFFFF</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <!-- Le fond qui prend le relais dès que l'écran système s'efface. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>
