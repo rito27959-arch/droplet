@@ -75,3 +75,16 @@ serveur/.dev.vars
 
 # Archive du site, régénérée par site/construire.py
 /site/droplet-site.zip
+
+# ══════════════════════════════════════════════════════════════════
+# DOCUMENTS PERSONNELS
+# ------------------------------------------------------------------
+# Le rapport de stage porte un nom, un établissement et un encadrant.
+# Les captures montrent de vraies conversations. Rien de tout cela
+# n'est nécessaire pour distribuer une application, et un dépôt public
+# est indexé par les moteurs de recherche.
+# ══════════════════════════════════════════════════════════════════
+captures/
+*.docx
+*.pdf
+RAPPORT_*.md
