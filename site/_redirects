@@ -13,8 +13,8 @@
 #
 #     https://droplet.pages.dev/droplet.apk
 #
-# Décommentez la ligne ci-dessous en remplaçant <compte> par le vôtre.
+# Active : /droplet.apk redirige vers la dernière version publiée.
 # `latest` ne change jamais : une nouvelle version publiée sur GitHub
 # est servie sans toucher au site.
 #
-# /droplet.apk  https://github.com/<compte>/droplet/releases/latest/download/app-arm64-v8a-release.apk  302
+/droplet.apk  https://github.com/rito27959-arch/droplet/releases/latest/download/app-arm64-v8a-release.apk  302
