@@ -72,3 +72,6 @@ serveur/.dev.vars
 
 # Sortie de construction du site — régénérée par site/construire.py
 /site/public/
+
+# Archive du site, régénérée par site/construire.py
+/site/droplet-site.zip
