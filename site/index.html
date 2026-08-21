@@ -606,14 +606,6 @@ td.oui { color: var(--encre); }
 }
 .contact .via { display: block; font-size: 0.72rem; color: var(--brume); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
 
-/* Un <button> ne ressemble pas à un <a> par défaut : sans ces trois
-   lignes, « Google Play » aurait la police du système et un fond gris. */
-button.bouton {
-  font-family: inherit;
-  cursor: pointer;
-  background: transparent;
-}
-
 /* ── Soutenir ── */
 .dons {
   display: grid;
@@ -1401,18 +1393,19 @@ footer {
              href="https://github.com/rito27959-arch/droplet/releases/latest/download/app-arm64-v8a-release.apk">
             Télécharger l'APK
           </a>
-          <!-- Google Play n'est pas un lien : rien ne s'y trouve encore.
-               Un bouton qui mène à une page « application introuvable »
-               fait douter de tout le reste. -->
-          <button class="bouton bouton-vide" id="bouton-play" type="button">
-            Google Play
-          </button>
+          <!-- ⚠️ LE CODE SOURCE PLUTÔT QU'UNE PROMESSE.
+               Ici se trouvait un bouton « Google Play » qui ne menait
+               nulle part, avec une mention « bientôt disponible ».
+               Annoncer ce qui n'existe pas encore n'apporte rien à
+               personne — et sur une application qui affirme chiffrer
+               les messages, pouvoir LIRE LE CODE est un argument de
+               confiance autrement plus solide qu'une date. -->
+          <a class="bouton bouton-vide"
+             href="https://github.com/rito27959-arch/droplet"
+             rel="noopener">
+            Voir le code source
+          </a>
         </div>
-        <p id="avis-play" class="etiquette" hidden
-           style="margin-top:12px;color:var(--relais)">
-          Bientôt disponible sur Google Play — en attendant, l'APK
-          ci-dessus est la même application, signée de la même clé.
-        </p>
 
         <div class="avis">
           <b>Le partage se passe aussi d'internet</b>
@@ -1908,6 +1901,7 @@ footer {
         <a href="#securite">Chiffrement</a>
         <a href="#limites">Limites connues</a>
         <a href="#testeurs">Signaler un défaut</a>
+        <a href="https://github.com/rito27959-arch/droplet" rel="noopener">Code source</a>
       </div>
       <div>
         <b>Le principe</b>
@@ -2069,33 +2063,6 @@ var DONS = {
     } else {
       secours();
     }
-  }
-})();
-</script>
-
-<script>
-(function () {
-  "use strict";
-
-  // ── GOOGLE PLAY : ANNONCER, PAS DÉCEVOIR ──────────────────────
-  //
-  // ⚠️ Le bouton ne mène nulle part, et c'est délibéré. Droplet n'est
-  // pas encore publié sur le Play Store ; un lien vers une fiche
-  // inexistante afficherait « application introuvable », ce qui fait
-  // douter de tout le reste de la page — y compris de l'APK, qui lui
-  // fonctionne.
-  //
-  // Il annonce donc, et renvoie vers ce qui existe vraiment.
-  var play = document.getElementById("bouton-play");
-  var avis = document.getElementById("avis-play");
-  if (play && avis) {
-    play.addEventListener("click", function () {
-      avis.hidden = false;
-      // On attire l'œil sur l'APK, qui est la réponse à ce que la
-      // personne cherchait.
-      var apk = document.getElementById("lien-apk");
-      if (apk) apk.classList.add("emet");
-    });
   }
 })();
 </script>

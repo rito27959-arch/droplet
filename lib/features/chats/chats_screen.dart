@@ -30,8 +30,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/providers/mesh_provider.dart';
 import '../../core/services/storage_service.dart';
+import '../../core/services/crash_journal.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_typography.dart';
+import '../../shared/widgets/bulle_guide.dart';
+import '../settings/journal_sheet.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/glassmorphism.dart';
@@ -52,10 +55,24 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  /// Un rapport d'erreur attend d'être envoyé.
+  bool _rapportEnAttente = false;
+
+  // Les points désignés par la visite guidée. Ce sont les trois choses
+  // qu'on ne devine pas : que « zéro pair » n'est pas une panne, que le
+  // réseau se regarde, et que la conversation commence par un geste.
+  final _cleReseau = GlobalKey();
+  final _clePlus = GlobalKey();
+  final _cleReglages = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _ensureMesh();
+    _chercherUnRapport();
+    // Après la première image : les boutons doivent exister pour qu'on
+    // puisse les désigner.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _visiteGuidee());
     _searchCtrl.addListener(
       () => setState(() => _query = _searchCtrl.text.trim().toLowerCase()),
     );
@@ -65,6 +82,65 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  /// La visite guidée du premier lancement.
+  ///
+  /// ⚠️ TROIS ÉTAPES, PAS DIX. Ce ne sont pas les fonctions de
+  /// l'application qu'on explique — on les découvre très bien seul.
+  /// Ce sont les trois comportements que Droplet ne PARTAGE PAS avec
+  /// les messageries habituelles, et que l'on prend pour des pannes
+  /// faute d'un mot d'explication :
+  ///
+  ///   • « zéro pair à proximité » est l'état normal, pas une erreur ;
+  ///   • un message peut mettre des heures sans être perdu ;
+  ///   • le réseau se regarde, et c'est là qu'on comprend pourquoi.
+  ///
+  /// Tout le reste — les statuts, les appels, la carte — ressemble
+  /// assez à ce que les gens connaissent pour se passer de tutoriel.
+  void _visiteGuidee() {
+    if (!mounted) return;
+    Guide.lancer(
+      context,
+      nom: 'accueil',
+      etapes: [
+        EtapeGuide(
+          cible: _cleReseau,
+          titre: 'Personne à proximité ? C\'est normal',
+          texte: 'Droplet ne passe par aucun serveur : il parle aux '
+              'téléphones à portée. Ici vous voyez qui est joignable, et '
+              'par quelle radio. Zéro pair ne veut pas dire que ça ne '
+              'marche pas — juste que personne n\'est encore là.',
+        ),
+        EtapeGuide(
+          cible: _clePlus,
+          titre: 'Écrivez même sans personne',
+          texte: 'Un message écrit maintenant attend sur votre téléphone '
+              'et repart dès qu\'un appareil passe à portée — dans la '
+              'rue, dans un taxi. Il n\'est pas perdu, il patiente.',
+        ),
+        EtapeGuide(
+          cible: _cleReglages,
+          titre: 'Sauvegardez votre identité',
+          texte: 'Sans serveur, personne ne peut vous rendre votre compte. '
+              'Exportez votre identité depuis les réglages : sans cette '
+              'sauvegarde, un téléphone perdu emporte tout.',
+        ),
+      ],
+    );
+  }
+
+  /// Regarde si l'application s'est fermée anormalement depuis la
+  /// dernière fois qu'on a regardé.
+  ///
+  /// ⚠️ ON DEMANDE, ON N'ENVOIE PAS. Le journal ne contient aucun
+  /// message ni contact — mais c'est un fichier technique, et
+  /// l'expédier sans le dire serait exactement ce que Droplet reproche
+  /// aux autres applications. C'est l'utilisateur qui décide, à chaque
+  /// fois.
+  Future<void> _chercherUnRapport() async {
+    final oui = await CrashJournal.aDuNouveau();
+    if (mounted && oui) setState(() => _rapportEnAttente = true);
   }
 
   /// Démarre le réseau mesh une seule fois, dès l'affichage de l'écran.
@@ -130,24 +206,50 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           ? 'Recherche de pairs…'
           : '${peers.length} pair${peers.length > 1 ? 's' : ''} à proximité',
       onRefresh: _onRefresh,
-      leading: OuroBarButton(
-        icon: Icons.settings_outlined,
-        tooltip: 'Réglages',
-        onPressed: () => context.push('/settings'),
+      leading: KeyedSubtree(
+        key: _cleReglages,
+        child: OuroBarButton(
+          icon: Icons.settings_outlined,
+          tooltip: 'Réglages',
+          onPressed: () => context.push('/settings'),
+        ),
       ),
       actions: [
-        OuroBarButton(
-          icon: Icons.wifi_tethering_rounded,
-          tooltip: 'Réseau mesh',
-          onPressed: () => context.push('/mesh-network'),
+        KeyedSubtree(
+          key: _cleReseau,
+          child: OuroBarButton(
+            icon: Icons.wifi_tethering_rounded,
+            tooltip: 'Réseau mesh',
+            onPressed: () => context.push('/mesh-network'),
+          ),
         ),
-        OuroBarButton(
-          icon: Icons.add_rounded,
-          tooltip: 'Nouveau',
-          onPressed: _showComposeMenu,
+        KeyedSubtree(
+          key: _clePlus,
+          child: OuroBarButton(
+            icon: Icons.add_rounded,
+            tooltip: 'Nouveau',
+            onPressed: _showComposeMenu,
+          ),
         ),
       ],
       slivers: [
+        if (_rapportEnAttente)
+          SliverToBoxAdapter(
+            child: _BandeauRapport(
+              onEnvoyer: () async {
+                await afficherJournal(context);
+                // Qu'il ait envoyé, effacé ou simplement regardé : il
+                // SAIT maintenant. Le bandeau a fait son travail et ne
+                // doit pas revenir pour les mêmes lignes.
+                await CrashJournal.marquerVu();
+                if (mounted) setState(() => _rapportEnAttente = false);
+              },
+              onIgnorer: () async {
+                await CrashJournal.marquerVu();
+                if (mounted) setState(() => _rapportEnAttente = false);
+              },
+            ),
+          ),
         SliverToBoxAdapter(child: _SearchField(controller: _searchCtrl)),
 
         if (_query.isEmpty && archivedCount > 0)
@@ -224,6 +326,127 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
 
 /// Barre de recherche façon iOS : capsule grise, loupe à l'intérieur,
 /// aucune bordure.
+/// Le bandeau qui signale un rapport d'erreur non envoyé.
+///
+/// ── ⚠️ POURQUOI IL EXISTE, ET POURQUOI IL EST DISCRET ─────────────
+///
+/// Droplet n'a aucun serveur : quand l'application se ferme toute seule
+/// chez quelqu'un, la seule trace au monde est un fichier sur son
+/// téléphone. S'il ne l'envoie pas, le défaut n'existe pour personne —
+/// et il ne sera jamais corrigé.
+///
+/// Or ce journal vivait au fond des réglages, sans que rien ne signale
+/// jamais son contenu. Un testeur qui plante rouvre l'application et
+/// continue : aller voir demande de se souvenir qu'un journal existe, à
+/// un moment où l'on pensait à autre chose. Les rapports ne remontaient
+/// donc pas, par oubli et non par mauvaise volonté.
+///
+/// Il est ambre et non rouge : il ne s'est rien passé de grave pour
+/// l'utilisateur — ses messages sont intacts, rien n'est perdu. Le
+/// rouge dirait « danger » là où il n'y a qu'une demande de service.
+///
+/// Et il porte un « Plus tard » qui le fait taire DÉFINITIVEMENT pour
+/// ces lignes-là. Un bandeau qu'on ne peut pas congédier devient un
+/// harcèlement, et la première chose qu'on apprend à faire d'un
+/// harcèlement est de ne plus le lire.
+class _BandeauRapport extends StatelessWidget {
+  const _BandeauRapport({required this.onEnvoyer, required this.onIgnorer});
+
+  final VoidCallback onEnvoyer;
+  final VoidCallback onIgnorer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DesignTokens.screenMargin,
+        DesignTokens.space2,
+        DesignTokens.screenMargin,
+        0,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(DesignTokens.space4),
+        decoration: BoxDecoration(
+          color: OuroColors.systemOrange.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+          border: Border.all(
+            color: OuroColors.systemOrange.withValues(alpha: 0.32),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    size: 19, color: OuroColors.systemOrange),
+                const SizedBox(width: DesignTokens.space3),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Droplet s\'est fermé de façon inattendue',
+                        style: OuroTypography.headline
+                            .copyWith(color: OuroColors.label),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Droplet n\'a aucun serveur : sans votre envoi, ce '
+                        'défaut n\'existe pour personne. Le rapport ne '
+                        'contient ni messages, ni contacts, ni clés.',
+                        style: OuroTypography.footnote.copyWith(
+                          color: OuroColors.secondaryLabel,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: DesignTokens.space3),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: onEnvoyer,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: OuroColors.systemOrange,
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(DesignTokens.radiusMd),
+                      ),
+                    ),
+                    child: Text(
+                      'Envoyer le rapport',
+                      style: OuroTypography.subheadline.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: DesignTokens.space3),
+                TextButton(
+                  onPressed: onIgnorer,
+                  child: Text(
+                    'Plus tard',
+                    style: OuroTypography.subheadline
+                        .copyWith(color: OuroColors.secondaryLabel),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SearchField extends StatelessWidget {
   const _SearchField({required this.controller});
   final TextEditingController controller;

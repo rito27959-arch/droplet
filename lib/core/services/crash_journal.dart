@@ -47,6 +47,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'storage_service.dart';
+
 /// Le journal des erreurs non attrapées.
 class CrashJournal {
   CrashJournal._();
@@ -160,6 +162,64 @@ class CrashJournal {
   static Future<void> vider() async {
     try {
       await _fichier?.writeAsString('');
+    } catch (_) {}
+    await marquerVu();
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  CE QUI N'A PAS ENCORE ÉTÉ SIGNALÉ
+  // ══════════════════════════════════════════════════════════════
+  //
+  // ⚠️ SANS CECI, LE JOURNAL NE SERT PRESQUE À RIEN.
+  //
+  // Droplet n'a aucun serveur : quand l'application se ferme toute
+  // seule chez quelqu'un, la SEULE trace au monde est ce fichier. Encore
+  // faut-il que son propriétaire sache qu'il existe.
+  //
+  // Or il vivait au fond des réglages, et rien ne signalait jamais son
+  // contenu. En pratique, un testeur qui plante rouvre l'application et
+  // continue : le geste d'aller voir demande de se souvenir qu'un
+  // journal existe, à un moment où l'on pensait à tout autre chose.
+  // Les rapports ne remontaient donc pas — non par mauvaise volonté,
+  // par oubli.
+  //
+  // On retient donc la TAILLE du journal au moment où il a été vu ou
+  // envoyé. Si le fichier a grossi depuis, c'est qu'il s'est passé
+  // quelque chose de neuf, et l'application peut le dire d'elle-même.
+  //
+  // ⚠️ LA TAILLE, ET PAS UNE DATE. Une date se compare mal : l'horloge
+  // du téléphone se règle, recule au changement de fuseau, et un
+  // redémarrage peut la remettre à zéro. La taille d'un fichier qui ne
+  // fait que croître est un compteur qu'aucun réglage ne perturbe.
+  //
+  // Le seul cas où elle ment est la réduction de moitié (`_reduire`),
+  // qui fait RÉTRÉCIR le fichier : on considère alors qu'il n'y a rien
+  // de neuf, ce qui est le mauvais côté de l'erreur mais reste
+  // acceptable — on préfère taire un rapport que de harceler quelqu'un
+  // avec un bandeau qui ne part pas.
+
+  static const String _cleVu = 'journal_taille_vue';
+
+  /// Le journal contient-il des lignes que l'utilisateur n'a pas encore
+  /// vues ?
+  static Future<bool> aDuNouveau() async {
+    final fichier = _fichier;
+    if (fichier == null || !await fichier.exists()) return false;
+    try {
+      final taille = await fichier.length();
+      if (taille == 0) return false;
+      final vue = int.tryParse(StorageService.getString(_cleVu) ?? '') ?? 0;
+      return taille > vue;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Retient l'état actuel : plus rien n'est « nouveau ».
+  static Future<void> marquerVu() async {
+    try {
+      final taille = await _fichier?.length() ?? 0;
+      await StorageService.setString(_cleVu, '$taille');
     } catch (_) {}
   }
 }

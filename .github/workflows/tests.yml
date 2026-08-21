@@ -1,0 +1,65 @@
+# ============================================================================
+# LES TESTS, À CHAQUE POUSSÉE.
+# ----------------------------------------------------------------------------
+# ⚠️ POURQUOI CE FICHIER COMPTE MAINTENANT ET PAS AVANT.
+#
+# Tant que Droplet n'avait qu'un utilisateur — son auteur — une
+# régression se découvrait en ouvrant l'application. Depuis la bêta, une
+# régression atteint des gens qui ont accepté d'essayer une application
+# non finie et qui envoient leurs rapports. Leur faire perdre leur temps
+# sur un défaut qu'un test attrapait est le meilleur moyen de les perdre.
+#
+# Trois régressions ont été introduites en une seule semaine de travail —
+# l'alignement des bulles, une date de dernière rencontre calculée sur
+# ses propres messages, un drapeau de publication qui cassait les liens
+# de téléchargement. Aucune n'a été vue par un test. Toutes ont été vues
+# à l'œil, par hasard.
+# ============================================================================
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Permet de relancer à la main depuis l'onglet Actions.
+  workflow_dispatch:
+
+jobs:
+  verifier:
+    name: Analyse et tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Le cache évite de retélécharger le SDK à chaque poussée :
+          # sans lui, chaque exécution passe cinq minutes à installer
+          # Flutter avant de commencer à travailler.
+          cache: true
+
+      - name: Dépendances
+        run: flutter pub get
+
+      - name: Analyse statique
+        # ⚠️ `--fatal-infos` : les avertissements « info » sont traités
+        # comme des erreurs. C'est volontairement sévère — la base de
+        # code est propre aujourd'hui, et le rester coûte moins cher que
+        # d'y revenir dans six mois avec quatre cents avertissements.
+        run: flutter analyze --fatal-infos
+
+      - name: Tests
+        # Les tests de licence qui exigent la clé privée se sautent tout
+        # seuls ici : elle vit hors du dépôt, sur la machine de
+        # publication. Voir `test/licence_bout_en_bout_test.dart`.
+        run: flutter test --reporter expanded
+
+      - name: Tests du serveur de licences
+        # Node est déjà présent sur les exécuteurs GitHub, et ces tests
+        # n'ont aucune dépendance à installer.
+        run: node --test serveur/tests.mjs
