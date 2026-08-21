@@ -37,6 +37,22 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          # ⚠️ LA VERSION EST FIXÉE, ET C'EST DÉLIBÉRÉ.
+          #
+          # `channel: stable` installe la DERNIÈRE version stable, qui
+          # n'est pas celle qui construit les APK publiés. La première
+          # exécution de ce fichier l'a montré : la 3.47 a cessé
+          # d'exporter `CupertinoPageTransitionsBuilder` depuis
+          # `material.dart`, et l'analyse a échoué sur du code qui
+          # fonctionne parfaitement dans la version livrée.
+          #
+          # Une intégration continue doit vérifier CE QU'ON LIVRE. Si
+          # elle teste autre chose, ses échecs cessent d'être des
+          # informations et deviennent du bruit qu'on apprend à ignorer.
+          #
+          # Cette valeur doit suivre celle de la machine de publication
+          # (`flutter --version`).
+          flutter-version: '3.41.6'
           channel: stable
           # Le cache évite de retélécharger le SDK à chaque poussée :
           # sans lui, chaque exécution passe cinq minutes à installer
@@ -63,3 +79,30 @@ jobs:
         # Node est déjà présent sur les exécuteurs GitHub, et ces tests
         # n'ont aucune dépendance à installer.
         run: node --test serveur/tests.mjs
+
+  avenir:
+    name: Compatibilité avec la dernière version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # ⚠️ CE TRAVAIL A LE DROIT D'ÉCHOUER, ET C'EST TOUT SON INTÉRÊT.
+    #
+    # Il analyse le projet avec la dernière version stable de Flutter.
+    # Son échec ne bloque rien : il ne dit pas « le code est cassé », il
+    # dit « le code cassera à la prochaine mise à jour ».
+    #
+    # Sans lui, on découvre ces ruptures le jour où l'on met Flutter à
+    # jour — c'est-à-dire au pire moment, quand on voulait faire tout
+    # autre chose. Avec lui, on les voit arriver et on choisit quand
+    # s'en occuper.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Sans `--fatal-infos` : on cherche les RUPTURES, pas les
+      # avertissements de style d'une version qu'on n'utilise pas encore.
+      - run: flutter analyze

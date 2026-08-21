@@ -21,6 +21,23 @@
 //      rendu iOS est la fausse note la plus repérable de toutes.
 // ============================================================================
 
+// ⚠️ `cupertino.dart` EN PLUS DE `material.dart`, ET C'EST NÉCESSAIRE.
+//
+// `CupertinoPageTransitionsBuilder` était atteignable via `material.dart`
+// jusqu'à Flutter 3.41 ; il ne l'est plus dans les versions récentes.
+// L'intégration continue l'a découvert à sa première exécution, en
+// installant la dernière version stable alors que la machine de
+// développement en avait une de cinq mois — exactement le genre de
+// rupture qu'on ne voit jamais sur son propre poste, et qui surgit le
+// jour où l'on met Flutter à jour.
+//
+// L'import explicite fonctionne sur les deux versions — mais l'analyseur
+// de la PLUS ANCIENNE le déclare superflu, puisque chez elle
+// `material.dart` suffit encore. D'où l'exemption : sans elle, le projet
+// ne peut satisfaire les deux versions à la fois. Elle pourra disparaître
+// le jour où la version minimale sera passée à 3.47.
+// ignore: unnecessary_import
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'ouro_colors.dart';
