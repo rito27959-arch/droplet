@@ -34,6 +34,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/mesh_message.dart';
 import '../models/voice_note_meta.dart';
 import '../../features/chat/location_message.dart';
+import '../services/nom_pair.dart';
 import '../services/storage_service.dart';
 import '../services/mesh_transport_service.dart';
 import '../services/ble_mesh_protocol.dart';
@@ -476,6 +477,61 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     }
   }
 
+  /// Renvoie un message dont l'envoi avait échoué.
+  ///
+  /// ── ⚠️ POURQUOI CETTE ACTION MANQUAIT, ET POURQUOI ELLE COMPTE ───
+  ///
+  /// Un message en échec affichait une icône rouge, et rien d'autre. La
+  /// seule issue était de le retaper — sur un vocal ou une photo, cela
+  /// voulait dire recommencer entièrement.
+  ///
+  /// Or l'échec ici n'est pas ce qu'il est ailleurs. Sans pair à
+  /// portée, un message part en ATTENTE et se renvoie tout seul : c'est
+  /// le fonctionnement normal. `failed` ne survient que lorsque l'envoi
+  /// a réellement échoué malgré des appareils présents — une liaison
+  /// coupée en plein transfert, un pair évincé au mauvais moment.
+  /// Autrement dit : toujours une erreur passagère, toujours de celles
+  /// qui réussissent au second essai.
+  ///
+  /// ⚠️ ON RÉUTILISE `_doSendOutboxEntry`, on ne réécrit pas l'envoi.
+  /// Une seconde implémentation aurait fini par diverger de celle de la
+  /// file d'attente — et un message renvoyé serait parti avec un
+  /// chiffrement ou une cible légèrement différents.
+  Future<void> renvoyer(String messageId) async {
+    final msg = state.where((m) => m.id == messageId).firstOrNull;
+    if (msg == null) return;
+
+    final entree = _OutboxEntry(
+      messageId: msg.id,
+      kind: msg.type == 'file' ? _OutboxKind.file : _OutboxKind.text,
+      targetId: msg.targetId,
+      groupId: msg.groupId,
+    );
+
+    _setStatus(msg.id, MessageStatus.sending);
+
+    if (_repo.transport.connectedPeerCount == 0) {
+      // Plus personne à portée : on ne réessaie pas dans le vide, on
+      // remet en attente. Le message repartira de lui-même à la
+      // prochaine rencontre, exactement comme les autres.
+      _setStatus(msg.id, MessageStatus.pending);
+      _outbox.add(entree);
+      unawaited(StorageService.saveOutbox({
+        'id': msg.id,
+        'kind': entree.kind == _OutboxKind.file ? 'file' : 'text',
+        'targetId': msg.targetId,
+        'groupId': msg.groupId,
+      }));
+      _showToast(
+        'Aucun pair à portée — le message repartira tout seul',
+        type: DropletToastType.info,
+      );
+      return;
+    }
+
+    await _doSendOutboxEntry(entree);
+  }
+
   Future<void> _doSendOutboxEntry(_OutboxEntry entry) async {
     try {
       final msg = state.where((m) => m.id == entry.messageId).firstOrNull;
@@ -841,10 +897,16 @@ class CallNotifier extends StateNotifier<CallState> {
       peerId: peerId,
       // Pour un appel entrant, personne ne nous a donné de pseudo : on le
       // retrouve dans la fiche du pair, sinon dans l'état de l'appel.
-      peerPseudo: _callPeerPseudo ??
-          StorageService.getPeerRecord(peerId)?.pseudo ??
-          state.peerPseudo ??
-          'Inconnu',
+      // « Inconnu » ne distinguait rien : deux appels manqués de deux
+      // personnes différentes s'affichaient à l'identique, et on ne
+      // pouvait pas savoir qui rappeler. Un identifiant abrégé, lui,
+      // reste stable d'un appel à l'autre — on reconnaît « Pair
+      // 3f7a1c92 » même sans savoir qui c'est.
+      peerPseudo: nomDuPair(peerId, [
+        _callPeerPseudo,
+        StorageService.getPeerRecord(peerId)?.pseudo,
+        state.peerPseudo,
+      ]),
       direction: _callDirection,
       outcome: outcome,
       startedAt: startedAt,
@@ -1424,22 +1486,40 @@ class _GroupsRevisionNotifier extends StateNotifier<int> {
 
 /// Pseudo d'un pair donné (depuis la liste connectée ou l'historique).
 final peerPseudoProvider = Provider.family<String, String>((ref, peerId) {
-  final peers = ref.watch(meshPeerListProvider);
-  for (final p in peers) {
-    if (p.peerId == peerId) return p.pseudo;
-  }
-  // Pair non connecté pour le moment : on garde son dernier pseudo connu
-  // plutôt que d'afficher son ID brut. Même repli que `conversationsProvider`
-  // — un message reçu avant la résolution du pseudo est persisté avec
-  // `authorPseudo == senderId` (l'ID brut), donc on l'exclut explicitement.
-  final known = StorageService.getPeerRecord(peerId)?.pseudo;
-  if (known != null) return known;
-  final messages = ref.watch(meshMessagesProvider);
-  final resolved = messages
-      .where((m) => m.senderId == peerId && m.authorPseudo != peerId)
+  // ⚠️ CE PROVIDER NE RENVOIE PLUS JAMAIS L'IDENTIFIANT BRUT.
+  //
+  // Il terminait par `return resolved ?? peerId` : une empreinte de
+  // soixante-quatre caractères hexadécimaux, affichée à la place d'un
+  // nom dans le journal d'appels, la liste des pairs et les groupes.
+  // C'est ce que voyait tout utilisateur ayant reçu un message par
+  // relais d'un appareil jamais croisé — un cas fréquent, pas marginal.
+  //
+  // Et la fiche enregistrée n'était pas contrôlée : d'anciennes
+  // versions y écrivaient l'identifiant en guise de pseudonyme, si bien
+  // qu'un `known != null` renvoyait joyeusement l'empreinte.
+  //
+  // `nomDuPair` applique la même règle qu'ailleurs : un vrai nom, ou
+  // « Pair 3f7a1c92 ». Voir `nom_pair.dart`.
+  final vivant = ref
+      .watch(meshPeerListProvider)
+      .where((p) => p.peerId == peerId)
+      .map((p) => p.pseudo)
+      .firstOrNull;
+
+  // Un message reçu porte le nom de son auteur — sauf s'il est arrivé
+  // avant que le pseudonyme ne soit connu, auquel cas il porte
+  // l'identifiant. `nomDuPair` écarte ce cas de lui-même.
+  final parMessage = ref
+      .watch(meshMessagesProvider)
+      .where((m) => m.senderId == peerId)
       .map((m) => m.authorPseudo)
       .firstOrNull;
-  return resolved ?? peerId;
+
+  return nomDuPair(peerId, [
+    vivant,
+    StorageService.getPeerRecord(peerId)?.pseudo,
+    parMessage,
+  ]);
 });
 
 // ── Indicateur de frappe ──────────────────────────────────────────────────

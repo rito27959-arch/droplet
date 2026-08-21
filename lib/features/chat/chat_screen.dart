@@ -64,6 +64,7 @@ import 'network_sheet.dart';
 import 'transmission_sheet.dart';
 import 'telegram_gradient_background.dart';
 import '../../core/providers/mesh_provider.dart';
+import '../../core/services/nom_pair.dart';
 import '../../core/services/notification_service.dart';
 import '../../core/services/media_service.dart';
 import '../../core/services/storage_service.dart';
@@ -1376,6 +1377,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           notifier.toggleReaction(m.id, emoji);
         },
         actions: [
+          // ⚠️ « RÉESSAYER » PASSE EN PREMIER, ET SEULEMENT SI ÇA A
+          // ÉCHOUÉ.
+          //
+          // Quand on ouvre le menu d'un message en échec, on ne cherche
+          // qu'une chose : le renvoyer. Le placer sous « Répondre » et
+          // « Copier » obligerait à lire une liste pour trouver la seule
+          // action qui compte à ce moment-là.
+          //
+          // Il n'apparaît PAS sur les autres messages : proposer de
+          // renvoyer quelque chose qui est déjà arrivé sèmerait le doute
+          // sur ce qui a réellement été livré.
+          if (m.status == MessageStatus.failed)
+            MessageAction(
+              icon: Icons.refresh_rounded,
+              label: 'Réessayer',
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                notifier.renvoyer(m.id);
+              },
+            ),
           MessageAction(
             icon: Icons.reply_rounded,
             label: 'Répondre',
@@ -1464,26 +1485,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// deux contacts à l'œil, tiennent dans une barre de titre, et disent
   /// honnêtement qu'on ne connaît pas encore cette personne — là où
   /// l'empreinte entière ne disait rien du tout.
-  static String _identifiantAbrege(String peerId) =>
-      peerId.length <= 8 ? peerId : 'Pair ${peerId.substring(0, 8)}';
-
-  /// Le pseudo enregistré, s'il en est vraiment un.
-  ///
-  /// ⚠️ D'ANCIENNES FICHES PORTENT L'IDENTIFIANT EN GUISE DE NOM.
-  ///
-  /// Plusieurs chemins fabriquaient autrefois un pseudo à partir de
-  /// l'empreinte de clé publique (voir `_vraiPseudo` côté transport, qui
-  /// ferme la porte à la source). Ces fiches-là existent déjà sur les
-  /// appareils, et rien ne les corrigera tant que le pair ne repassera
-  /// pas à portée. En les reconnaissant ici, on affiche « Pair 3f7a1c92 »
-  /// — court, stable, honnête — plutôt qu'une barre de titre remplie de
-  /// soixante-quatre caractères hexadécimaux.
-  static String? _nomLisible(String? pseudo, String peerId) {
-    if (pseudo == null) return null;
-    final net = pseudo.trim();
-    if (net.isEmpty || net == peerId) return null;
-    return net;
-  }
+  // ⚠️ LA RÈGLE DE NOMMAGE VIT DANS `nom_pair.dart`, PAS ICI.
+  //
+  // Cet écran en portait sa propre copie. Le résolveur central en avait
+  // une autre, légèrement différente — et c'est elle qui affichait des
+  // empreintes brutes dans le journal d'appels pendant que la
+  // conversation, elle, affichait proprement « Pair 3f7a1c92 ».
+  //
+  // Deux copies d'une même règle finissent toujours par diverger, et la
+  // divergence se voit à l'écran : le même contact nommé de deux façons
+  // selon l'endroit où on le regarde. Une application soignée ne fait
+  // jamais ça.
 
   /// La copie de la bulle affichée dans le menu.
   ///
@@ -1589,8 +1601,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ? (group?.name ?? 'Groupe')
         : _isBroadcast
             ? 'Diffusion mesh'
-            : (_nomLisible(peerRecord?.pseudo, widget.peerId!) ??
-                _identifiantAbrege(widget.peerId!));
+            : nomDuPair(widget.peerId!, [peerRecord?.pseudo]);
     bool online = false;
     bool peerKeyKnown = false;
     // À quelle distance, en nombre d'appareils, se trouve ce pair.
@@ -2059,6 +2070,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               context.push('/map');
                             },
                             onLongPress: () => _openMessageActions(m),
+                            // Seulement quand il y a quelque chose à
+                            // renvoyer : ailleurs, `null` retire la
+                            // cible et l'heure retrouve son rôle
+                            // habituel.
+                            onRenvoyer: m.status == MessageStatus.failed
+                                ? () {
+                                    HapticFeedback.mediumImpact();
+                                    ref
+                                        .read(meshMessagesProvider.notifier)
+                                        .renvoyer(m.id);
+                                  }
+                                : null,
                             onDoubleTap: () {
                               HapticFeedback.mediumImpact();
                               ref
@@ -2447,6 +2470,7 @@ class _MessageBubble extends StatelessWidget {
     this.playbackPosition,
     this.playbackSpeed = 1.0,
     this.voicePlayed = false,
+    this.onRenvoyer,
     required this.onPlayAudio,
     this.onSeekAudio,
     this.onCycleSpeed,
@@ -2460,6 +2484,17 @@ class _MessageBubble extends StatelessWidget {
   });
 
   final MeshMessage message;
+
+  /// Renvoie un message dont l'envoi a échoué.
+  ///
+  /// ⚠️ UN SEUL APPUI, SUR L'INDICATEUR ROUGE LUI-MÊME.
+  ///
+  /// L'action existe aussi dans le menu d'appui long — mais un appui
+  /// long est un geste qu'il faut connaître, et personne ne le cherche
+  /// devant un message qui vient d'échouer. Toutes les grandes
+  /// messageries font de l'indicateur d'échec un bouton : c'est
+  /// exactement là que le doigt se pose déjà.
+  final VoidCallback? onRenvoyer;
 
   /// Ramène à l'original quand on tape la citation.
   final VoidCallback? onOpenReplied;
@@ -2717,10 +2752,8 @@ class _MessageBubble extends StatelessWidget {
                               const SizedBox(width: 6),
                               _TapCible(
                                 marge: EdgeInsets.zero,
-                                onTap: () => showTransmissionSheet(
-                                    context, message,
-                                    mine: mine),
-                                semantique: 'Détails de la transmission',
+                                onTap: _actionSurLHeure(context),
+                                semantique: _libelleDeLHeure,
                                 child: Padding(
                                   padding: const EdgeInsets.only(bottom: 1),
                                   child: _timeAndStatus(),
@@ -2762,10 +2795,8 @@ class _MessageBubble extends StatelessWidget {
                             // Toucher l'heure ouvre le détail de la
                             // transmission — le geste est discret, et
                             // n'encombre pas la bulle d'un bouton de plus.
-                            onTap: () => showTransmissionSheet(
-                                context, message,
-                                mine: mine),
-                            semantique: 'Détails de la transmission',
+                            onTap: _actionSurLHeure(context),
+                            semantique: _libelleDeLHeure,
                             child: _timeAndStatus(),
                           ),
                         ),
@@ -2997,6 +3028,25 @@ class _MessageBubble extends StatelessWidget {
   /// était lu : la mention pesait alors visuellement plus lourd que la
   /// phrase envoyée. Ici l'heure garde toujours le même poids ; c'est la
   /// petite icône à côté qui porte l'information de statut.
+  /// Ce que fait un appui sur l'heure d'un message.
+  ///
+  /// Sur un message en échec : on le renvoie. Sur tous les autres : on
+  /// ouvre le détail de la transmission. Le même endroit, deux actions —
+  /// parce que sur un message échoué, personne ne cherche à lire par où
+  /// il est passé : il n'est passé nulle part.
+  VoidCallback _actionSurLHeure(BuildContext context) {
+    final renvoi = onRenvoyer;
+    if (message.status == MessageStatus.failed && renvoi != null) {
+      return renvoi;
+    }
+    return () => showTransmissionSheet(context, message, mine: mine);
+  }
+
+  String get _libelleDeLHeure =>
+      message.status == MessageStatus.failed && onRenvoyer != null
+          ? 'Réessayer l\'envoi'
+          : 'Détails de la transmission';
+
   Widget _timeAndStatus() {
     final read = message.readAt != null;
     final couleurStatut = _statusColor();
