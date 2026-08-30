@@ -428,7 +428,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           // décide d'où vient chaque tuile — mais `flutter_map` exige
           // qu'il soit renseigné.
           urlTemplate:
-              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.droplet.droplet',
           maxNativeZoom: 18,
 
