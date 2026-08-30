@@ -27,6 +27,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'ble_mesh_protocol.dart';
+import 'mesh_transport.dart';
+import 'mesh_state_machine.dart';
 import 'ble_mesh_transport.dart';
 import 'local_wifi_transport.dart';
 import 'native_p2p_transport.dart';
@@ -295,10 +297,34 @@ class MeshScaleConfig {
 /// - L'état foreground/background
 /// - La présence d'alternatives Wi-Fi
 class MeshTransportService {
-  // Les trois musiciens que ce chef d'orchestre dirige.
-  final BleMeshTransport _bleTransport = BleMeshTransport();
-  final LocalWifiTransport _wifiTransport = LocalWifiTransport();
-  final NativeP2PTransport _nativeTransport = NativeP2PTransport();
+  /// Les trois musiciens que ce chef d'orchestre dirige.
+  ///
+  /// ── POURQUOI ILS SONT INJECTABLES ────────────────────────────────
+  ///
+  /// Par défaut, ce sont les vraies radios. Mais le constructeur accepte
+  /// de les remplacer, et c'est ce qui rend le maillage MESURABLE.
+  ///
+  /// Tant que ce service fabriquait lui-même ses trois transports, la
+  /// seule façon de vérifier son comportement était de disposer de
+  /// vrais téléphones : impossible de simuler vingt nœuds, 5 % de perte,
+  /// ou une coupure au milieu d'une synchronisation. On ne pouvait donc
+  /// affirmer aucune amélioration chiffrée — seulement constater que
+  /// « ça a l'air de marcher ».
+  ///
+  /// Avec ce point d'injection, un `FauxTransport` prend leur place et
+  /// le maillage complet tourne dans un test, en quelques
+  /// millisecondes, de façon reproductible.
+  MeshTransportService({
+    MeshTransport? bleTransport,
+    MeshTransport? wifiTransport,
+    MeshTransport? nativeTransport,
+  })  : _bleTransport = bleTransport ?? BleMeshTransport(),
+        _wifiTransport = wifiTransport ?? LocalWifiTransport(),
+        _nativeTransport = nativeTransport ?? NativeP2PTransport();
+
+  final MeshTransport _bleTransport;
+  final MeshTransport _wifiTransport;
+  final MeshTransport _nativeTransport;
 
   /// Le « cerveau réseau » v2 : heartbeats, health checks, reconnexion et
   /// failover globaux. C'est lui qui détient le [DropletMeshProtocol]
@@ -386,6 +412,47 @@ class MeshTransportService {
   Stream<MeshHealth> get healthEvents => _healthCtrl.stream;
 
   int get connectedPeerCount => _peers.length;
+
+  /// Nombre de pairs réellement joignables MAINTENANT — exclut ceux « en
+  /// grâce » ([ConnectedPeer.reconnecting]) dont le lien est tombé mais
+  /// qu'on garde encore un instant dans l'espoir d'une reconnexion :
+  /// aucun paquet ne peut passer par eux tant qu'ils sont dans cet état
+  /// (même logique déjà appliquée manuellement dans `_annoncerRoutes`).
+  int get activePeerCount =>
+      _peers.values.where((p) => !p.reconnecting).length;
+
+  // ── ÉTAT GLOBAL DU RÉSEAU ────────────────────────────────────────
+  //
+  // Un seul mot pour dire où en est l'appareil, recalculé à partir de
+  // l'état des trois radios et du nombre de pairs. Voir
+  // `mesh_state_machine.dart` pour la raison d'être de cette pièce : sans
+  // elle, personne ne savait qu'il n'y avait plus de réseau, et la
+  // balise Wi-Fi partait dans le vide toutes les trois secondes.
+  final MeshStateMachine stateMachine = MeshStateMachine();
+
+  MeshNetworkState get networkState => stateMachine.state;
+  Stream<MeshStateTransition> get networkTransitions =>
+      stateMachine.transitions;
+
+  /// Recalcule l'état global. À appeler quand la situation change —
+  /// jamais en boucle : la machine ne signale que les vraies
+  /// transitions, mais l'appeler pour rien reste du travail inutile.
+  void _refreshNetworkState({bool syncing = false}) {
+    final etats = transportStates();
+
+    // « Qualité insuffisante » = il ne reste que le Bluetooth. Les
+    // messages texte passent, mais ni les fichiers ni la voix — c'est
+    // exactement ce que `degraded` doit signifier à l'utilisateur.
+    final bonChemin = etats.entries.any((e) =>
+        e.key != 'ble' && e.value == TransportState.active);
+
+    stateMachine.update(
+      transports: etats,
+      connectedPeers: _peers.length,
+      syncing: syncing,
+      qualityOk: bonChemin,
+    );
+  }
   List<ConnectedPeer> get connectedPeers => _peers.values.toList();
   List<ConnectedPeer> get knownGateways => _knownGateways.values.toList();
   int get peersEverSeen => _peersEverSeen;
@@ -469,6 +536,7 @@ class MeshTransportService {
     _networkManager ??= nm.NetworkManager(
       myId: myId,
       onPeerUpdate: (event) => debugPrint('[MeshService] net event: $event'),
+      onReconnectRequest: _onNetworkReconnectRequest,
     )..init();
 
     await _requestCorePermissions();
@@ -590,6 +658,7 @@ class MeshTransportService {
       timer.cancel();
     }
     _restartTimers.clear();
+    stateMachine.markStopped();
     _networkManager?.dispose();
     _networkManager = null;
     for (final sub in _transportSubs) {
@@ -604,6 +673,8 @@ class MeshTransportService {
     ]);
     _peers.clear();
     _knownGateways.clear();
+    _lastSeenAt.clear();
+    _graceUntil.clear();
   }
 
   /// Met à jour le niveau de batterie (0.0 - 1.0).
@@ -710,8 +781,12 @@ class MeshTransportService {
     // Wi-Fi gardait sa balise fixe de trois secondes, quelle que soit la
     // batterie et même application fermée. Toute l'adaptation décrite
     // par cette méthode était donc, en pratique, décorative.
-    _wifiTransport
-        .setBeaconInterval(Duration(seconds: _currentWifiBeaconInterval));
+    // Réglage propre au Wi-Fi local, protégé pour la même raison que les
+    // deux autres : la notion de « balise » n'existe pas en Bluetooth.
+    final wifi = _wifiTransport;
+    if (wifi is LocalWifiTransport) {
+      wifi.setBeaconInterval(Duration(seconds: _currentWifiBeaconInterval));
+    }
 
     // Même chose côté Bluetooth : la durée de scan et la pause étaient
     // configurables depuis toujours et n'étaient lues nulle part — la
@@ -721,7 +796,14 @@ class MeshTransportService {
     // durée de recherche elle-même : la raccourcir ferait manquer des
     // pairs, alors qu'espacer les recherches ne fait que retarder une
     // découverte.
-    _bleTransport.setScanCycle(
+    // ⚠️ Réglage PROPRE au Bluetooth : il ne figure pas au contrat
+    // `MeshTransport`, et c'est voulu — le rythme d'un cycle de scan BLE
+    // n'a aucun sens pour un socket TCP. On vérifie donc à qui on parle
+    // avant de le demander, plutôt que d'imposer aux autres transports
+    // une méthode qu'ils devraient laisser vide.
+    final ble = _bleTransport;
+    if (ble is BleMeshTransport) {
+      ble.setScanCycle(
       duree: Duration(seconds: config.bleScanDuration),
       pause: Duration(
         seconds: _batteryLevel < 0.2
@@ -729,6 +811,7 @@ class MeshTransportService {
             : config.bleScanPause,
       ),
     );
+    }
 
     // Le délai de grâce doit rester COHÉRENT avec la cadence des
     // balises. Sinon, ralentir les balises pour économiser la batterie
@@ -804,6 +887,10 @@ class MeshTransportService {
         return false;
       });
     }
+
+    // Le dernier pair vient peut-être de disparaître : l'état passe
+    // alors de « connecté » à « en recherche ».
+    _refreshNetworkState();
   }
 
   /// Signale qu'un pair vient d'être vu / perdu sur un transport.
@@ -835,9 +922,19 @@ class MeshTransportService {
 
   /// Recharge la liste des pairs déjà rencontrés par le passé, sauvegardée
   /// dans le classeur permanent (`storage_service.dart`).
+  ///
+  /// Restaure aussi `_lastSeenAt` pour que le mécanisme de « stale peer »
+  /// fonctionne dès le démarrage : sans cette restauration, tous les pairs
+  /// connus apparaissaient comme « jamais vus » et étaient immédiatement
+  /// écartés par `sweepPeers`, même s'ils avaient été vus il y a une seconde
+  /// au dernier arrêt de l'app.
   void _loadKnownPeers() {
     _knownPeerRecords = StorageService.getKnownPeers();
-    debugPrint('[MeshService] loaded ${_knownPeerRecords.length} known peers');
+    for (final r in _knownPeerRecords) {
+      _lastSeenAt[r.peerId] = r.lastSeen;
+    }
+    debugPrint('[MeshService] loaded ${_knownPeerRecords.length} known peers '
+        '(${_lastSeenAt.length} avec lastSeen restauré)');
     for (final r in _knownPeerRecords.where((p) => p.role == 'gateway' || p.role == 'superPeer')) {
       debugPrint('[MeshService] known gateway: ${r.peerId} (${r.pseudo}) last seen: ${r.lastSeen}');
     }
@@ -856,11 +953,22 @@ class MeshTransportService {
   }
 
   void _persistKnownPeers() {
+    // On part des records DÉJÀ ENREGISTRÉS pour préserver les champs
+    // qui ne vivent que dans la table persistante (publicKey, verified,
+    // verifiedPublicKey). Sans ça, chaque cycle de sauvegarde écrasait
+    // la clé publique d'un pair par null — perdant le cadenas de
+    // chiffrement et forçant un nouvel échange de clés à la prochaine
+    // reconnexion.
+    final existingMap = <String, PeerRecord>{
+      for (final r in StorageService.getKnownPeers()) r.peerId: r,
+    };
+
     final records = <PeerRecord>[];
     for (final peer in _peers.values) {
       final health = _transportHealth[peer.peerId];
       final reliability = health?.values.fold(0.0, (sum, h) => sum + h.reliability) ?? 1.0;
       final count = health?.values.fold(0, (sum, h) => sum + h.totalSuccess) ?? 0;
+      final existing = existingMap[peer.peerId];
       records.add(PeerRecord(
         peerId: peer.peerId,
         pseudo: peer.pseudo,
@@ -870,9 +978,25 @@ class MeshTransportService {
         interestGroups: peer.interestGroups.toList(),
         reliability: reliability,
         lastSeen: DateTime.now(),
-        totalMessagesExchanged: count,
+        totalMessagesExchanged: (existing?.totalMessagesExchanged ?? 0) + count,
+        // ⚠️ C'est ICI que se jouait le bug des messages illisibles
+        // après déconnexion : la clé publique n'était jamais conservée
+        // car le record n'en tenait pas compte.
+        publicKey: peer.publicKey ?? existing?.publicKey,
+        verified: existing?.verified ?? false,
+        verifiedPublicKey: existing?.verifiedPublicKey,
       ));
     }
+
+    // Conserver les records de pairs qu'on ne voit plus mais qu'on a
+    // déjà rencontrés — pour garder leur clé publique disponible si on
+    // les recroise (reconnexion instantanée sans nouvel échange de clés).
+    for (final entry in existingMap.entries) {
+      if (!records.any((r) => r.peerId == entry.key)) {
+        records.add(entry.value);
+      }
+    }
+
     _knownPeerRecords = records;
     StorageService.savePeers(records);
   }
@@ -1017,20 +1141,27 @@ class MeshTransportService {
       _persistPeerRecord(peerId, isGateway);
     } else {
       // Reconnexion : on recrée la fiche connectée. On récupère la clé
-      // publique déjà connue de la table persistante — sans ça, un pair
+      // publique DÉJÀ CONNUE de la table persistante — sans ça, un pair
       // qui se reconnecte perdrait son « cadenas » et ne pourrait plus ni
       // recevoir nos messages (nous ne saurions plus chiffrer pour lui)
       // ni nous envoyer les siens (nous ne pourrions plus les déchiffrer).
+      // On récupère aussi le score de connexion et le pseudo connu :
+      // sans ça, le pair repartait à zéro à chaque reconnexion, perdant
+      // sa place dans la file de routage et son identité affichée.
       final rec = StorageService.getPeerRecord(peerId);
+      final nom = _vraiPseudo(rec?.pseudo, peerId) ??
+          _vraiPseudo(pseudo, peerId) ??
+          peerId;
       _peers[peerId] = ConnectedPeer(
         peerId: peerId,
-        pseudo: pseudo,
+        pseudo: nom,
         hopCount: hopCount,
         isGateway: isGateway,
         transports: {transport},
         platform: platform,
         role: isGateway ? PeerRole.gateway : PeerRole.leaf,
         publicKey: rec?.publicKey,
+        connectionScore: rec?.totalMessagesExchanged ?? 0,
       );
 
       _persistPeerRecord(peerId, isGateway);
@@ -1052,7 +1183,9 @@ class MeshTransportService {
 
     _adjustScanRate();
     _peerEventsCtrl.add(_peers[peerId]!);
+    _refreshNetworkState();
   }
+
 
   /// Le pseudo d'un pair, ou `null` si ce qu'on a n'en est pas un.
   ///
@@ -1110,6 +1243,11 @@ class MeshTransportService {
     final nom = _vraiPseudo(peer.pseudo, peerId) ??
         _vraiPseudo(rec?.pseudo, peerId) ??
         peerId;
+    // On accumule les échanges de la session en cours avec ceux déjà
+    // enregistrés — sinon le compteur était remis à zéro à chaque appel
+    // de cette méthode (plusieurs fois par seconde par pair actif).
+    final health = _transportHealth[peerId];
+    final liveCount = health?.values.fold(0, (sum, h) => sum + h.totalSuccess) ?? 0;
     StorageService.upsertPeer(PeerRecord(
       peerId: peerId,
       pseudo: nom,
@@ -1119,7 +1257,7 @@ class MeshTransportService {
       interestGroups: rec?.interestGroups ?? peer.interestGroups.toList(),
       reliability: rec?.reliability ?? 1.0,
       lastSeen: DateTime.now(),
-      totalMessagesExchanged: rec?.totalMessagesExchanged ?? 0,
+      totalMessagesExchanged: (rec?.totalMessagesExchanged ?? 0) + liveCount,
       publicKey: rec?.publicKey ?? peer.publicKey,
       verified: rec?.verified ?? false,
       verifiedPublicKey: rec?.verifiedPublicKey,
@@ -1217,13 +1355,18 @@ class MeshTransportService {
            peer.transports.contains(TransportKind.nativeP2P);
   }
 
-  NativeP2PTransport get nativeTransport => _nativeTransport;
+  MeshTransport get nativeTransport => _nativeTransport;
 
   final Map<String, bool> _wifiNegotiations = {};
 
   /// Tente de faire passer un pair connu (déjà en Bluetooth) sur un chemin
   /// Wi-Fi plus rapide — utile avant de démarrer un appel ou un gros
   /// transfert de fichier.
+  ///
+  /// Réessaie avec backoff exponentiel (1s → 2s → 4s → 8s) jusqu'à
+  /// [maxWifiAttempts] tentatives, au lieu du unique essai de 3s précédemment.
+  static const int _maxWifiAttempts = 4;
+
   Future<bool> negotiateWifi(String peerId) async {
     final peer = _peers[peerId];
     if (peer == null) return false;
@@ -1231,18 +1374,24 @@ class MeshTransportService {
     if (_wifiNegotiations.containsKey(peerId)) return false;
     _wifiNegotiations[peerId] = true;
     try {
-      if (peer.platform == 'android' && _nativeTransport.isRunning) {
-        _nativeTransport.setStrategy(NearbyStrategy.pointToPoint);
-        await Future.delayed(const Duration(seconds: 3));
-        _wifiNegotiations.remove(peerId);
-        return hasWifiTransport(peerId);
+      final natif = _nativeTransport;
+      if (peer.platform == 'android' &&
+          natif is NativeP2PTransport &&
+          natif.isRunning) {
+        natif.setStrategy(NearbyStrategy.pointToPoint);
       }
-      await Future.delayed(const Duration(seconds: 3));
-      _wifiNegotiations.remove(peerId);
+
+      // Backoff exponentiel : 1s → 2s → 4s → 8s
+      for (int attempt = 0; attempt < _maxWifiAttempts; attempt++) {
+        if (hasWifiTransport(peerId)) return true;
+        final delay = Duration(seconds: 1 << attempt); // 1, 2, 4, 8
+        await Future.delayed(delay);
+      }
       return hasWifiTransport(peerId);
     } catch (_) {
-      _wifiNegotiations.remove(peerId);
       return false;
+    } finally {
+      _wifiNegotiations.remove(peerId);
     }
   }
 
@@ -1288,6 +1437,16 @@ class MeshTransportService {
   void incrementAck() {
     _totalAcks++;
     _emitHealth();
+  }
+
+  /// Appelé par le NetworkManager quand il veut relancer un scan de
+  /// transports (backoff exponentiel déclenché après perte de tous les pairs).
+  /// Redémarre BLE + Wi-Fi + NativeP2P en parallèle.
+  void _onNetworkReconnectRequest() {
+    debugPrint('[MeshService] NetworkManager demande reconnexion — restart transports');
+    _startTransport('BLE', () => _bleTransport.start(_myId, _myPseudo));
+    _startTransport('WiFi', () => _wifiTransport.start(_myId, _myPseudo));
+    _startTransport('NativeP2P', () => _nativeTransport.start(_myId, _myPseudo));
   }
 
   /// Fabrique l'instantané complet de la santé du mesh, pour l'écran
@@ -1389,25 +1548,40 @@ class MeshTransportService {
 
   /// Envoi ROUTÉ, pas floodé : si [peerId] est joignable directement on
   /// l'atteint en direct ; sinon on passe par le prochain saut connu de la
-  /// table de routage (le relais fera suivre). Retourne false si aucune
-  /// route n'existe — l'appelant retombe alors sur la diffusion classique.
-  Future<bool> sendViaRoute(String peerId, Uint8List data, {int type = 0x00}) async {
+  /// table de routage (le relais fera suivre). Si la route principale
+  /// échoue, essaie automatiquement les routes alternatives avant de
+  /// retourner false — l'appelant retombe alors sur la diffusion.
+  Future<bool> sendViaRoute(String peerId, Uint8List data,
+      {int type = 0x00, int priority = 2}) async {
     // ⚠️ ON RENVOIE CE QUE `sendToPeer` A FAIT, plus « true » parce que le
     // pair nous est connu. C'était la ligne exacte du défaut : un pair
     // présent dans la table suffisait à déclarer le message livré, même
     // si aucun transport n'avait accepté la charge.
     if (_peers.containsKey(peerId)) {
-      return sendToPeer(peerId, data, type: type);
+      return sendToPeer(peerId, data, type: type, priority: priority);
     }
     final manager = _networkManager;
     if (manager != null) {
+      // Essayer la route principale d'abord.
       final route = manager.protocol.getRoute(peerId);
       if (route != null &&
           route.nextHop.isNotEmpty &&
           route.nextHop != peerId &&
           _peers.containsKey(route.nextHop)) {
         debugPrint('[MeshService] routage $peerId via ${route.nextHop} (${route.hopCount} sauts)');
-        return sendToPeer(route.nextHop, data, type: type);
+        final sent = await sendToPeer(route.nextHop, data, type: type, priority: priority);
+        if (sent) return true;
+        // Route principale échouée — essayer les alternatives.
+        debugPrint('[MeshService] route principale vers $peerId échouée, basculement alternatif');
+      }
+      // Basculement sur les routes alternatives.
+      final altRoute = manager.protocol.failoverRoute(peerId);
+      if (altRoute != null &&
+          altRoute.nextHop.isNotEmpty &&
+          altRoute.nextHop != peerId &&
+          _peers.containsKey(altRoute.nextHop)) {
+        debugPrint('[MeshService] routage alternatif $peerId via ${altRoute.nextHop} (${altRoute.hopCount} sauts)');
+        return sendToPeer(altRoute.nextHop, data, type: type, priority: priority);
       }
     }
     return false;
@@ -1459,20 +1633,75 @@ class MeshTransportService {
   /// redirigeant simplement vers le bon transport.
   /// Renvoie ce que le transport a RÉELLEMENT fait, pas ce qu'on a tenté.
   Future<bool> _sendVia(
-      TransportKind kind, String peerId, Uint8List data, int type) async {
-    switch (kind) {
-      case TransportKind.localWifi:
-        return _wifiTransport.sendToPeer(peerId, data);
-      case TransportKind.nativeP2P:
-        // Le peerId est un ID Droplet, mais NativeP2P attend un ID Nearby (MAC).
-        final nearbyId = _dropletToNearbyId[peerId] ?? peerId;
-        return _nativeTransport.sendToPeer(nearbyId, data);
-      case TransportKind.ble:
-        return _bleTransport.sendToPeer(peerId, data, type: type);
-      case TransportKind.both:
-        return false;
+      TransportKind kind, String peerId, Uint8List data, int type,
+      {int priority = 2}) async {
+    // Le transport à emprunter, et l'identifiant sous lequel IL connaît
+    // ce pair — c'est la seule chose qui diffère encore d'un chemin à
+    // l'autre. Wi-Fi Direct désigne les appareils par leur identifiant
+    // Nearby (une MAC), pas par leur identité Droplet.
+    final (MeshTransport? transport, String destinataire) = switch (kind) {
+      TransportKind.localWifi => (_wifiTransport, peerId),
+      TransportKind.nativeP2P => (
+          _nativeTransport,
+          _dropletToNearbyId[peerId] ?? peerId
+        ),
+      TransportKind.ble => (_bleTransport, peerId),
+      TransportKind.both => (null, peerId),
+    };
+    if (transport == null) return false;
+
+    // ── La règle de capacité, posée UNE seule fois ──────────────────
+    //
+    // Auparavant, seul le Bluetooth vérifiait lui-même qu'il pouvait
+    // porter un paquet — et il le refusait APRÈS que la couche d'ici
+    // l'ait choisi, ce qui gaspillait une tentative. Pire, la même règle
+    // (« pas de fichiers en BLE ») se trouvait recopiée plus haut, avec
+    // le risque que les deux copies divergent le jour où la limite
+    // change. On demande désormais au transport ce qu'il sait porter,
+    // avant de le solliciter.
+    if (!transport.capabilities.accepte(
+      tailleOctets: data.length,
+      type: type,
+    )) {
+      debugPrint('[MeshService] ${transport.name} ne peut pas porter '
+          '${data.length} o de type 0x${type.toRadixString(16)}');
+      transport.metrics.echecsEnvoi++;
+      return false;
     }
+
+    final envoye = await transport.sendToPeer(destinataire, data, type: type, priority: priority);
+    if (envoye) {
+      transport.metrics.paquetsEnvoyes++;
+      transport.metrics.octetsEnvoyes += data.length;
+    } else {
+      transport.metrics.echecsEnvoi++;
+    }
+    return envoye;
   }
+
+  /// Les compteurs de chaque transport, pour l'observabilité.
+  ///
+  /// Deux relevés espacés suffisent à en déduire un débit, un taux
+  /// d'échec ou un nombre de pertes de lien — c'est la matière première
+  /// des mesures reproductibles, que rien n'exposait jusqu'ici.
+  Map<String, Map<String, int>> transportMetrics() => {
+        for (final t in <MeshTransport>[
+          _wifiTransport,
+          _nativeTransport,
+          _bleTransport,
+        ])
+          t.name: t.metrics.toJson(),
+      };
+
+  /// L'état de chaque transport, tel que le voit la couche supérieure.
+  Map<String, TransportState> transportStates() => {
+        for (final t in <MeshTransport>[
+          _wifiTransport,
+          _nativeTransport,
+          _bleTransport,
+        ])
+          t.name: t.state,
+      };
 
   /// Route un message vers un pair spécifique avec priorisation
   /// des transports les plus économes en batterie.
@@ -1503,7 +1732,7 @@ class MeshTransportService {
   /// santé que si le transport a vraiment pris la charge — sans quoi le
   /// score de santé récompensait les transports qui jetaient le plus.
   Future<bool> sendToPeer(String peerId, Uint8List data,
-      {int type = 0x00}) async {
+      {int type = 0x00, int priority = 2}) async {
     final peer = _peers[peerId];
     if (peer == null) {
       debugPrint('[Mesh] sendToPeer $peerId: pair inconnu');
@@ -1516,7 +1745,7 @@ class MeshTransportService {
       return false;
     }
 
-    debugPrint('[Mesh] sendToPeer $peerId type=$type candidats=$candidates');
+    debugPrint('[Mesh] sendToPeer $peerId type=$type priority=$priority candidats=$candidates');
     _totalSent++;
 
     // ⚠️ LES TRANSPORTS SONT ESSAYÉS L'UN APRÈS L'AUTRE, plus tous en
@@ -1530,7 +1759,7 @@ class MeshTransportService {
     for (final kind in candidates) {
       bool ok;
       try {
-        ok = await _sendVia(kind, peerId, data, type).timeout(
+        ok = await _sendVia(kind, peerId, data, type, priority: priority).timeout(
           const Duration(seconds: 10),
           onTimeout: () => false,
         );
@@ -1563,6 +1792,7 @@ class MeshTransportService {
     Uint8List data, {
     String? excludePeerId,
     Set<String>? interestGroups,
+    int type = 0x00,
   }) async {
     Iterable<ConnectedPeer> targets = _peers.values;
 
@@ -1596,7 +1826,7 @@ class MeshTransportService {
     final results = await Future.wait(
       targetList.map((peer) async {
         try {
-          return await sendToPeer(peer.peerId, data);
+          return await sendToPeer(peer.peerId, data, type: type);
         } catch (e) {
           debugPrint('[Mesh] échec diffusion vers ${peer.peerId}: $e');
           return false;
@@ -1618,6 +1848,7 @@ class MeshTransportService {
     _gatewayAnnounceTimer?.cancel();
     _peerPersistTimer?.cancel();
     _networkManager?.dispose();
+    stateMachine.dispose();
     _networkManager = null;
     _persistKnownPeers();
     _bleTransport.dispose();

@@ -30,6 +30,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'ble_mesh_protocol.dart';
+import 'mesh_transport.dart';
 
 /// Transport BLE peer-to-peer pour OURO PREP.
 ///
@@ -60,7 +61,7 @@ import 'ble_mesh_protocol.dart';
 /// l'annonce BLE (restriction Apple au niveau OS) : la découverte iOS↔iOS
 /// n'est fiable qu'application au premier plan des deux côtés. Rien côté
 /// app ne peut contourner ça.
-class BleMeshTransport {
+class BleMeshTransport implements MeshTransport {
   /// Taille maximale d'un payload BLE (512 octets).
   /// Au-delà, le message est refusé : BLE ne porte que de la découverte,
   /// de la présence, et de petits messages de contrôle (poignée de main
@@ -94,7 +95,49 @@ class BleMeshTransport {
   final _peerEventsCtrl = StreamController<MeshPeerEvent>.broadcast();
   final _incomingDataCtrl = StreamController<MeshIncomingData>.broadcast();
 
+
+  // ── Contrat MeshTransport ────────────────────────────────────────
+  //
+  // Le Bluetooth est le transport le plus CONTRAINT des trois, et c'est
+  // précisément pour lui que les « capacités » existent : ses limites
+  // étaient jusqu'ici recopiées dans la couche d'aiguillage, qui devait
+  // savoir par cœur que le BLE refuse les fichiers. Elles sont désormais
+  // déclarées ici, à côté du code qui les applique.
+
+  @override
+  String get name => 'ble';
+
+  @override
+  bool get isRunning => _isRunning;
+
+  @override
+  TransportState get state {
+    if (!_isRunning) return TransportState.stopped;
+    return (_outgoingLinks.isEmpty && _incomingLinks.isEmpty)
+        ? TransportState.searching
+        : TransportState.active;
+  }
+
+  @override
+  final TransportMetrics metrics = TransportMetrics();
+
+  @override
+  TransportCapabilities get capabilities => TransportCapabilities(
+        maxPayloadBytes: _maxPayloadSize,
+        // 0x1F : tout ce qui est en dessous des contenus lourds. La règle
+        // appliquée dans `sendToPeer` (« refusé si type >= 0x20 ») est
+        // ainsi énoncée une seule fois, ici.
+        maxContentType: 0x1F,
+        portePhotosEtFichiers: false,
+        porteVoixEnDirect: false,
+        // Le plus économe des trois : c'est sa raison d'être, tenir
+        // quand il ne reste presque plus de batterie.
+        coutEnergetique: 0.10,
+      );
+
+  @override
   Stream<MeshPeerEvent> get peerEvents => _peerEventsCtrl.stream;
+  @override
   Stream<MeshIncomingData> get incomingData => _incomingDataCtrl.stream;
 
   // -- Rôle central : nous sommes connectés à ces pairs en tant que central --
@@ -129,6 +172,7 @@ class BleMeshTransport {
   /// prépare les trois boîtes aux lettres (characteristics), puis lance en
   /// même temps la recherche des autres (central) ET l'annonce de sa
   /// propre présence (périphérique).
+  @override
   Future<void> start(String myId, String myPseudo) async {
     if (_isRunning) return;
     _isRunning = true;
@@ -342,6 +386,7 @@ class BleMeshTransport {
   /// Éteint tout : arrête de chercher, arrête de s'annoncer, coupe toutes
   /// les connexions en cours, et range tous les petits carnets utilisés
   /// entre-temps.
+  @override
   Future<void> stop() async {
     _isRunning = false;
     _presenceNotifyTimer?.cancel();
@@ -509,6 +554,19 @@ class BleMeshTransport {
     _outgoingLinks.remove(peerId);
     _pendingConnections.remove(key);
     if (peerId != null) {
+      _echecsEcritureConsecutifs.remove(peerId);
+      _sendChains.remove(peerId);
+      // ⚠️ Nettoyage de l'assemblage en cours, s'il y en avait un.
+      //
+      // Si la liaison tombe EN PLEIN milieu d'un message multi-chunks,
+      // l'entrée laissée dans `_assemblies` sous cette clé ne sera plus
+      // jamais complétée (le « dernier » chunk qui l'aurait consommée
+      // et retirée n'arrivera jamais) — sans ce retrait explicite, elle
+      // resterait en mémoire indéfiniment, et si ce même pair se
+      // reconnecte plus tard, ses PROCHAINS chunks « milieu »
+      // viendraient s'ajouter par erreur à la queue d'un message mort
+      // de la session précédente au lieu d'être proprement rejetés.
+      _assemblies.remove(peerId);
       // ⚠️ PAS DE PSEUDO ICI, ET SURTOUT PAS L'IDENTIFIANT.
       //
       // Une déconnexion ne nous apprend rien sur le nom du pair. Cette
@@ -561,6 +619,11 @@ class BleMeshTransport {
     final key = e.central.uuid.toString();
     final peerId = _centralUuidToPeerId.remove(key);
     _incomingLinks.remove(peerId);
+    // Ici, `_assemblies` était rangé sous `key` (l'uuid du central), pas
+    // sous `peerId` — voir `_onWriteRequested` : la clé de liaison, côté
+    // rôle périphérique, est connue avant même que le pair ne soit
+    // identifié. Même raison de nettoyer qu'au §_onCentralLinkStateChanged.
+    _assemblies.remove(key);
     if (peerId != null) {
       // ⚠️ PAS DE PSEUDO ICI, ET SURTOUT PAS L'IDENTIFIANT.
       //
@@ -600,15 +663,18 @@ class BleMeshTransport {
       return;
     }
 
-    final decoded = BleMeshProtocol.decodeChunk(e.request.value, _assemblies);
+    // La clé de liaison doit être connue AVANT le décodage : c'est elle,
+    // désormais, qui retrouve le bon puzzle en cours pour les chunks
+    // milieu/dernier (voir le correctif dans `ble_mesh_protocol.dart`).
+    final central = e.central;
+    final key = central.uuid.toString();
+    final decoded = BleMeshProtocol.decodeChunk(e.request.value, key, _assemblies);
 
     try {
       await _peripheral.respondWriteRequest(e.request);
     } catch (err) { debugPrint('[BLE] respond write: $err'); }
 
     if (decoded == null) return;
-    final central = e.central;
-    final key = central.uuid.toString();
 
     if (decoded.type == kHelloType) {
       try {
@@ -690,7 +756,10 @@ class BleMeshTransport {
   }
 
   void _handleIncomingChunk(String peerId, Uint8List chunk) {
-    final decoded = BleMeshProtocol.decodeChunk(chunk, _assemblies);
+    // Côté central, le pair est déjà résolu (voir _onCharacteristicNotified)
+    // : on l'utilise directement comme clé de liaison — pas besoin d'un
+    // identifiant technique intermédiaire.
+    final decoded = BleMeshProtocol.decodeChunk(chunk, peerId, _assemblies);
     if (decoded == null) return;
     _incomingDataCtrl.add(MeshIncomingData(
       messageId: decoded.messageId,
@@ -700,6 +769,36 @@ class BleMeshTransport {
   }
 
   // ── Envoi (API publique utilisée par MeshTransportService) ──────────────
+
+  // ⚠️ VERROU D'ENVOI PAR PAIR — compagnon indispensable du correctif de
+  // réassemblage dans `ble_mesh_protocol.dart`.
+  //
+  // `decodeChunk` suppose désormais qu'il ne peut y avoir qu'UN seul
+  // message en cours d'assemblage à la fois par liaison — ce qui n'est
+  // vrai QUE SI l'émetteur, de son côté, ne lance jamais un second
+  // message multi-chunks vers le même pair avant d'avoir fini d'écrire
+  // le premier. Sans ce verrou, deux envois concurrents vers le même
+  // pair (ex. un message texte et une diffusion de statut, tous deux en
+  // cours via `PremiumMessageQueue`, qui autorise jusqu'à 5 envois
+  // simultanés) entrelaceraient leurs `await send(chunk)` à chaque point
+  // de suspension Dart — les deux flux de chunks se mélangeraient sur le
+  // fil, et aucun des deux messages ne se reconstituerait jamais chez le
+  // destinataire.
+  final Map<String, Future<void>> _sendChains = {};
+
+  Future<T> _serialisePourPair<T>(String peerId, Future<T> Function() action) {
+    final previous = _sendChains[peerId] ?? Future.value();
+    final done = Completer<T>();
+    final chained = previous.catchError((_) {}).then((_) async {
+      try {
+        done.complete(await action());
+      } catch (e) {
+        done.completeError(e);
+      }
+    });
+    _sendChains[peerId] = chained;
+    return done.future;
+  }
 
   /// Envoie des données à un pair précis — en choisissant automatiquement
   /// le bon sens (est-ce lui qui s'est connecté à moi, ou moi à lui ?).
@@ -717,29 +816,47 @@ class BleMeshTransport {
   /// Mesuré au banc d'essai (`test/two_peer_session_test.dart`) : sur un
   /// lot de 130 envois, la file en annonçait 130 livrés quand le pair
   /// n'en avait reçu que 110.
-  Future<bool> sendToPeer(String peerId, Uint8List data, {int type = 0x00}) async {
+  @override
+  Future<bool> sendToPeer(String peerId, Uint8List data,
+      {int type = 0x00, int priority = 2}) {
     // ── Séparation stricte des rôles (A2.1) ──────────────────────────
     // BLE ne porte jamais de fichier ni de flux audio.
     if (type >= 0x20) {
       debugPrint('[BLE] Refusé : type contenu 0x${type.toRadixString(16)} '
           'sur BLE — nécessite Wi‑Fi');
-      return false;
+      return Future.value(false);
     }
     if (data.length > _maxPayloadSize) {
       debugPrint('[BLE] Refusé : payload ${data.length}o dépasse la '
           'limite BLE de $_maxPayloadSize o');
-      return false;
+      return Future.value(false);
     }
+    // Les messages prioritaires (critical=0, high=1) contournent la file
+    // séquentielle `_serialisePourPair` pour minimiser la latence — un
+    // typing indicator ou un signaling d'appel ne doit pas attendre derrière
+    // un gros transfert de fichier en cours.
+    if (priority <= 1) {
+      return _envoyerMaintenant(peerId, data, type);
+    }
+    return _serialisePourPair(peerId, () => _envoyerMaintenant(peerId, data, type));
+  }
 
+  Future<bool> _envoyerMaintenant(String peerId, Uint8List data, int type) async {
     // Si on s'est connecté À LUI (nous, central), on lui écrit directement.
     final out = _outgoingLinks[peerId];
     if (out != null) {
-      return _sendChunks(data, type, (chunk) => _central.writeCharacteristic(
+      final ok = await _sendChunks(data, type, (chunk) => _central.writeCharacteristic(
             out.peripheral,
             out.inboxChar,
             value: chunk,
             type: GATTCharacteristicWriteType.withoutResponse,
           ));
+      if (ok) {
+        _noterSuccesEcriture(peerId);
+      } else {
+        _noterEchecEcriture(peerId, out.peripheral);
+      }
+      return ok;
     }
 
     // Sinon, si c'est LUI qui s'est connecté à nous, on ne peut que lui
@@ -754,6 +871,64 @@ class BleMeshTransport {
     return false;
   }
 
+  // ══ RÉCUPÉRATION APRÈS UNE ÉCRITURE GATT BLOQUÉE ═══════════════════
+  //
+  // ⚠️ `writeCharacteristic` (rôle central) PEUT NE JAMAIS RENDRE LA
+  // MAIN, sans lever d'erreur, sans notification de déconnexion.
+  //
+  // C'est un défaut documenté du GATT Android (et repris par la plupart
+  // des plugins BLE Flutter) : chaque connexion GATT ne traite QU'UNE
+  // opération à la fois, en file. Si la réponse native au write en
+  // cours ne revient jamais — radio momentanément saturée, bug du
+  // contrôleur Bluetooth du téléphone distant, mise en veille agressive
+  // par le système — le `Future` retourné par le plugin reste en
+  // attente indéfiniment. La connexion GATT, elle, reste rapportée
+  // comme « connectée » : `_onCentralLinkStateChanged` ne se déclenche
+  // JAMAIS dans ce cas, puisqu'aucune déconnexion n'a réellement eu
+  // lieu au sens de l'OS. Le pair reste donc dans `_outgoingLinks`,
+  // indéfiniment considéré joignable, alors que plus un seul octet ne
+  // peut lui être écrit.
+  //
+  // Le `.timeout()` posé dans `_sendChunks` ci-dessous empêche le DART
+  // d'attendre indéfiniment, mais — comme le rappelle le commentaire de
+  // `native_p2p_transport.dart` sur `requestPermissions()` — un timeout
+  // Dart n'annule PAS l'opération native sous-jacente : la file GATT
+  // d'Android, elle, reste bloquée derrière cette écriture jamais
+  // achevée. Un simple retry se heurterait donc à la même file bouchée
+  // et échouerait indéfiniment de la même façon, en silence, ce qui
+  // ressemble en pratique à une déconnexion jamais détectée.
+  //
+  // On compte donc les échecs d'écriture consécutifs PAR PAIR ; au-delà
+  // du seuil, on force une déconnexion GATT franche. C'est la seule
+  // façon de vider la file bloquée côté OS : `_central.disconnect` puis
+  // la reconnexion normale (déclenchée par le prochain scan) repartent
+  // d'un état propre. Voir `mesh_transport_service.dart` pour le délai
+  // de grâce qui absorbe cette reconnexion sans faire disparaître le
+  // pair de la liste ni perdre les messages en attente.
+  static const int _seuilEchecsEcriture = 2;
+  final Map<String, int> _echecsEcritureConsecutifs = {};
+
+  void _noterSuccesEcriture(String peerId) =>
+      _echecsEcritureConsecutifs.remove(peerId);
+
+  void _noterEchecEcriture(String peerId, Peripheral peripheral) {
+    final echecs = (_echecsEcritureConsecutifs[peerId] ?? 0) + 1;
+    _echecsEcritureConsecutifs[peerId] = echecs;
+    if (echecs < _seuilEchecsEcriture) return;
+
+    debugPrint('[BLE] $peerId : $echecs écritures GATT bloquées d\'affilée '
+        '— déconnexion forcée pour repartir sur une file propre');
+    _echecsEcritureConsecutifs.remove(peerId);
+    // Fire-and-forget volontaire : on ne fait pas attendre l'appelant de
+    // `sendToPeer` (qui a déjà son verdict `false`) pour un nettoyage qui
+    // peut lui-même prendre du temps sur une connexion déjà malade.
+    // `_onCentralLinkStateChanged` prendra le relais dès que l'OS confirme
+    // la déconnexion, exactement comme pour une coupure radio normale.
+    unawaited(_central.disconnect(peripheral).catchError((Object e) {
+      debugPrint('[BLE] déconnexion forcée de $peerId: $e');
+    }));
+  }
+
   /// Découpe les données en petits morceaux (chunks) et les envoie un par
   /// un, dans l'ordre — s'arrête proprement au premier échec plutôt que
   /// de continuer à envoyer des morceaux dans le vide.
@@ -763,6 +938,11 @@ class BleMeshTransport {
   /// pourra jamais le rassembler. Interrompre l'envoi au premier échec
   /// est la bonne décision, mais il faut le DIRE — sinon la couche du
   /// dessus croit avoir tout envoyé alors qu'il manque la moitié.
+  ///
+  /// Chaque morceau dispose de 4 secondes — largement suffisant pour une
+  /// écriture GATT saine (généralement de l'ordre de quelques dizaines de
+  /// millisecondes) — au-delà, on considère l'écriture bloquée plutôt que
+  /// de laisser `sendToPeer` ne jamais répondre.
   Future<bool> _sendChunks(
     Uint8List data,
     int type,
@@ -776,7 +956,7 @@ class BleMeshTransport {
     );
     for (final chunk in chunks) {
       try {
-        await send(chunk);
+        await send(chunk).timeout(const Duration(seconds: 4));
       } catch (e) {
         debugPrint('[BLE] $e');
         return false;
@@ -785,6 +965,7 @@ class BleMeshTransport {
     return true;
   }
 
+  @override
   void dispose() {
     _presenceNotifyTimer?.cancel();
     _scanCycleTimer?.cancel();

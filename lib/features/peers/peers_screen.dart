@@ -22,6 +22,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 import '../../core/providers/mesh_provider.dart';
 import '../../core/services/mesh_transport_service.dart';
 import '../../design_system/ouro_colors.dart';
@@ -220,7 +221,7 @@ class _PeerRowState extends State<_PeerRow> {
                       // portée d'un seul appareil.
                       if (p.isGateway) ...[
                         const SizedBox(width: 6),
-                        _Badge(
+                        LiquidChip(
                           label: 'Relais',
                           color: OuroColors.systemTeal,
                         ),
@@ -293,33 +294,5 @@ class _PeerRowState extends State<_PeerRow> {
 
     if (p.hopCount == 0) return '$via · direct';
     return '$via · ${p.hopCount} relais';
-  }
-}
-
-/// Petite étiquette colorée posée à côté d'un nom.
-class _Badge extends StatelessWidget {
-  const _Badge({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        // Un fond très dilué plutôt qu'un aplat : l'étiquette doit se
-        // remarquer sans jamais peser plus lourd que le nom à côté.
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        label,
-        style: OuroTypography.caption2.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
   }
 }

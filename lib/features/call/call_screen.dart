@@ -35,6 +35,7 @@ import '../../design_system/ouro_typography.dart';
 import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/droplet_logo.dart';
 import '../../shared/widgets/peer_avatar.dart';
+import '../../design_system/glassmorphism.dart';
 
 class CallScreen extends ConsumerStatefulWidget {
   const CallScreen({super.key, required this.peerId});
@@ -213,34 +214,40 @@ class _CallScreenState extends ConsumerState<CallScreen>
                   },
                 ),
                 const SizedBox(height: 32),
-                Text(
-                  pseudo,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: OuroColors.callLabel,
+                Semantics(
+                  label: 'Appel avec $pseudo',
+                  child: Text(
+                    pseudo,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: OuroColors.callLabel,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
-                  child: Row(
-                    key: ValueKey(_statusText(call)),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (call.connectionState == CallConnectionState.failed) ...[
-                        Icon(Icons.error_outline_rounded, size: 16, color: _statusColor(call)),
-                        const SizedBox(width: 6),
-                      ],
-                      Text(
-                        _statusText(call),
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: _statusColor(call),
-                          fontWeight: FontWeight.w600,
+                  child: Semantics(
+                    label: 'Statut de l\'appel: ${_statusText(call)}',
+                    child: Row(
+                      key: ValueKey(_statusText(call)),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (call.connectionState == CallConnectionState.failed) ...[
+                          Icon(Icons.error_outline_rounded, size: 16, color: _statusColor(call)),
+                          const SizedBox(width: 6),
+                        ],
+                        Text(
+                          _statusText(call),
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: _statusColor(call),
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 if (connecting) ...[
@@ -248,12 +255,15 @@ class _CallScreenState extends ConsumerState<CallScreen>
                   const _ConnectingDots(),
                 ],
                 const Spacer(flex: 2),
-                _CallControls(
-                  call: call,
-                  onToggleMute: () => ref.read(callProvider.notifier).toggleMute(),
-                  onToggleSpeaker: () => ref.read(callProvider.notifier).toggleSpeaker(),
-                  onToggleVideo: () => ref.read(callProvider.notifier).toggleVideo(),
-                  onHangUp: _handleHangUp,
+                OuroCard(
+                  padding: EdgeInsets.zero,
+                  child: _CallControls(
+                    call: call,
+                    onToggleMute: () => ref.read(callProvider.notifier).toggleMute(),
+                    onToggleSpeaker: () => ref.read(callProvider.notifier).toggleSpeaker(),
+                    onToggleVideo: () => ref.read(callProvider.notifier).toggleVideo(),
+                    onHangUp: _handleHangUp,
+                  ),
                 ),
                 const SizedBox(height: 32),
               ],
@@ -314,21 +324,25 @@ class _CallControls extends StatelessWidget {
           icon: call.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
           color: call.isMuted ? OuroColors.ouroOrange : OuroColors.callControl,
           onTap: onToggleMute,
+          semanticLabel: call.isMuted ? 'Activer le micro' : 'Couper le micro',
         ),
         _RoundControl(
           icon: call.isSpeakerOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
           color: call.isSpeakerOn ? OuroColors.meshBlue : OuroColors.callControl,
           onTap: onToggleSpeaker,
+          semanticLabel: call.isSpeakerOn ? 'Désactiver le haut-parleur' : 'Activer le haut-parleur',
         ),
         _RoundControl(
           icon: Icons.videocam_rounded,
           color: call.isVideoEnabled ? OuroColors.meshBlue : OuroColors.callControl,
           onTap: onToggleVideo,
+          semanticLabel: call.isVideoEnabled ? 'Désactiver la caméra' : 'Activer la caméra',
         ),
         _RoundControl(
           icon: Icons.call_end_rounded,
           color: OuroColors.errorRed,
           onTap: onHangUp,
+          semanticLabel: 'Raccrocher',
           // _handleHangUp déclenche déjà son propre haptique (heavyImpact,
           // plus marqué pour une action irréversible) — pas de doublon ici.
           haptic: false,
@@ -346,12 +360,14 @@ class _RoundControl extends StatefulWidget {
     required this.color,
     required this.onTap,
     this.haptic = true,
+    this.semanticLabel,
   });
 
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
   final bool haptic;
+  final String? semanticLabel;
 
   @override
   State<_RoundControl> createState() => _RoundControlState();
@@ -385,25 +401,29 @@ class _RoundControlState extends State<_RoundControl> {
         scale: _pressed ? 0.92 : 1,
         duration: DesignTokens.durationFast,
         curve: DesignTokens.curveSpring,
-        child: AnimatedOpacity(
-          opacity: _pressed ? 0.7 : 1,
-          duration: DesignTokens.durationFast,
-          child: Container(
-            width: 62,
-            height: 62,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: widget.color,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Icon(widget.icon, color: Colors.white, size: 26),
+        child: Semantics(
+          button: true,
+          label: widget.semanticLabel,
+          child: AnimatedOpacity(
+            opacity: _pressed ? 0.7 : 1,
+            duration: DesignTokens.durationFast,
+            child: Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.color,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Icon(widget.icon, color: Colors.white, size: 26),
+              ),
             ),
           ),
         ),

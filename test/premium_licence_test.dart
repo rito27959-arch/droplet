@@ -193,4 +193,28 @@ void main() {
     expect(await PremiumService.verifier('  $code\n', identiteAmina),
         NiveauPremium.pack);
   });
+
+  test('une licence collée avec le texte WhatsApp est acceptée', () async {
+    // Le cas réel : quelqu'un colle la réponse entière, pas juste la
+    // ligne DROP1.x.y — il y a des tirets, des mots, des points.
+    final code = await emettre(
+        paire: paire, identite: identiteAmina, genre: 'pro');
+    final texte = 'Merci ! Voici votre licence pour Droplet Pro.\n\n'
+        '$code\n\n'
+        'Dans Droplet : Réglages → Droplet Pro → collez-la '
+        'dans « J\'ai reçu ma licence ».';
+    expect(await PremiumService.verifier(texte, identiteAmina),
+        NiveauPremium.pro);
+  });
+
+  test('la première licence dans un texte est extraite', () async {
+    // Un texte avec du bruit avant et après.
+    final code = await emettre(
+        paire: paire, identite: identiteAmina, genre: 'pack');
+    final texte = '---\n Merci !\nVoici votre licence :\n\n'
+        '$code\n\n'
+        'Elle ne fonctionne que sur votre téléphone.\n---';
+    expect(await PremiumService.verifier(texte, identiteAmina),
+        NiveauPremium.pack);
+  });
 }

@@ -2,7 +2,7 @@ package com.droplet.droplet
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -33,7 +33,7 @@ import io.flutter.plugin.common.MethodChannel
  *    d'entrée activé et disparaîtrait complètement du lanceur, sans
  *    aucun moyen de la rouvrir.
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
 
     private val channel = "com.droplet.droplet/app_icon"
     private val mediaChannel = "com.droplet.droplet/media"

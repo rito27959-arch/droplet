@@ -72,7 +72,26 @@ class StorageService {
   /// le classeur permanent, puis recopie tout dedans vers les post-its.
   static Future<void> init() async {
     await db.DbProvider.init();
+    await _ensureEphemeralColumns();
     await _reloadCaches();
+  }
+
+  /// Ajoute les colonnes éphémères si elles n'existent pas encore.
+  /// Utilise raw SQL car build_runner n'a pas encore régénéré le code
+  /// Drift avec ces colonnes.
+  static Future<void> _ensureEphemeralColumns() async {
+    final d = _database;
+    if (d == null) return;
+    try {
+      await d.customStatement(
+        'ALTER TABLE mesh_messages ADD COLUMN expires_in_seconds INTEGER',
+      );
+    } catch (_) {}
+    try {
+      await d.customStatement(
+        'ALTER TABLE mesh_messages ADD COLUMN first_read_at INTEGER',
+      );
+    } catch (_) {}
   }
 
   static Future<void> _reloadCaches() async {
@@ -307,6 +326,22 @@ class StorageService {
     }
   }
 
+  /// Met à jour les réactions d'un message et persiste en base.
+  static Future<void> updateMessageReactions(String messageId, List<String> reactions) async {
+    final d = _database;
+    if (d != null) {
+      await (d.update(d.meshMessages)..where((t) => t.id.equals(messageId)))
+          .write(db.MeshMessagesCompanion(
+            reactions: Value(json.encode(reactions)),
+            updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ));
+    }
+    final idx = _messagesCache.indexWhere((m) => m.id == messageId);
+    if (idx >= 0) {
+      _messagesCache[idx] = _messagesCache[idx].copyWith(reactions: reactions);
+    }
+  }
+
   /// Marque un message comme lu et persiste l'horodatage.
   static Future<void> updateMessageReadAt(String messageId, DateTime readAt) async {
     final d = _database;
@@ -320,6 +355,20 @@ class StorageService {
     final idx = _messagesCache.indexWhere((m) => m.id == messageId);
     if (idx >= 0) {
       _messagesCache[idx] = _messagesCache[idx].copyWith(readAt: readAt);
+    }
+  }
+
+  static Future<void> updateMessageFirstReadAt(String messageId, DateTime firstReadAt) async {
+    final d = _database;
+    if (d != null) {
+      await d.customStatement(
+        'UPDATE mesh_messages SET first_read_at = ?, updated_at = ? WHERE id = ?',
+        [firstReadAt.millisecondsSinceEpoch, DateTime.now().millisecondsSinceEpoch, messageId],
+      );
+    }
+    final idx = _messagesCache.indexWhere((m) => m.id == messageId);
+    if (idx >= 0) {
+      _messagesCache[idx] = _messagesCache[idx].copyWith(firstReadAt: firstReadAt);
     }
   }
 
@@ -559,6 +608,111 @@ class StorageService {
     await setString(_archivedConversationsKey, current.join(','));
   }
 
+  // -- Conversations épinglées (pin en haut de la liste) -------------------
+
+  static const String _pinnedConversationsKey = 'pinned_conversations';
+
+  /// Les conversations épinglées en haut de la liste.
+  static Set<String> getPinnedConversations() {
+    final raw = getString(_pinnedConversationsKey);
+    if (raw == null || raw.isEmpty) return {};
+    return raw.split(',').toSet();
+  }
+
+  static Future<void> setConversationPinned(String key, bool pinned) async {
+    final current = getPinnedConversations();
+    if (pinned) {
+      current.add(key);
+    } else {
+      current.remove(key);
+    }
+    await setString(_pinnedConversationsKey, current.join(','));
+  }
+
+  // -- Conversations en mode silencieux (mute / DND) ----------------------
+
+  static const String _mutedConversationsKey = 'muted_conversations';
+
+  /// Les conversations en mode silencieux — pas de notification, pas
+  /// de vibration, juste un compteur discret.
+  static Set<String> getMutedConversations() {
+    final raw = getString(_mutedConversationsKey);
+    if (raw == null || raw.isEmpty) return {};
+    return raw.split(',').toSet();
+  }
+
+  static Future<void> setConversationMuted(String key, bool muted) async {
+    final current = getMutedConversations();
+    if (muted) {
+      current.add(key);
+    } else {
+      current.remove(key);
+    }
+    await setString(_mutedConversationsKey, current.join(','));
+  }
+
+  // -- Messages éphémères (timer par conversation) --------------------------
+
+  static const String _ephemeralTimersKey = 'ephemeral_timers';
+
+  /// Timer de disparition par conversation, en secondes.
+  /// 0 ou absent = pas de disparition. Valeurs courantes : 30, 300, 3600, 86400.
+  static Map<String, int> getEphemeralTimers() {
+    final raw = getString(_ephemeralTimersKey);
+    if (raw == null || raw.isEmpty) return {};
+    final map = <String, int>{};
+    for (final pair in raw.split(',')) {
+      final parts = pair.split(':');
+      if (parts.length == 2) {
+        final key = parts[0];
+        final seconds = int.tryParse(parts[1]);
+        if (key.isNotEmpty && seconds != null && seconds > 0) {
+          map[key] = seconds;
+        }
+      }
+    }
+    return map;
+  }
+
+  static int getEphemeralTimer(String conversationKey) {
+    return getEphemeralTimers()[conversationKey] ?? 0;
+  }
+
+  static Future<void> setEphemeralTimer(String conversationKey, int seconds) async {
+    final current = getEphemeralTimers();
+    if (seconds > 0) {
+      current[conversationKey] = seconds;
+    } else {
+      current.remove(conversationKey);
+    }
+    final parts = <String>[];
+    for (final entry in current.entries) {
+      parts.add('${entry.key}:${entry.value}');
+    }
+    await setString(_ephemeralTimersKey, parts.join(','));
+  }
+
+  // -- Conversations verrouillées (empreinte digitale / mot de passe) ----------
+
+  static const String _lockedConversationsKey = 'locked_conversations';
+
+  /// Les conversations protégées par empreinte digitale.
+  static Set<String> getLockedConversations() {
+    final raw = getString(_lockedConversationsKey);
+    if (raw == null || raw.isEmpty) return {};
+    return raw.split(',').toSet();
+  }
+
+  static Future<void> setConversationLocked(String key, bool locked) async {
+    final current = getLockedConversations();
+    if (locked) {
+      current.add(key);
+    } else {
+      current.remove(key);
+    }
+    await setString(_lockedConversationsKey, current.join(','));
+  }
+
   // -- Outbox (messages en attente d'envoi) ----------------------------------
   //
   // « Outbox » (boîte de sortie) : quand on envoie un message alors
@@ -733,11 +887,40 @@ class StorageService {
   }
 
   /// Ajoute ou met à jour un pair dans la table persistante.
-  static Future<void> upsertPeer(PeerRecord peer) async {
-    final existing = getKnownPeers();
-    existing.removeWhere((p) => p.peerId == peer.peerId);
-    existing.add(peer);
-    await savePeers(existing);
+  /// Sérialise les écritures de pairs, une à la fois.
+  ///
+  /// ⚠️ SANS CETTE FILE, DES PAIRS DISPARAISSAIENT.
+  ///
+  /// `upsertPeer` lit la liste complète, la modifie, puis la réécrit en
+  /// entier — et il est appelé sans être attendu, à chaque fois qu'un
+  /// pair est vu, depuis trois endroits différents. Deux appels qui se
+  /// chevauchent lisent donc la MÊME liste de départ, et le second
+  /// écrase le premier :
+  ///
+  ///     A lit [P1] → ajoute P2 → écrit [P1,P2]
+  ///     B lit [P1] → ajoute P3 → écrit [P1,P3]   ← P2 est perdu
+  ///
+  /// C'est une situation ordinaire, pas un cas limite : deux appareils
+  /// découverts dans la même seconde suffisent. Le pair perdu ne
+  /// réapparaissait qu'à la rencontre suivante — d'où l'impression que
+  /// les pairs « ne tiennent pas ».
+  static Future<void> _fileEcriturePairs = Future<void>.value();
+
+  static Future<void> upsertPeer(PeerRecord peer) {
+    // Chaque écriture s'enchaîne sur la précédente : la lecture d'une
+    // écriture voit donc toujours le résultat de celle d'avant.
+    _fileEcriturePairs = _fileEcriturePairs.then((_) async {
+      final existing = getKnownPeers();
+      existing.removeWhere((p) => p.peerId == peer.peerId);
+      existing.add(peer);
+      await savePeers(existing);
+    }).catchError((Object e) {
+      // Une écriture qui échoue ne doit pas rompre la chaîne : sans ce
+      // rattrapage, toutes les écritures SUIVANTES hériteraient de
+      // l'erreur et seraient abandonnées en silence.
+      debugPrint('[Storage] écriture de pair impossible: $e');
+    });
+    return _fileEcriturePairs;
   }
 
   /// Charge la table de pairs persistée.

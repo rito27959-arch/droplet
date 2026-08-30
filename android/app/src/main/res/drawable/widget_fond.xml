@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Le fond du widget.
+
+  ⚠️ IL EST SOMBRE DANS LES DEUX THÈMES, ET C'EST VOULU. Un widget est
+  posé sur le fond d'écran de l'utilisateur, pas sur une surface de
+  l'application : il n'a aucun moyen de savoir ce qu'il y a derrière.
+  Un fond clair sur une photo claire devient illisible ; un fond sombre
+  translucide fonctionne sur presque tout.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#E60E1826"/>
+    <corners android:radius="20dp"/>
+</shape>

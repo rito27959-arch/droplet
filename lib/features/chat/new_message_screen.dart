@@ -27,10 +27,12 @@ import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_list.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
+import '../../design_system/glassmorphism.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import 'qr_scan_screen.dart';
 import '../../shared/widgets/scene_animee.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 class NewMessageScreen extends ConsumerStatefulWidget {
   const NewMessageScreen({super.key});
@@ -58,7 +60,8 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
             .where((p) => p.pseudo.toLowerCase().contains(_query))
             .toList();
 
-    return OuroLargeTitleScaffold(
+    return IosMagnifierOverlay(
+      child: OuroLargeTitleScaffold(
       title: 'Nouveau message',
       backgroundColor: OuroColors.systemGroupedBackground,
       leading: OuroBarButton(
@@ -75,43 +78,47 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
               DesignTokens.screenMargin,
               DesignTokens.space4,
             ),
-            child: SizedBox(
-              height: 36,
-              child: TextField(
-                controller: _searchCtrl,
-                autofocus: true,
-                style: OuroTypography.body.copyWith(color: OuroColors.label),
-                cursorColor: OuroColors.accent,
-                onChanged: (v) =>
-                    setState(() => _query = v.trim().toLowerCase()),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'Rechercher',
-                  hintStyle: OuroTypography.body
-                      .copyWith(color: OuroColors.tertiaryLabel),
-                  prefixIcon: Icon(
-                    Icons.search_rounded,
-                    color: OuroColors.tertiaryLabel,
-                    size: DesignTokens.iconMd,
-                  ),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 34),
-                  filled: true,
-                  fillColor: OuroColors.tertiarySystemFill,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(DesignTokens.radiusMd),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(DesignTokens.radiusMd),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(DesignTokens.radiusMd),
-                    borderSide: BorderSide.none,
+            child: OuroCard(
+              padding: EdgeInsets.zero,
+              child: SizedBox(
+                height: 36,
+                child: TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  style: OuroTypography.body.copyWith(color: OuroColors.label),
+                  cursorColor: OuroColors.accent,
+                  magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+                  onChanged: (v) =>
+                      setState(() => _query = v.trim().toLowerCase()),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Rechercher',
+                    hintStyle: OuroTypography.body
+                        .copyWith(color: OuroColors.tertiaryLabel),
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: OuroColors.tertiaryLabel,
+                      size: DesignTokens.iconMd,
+                    ),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 34),
+                    filled: true,
+                    fillColor: Colors.transparent,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(DesignTokens.radiusMd),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(DesignTokens.radiusMd),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius:
+                          BorderRadius.circular(DesignTokens.radiusMd),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
               ),
@@ -206,6 +213,7 @@ class _NewMessageScreenState extends ConsumerState<NewMessageScreen> {
             ),
           ),
       ],
+      ),
     );
   }
 }

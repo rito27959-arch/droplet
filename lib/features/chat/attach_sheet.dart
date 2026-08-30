@@ -277,19 +277,13 @@ class _ActionCarteState extends State<_ActionCarte> {
                 //
                 // La carte blanche laisse la couleur à la seule icône —
                 // c'est elle qu'on reconnaît de loin, pas son fond.
-                Container(
-                  width: 76,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: OuroColors.systemBackground
-                        .withValues(alpha: 0.92),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: OuroColors.separator.withValues(alpha: 0.7),
-                      width: 0.5,
-                    ),
+                OuroCard(
+                  padding: const EdgeInsets.all(8),
+                  child: SizedBox(
+                    width: 60,
+                    height: 42,
+                    child: Icon(widget.icone, color: widget.couleur, size: 26),
                   ),
-                  child: Icon(widget.icone, color: widget.couleur, size: 26),
                 ),
                 const SizedBox(height: 7),
                 Text(

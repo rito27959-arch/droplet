@@ -61,6 +61,12 @@ class MediaBridge(private val context: Context) {
             "deviceMemoryMb" -> result.success(deviceMemoryMb())
             "installerPath" -> result.success(installerPath())
 
+            "majWidget" -> {
+                val nonLus = call.argument<Int>("nonLus") ?: 0
+                val pairs = call.argument<Int>("pairs") ?: 0
+                result.success(majWidget(nonLus, pairs))
+            }
+
             "composerUssd" -> {
                 val code = call.argument<String>("code")
                 if (code == null) {
@@ -226,6 +232,36 @@ class MediaBridge(private val context: Context) {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Dépose ce que le widget doit afficher, et lui demande de se
+     * redessiner.
+     *
+     * ⚠️ ON ÉCRIT DANS LE MÊME FICHIER QUE `shared_preferences`, avec
+     * son préfixe. C'est ce qui permet au widget de lire sans que
+     * Droplet ait à embarquer une dépendance de plus — et surtout sans
+     * que le widget ait à ouvrir la base SQLite, ce qui pourrait la
+     * corrompre (voir la note en tête de `WidgetDroplet`).
+     *
+     * Les valeurs sont écrites en Long parce que c'est ainsi que le
+     * greffon Flutter range les entiers : un Int y serait relu comme
+     * une valeur absente.
+     */
+    private fun majWidget(nonLus: Int, pairs: Int): Boolean {
+        return try {
+            context.getSharedPreferences(
+                "FlutterSharedPreferences",
+                Context.MODE_PRIVATE,
+            ).edit()
+                .putLong("flutter.widget_non_lus", nonLus.toLong())
+                .putLong("flutter.widget_pairs", pairs.toLong())
+                .apply()
+            WidgetDroplet.rafraichir(context)
             true
         } catch (e: Exception) {
             false

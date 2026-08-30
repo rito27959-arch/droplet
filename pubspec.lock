@@ -9,6 +9,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "93.0.0"
+  adaptive_platform_ui:
+    dependency: "direct main"
+    description:
+      name: adaptive_platform_ui
+      sha256: da86df434d6fc67175431e29dbf8e3e34cad2a471125c64aec15aed732db02f1
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.111"
   analyzer:
     dependency: transitive
     description:
@@ -638,6 +646,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.3"
+  flutter_svg:
+    dependency: transitive
+    description:
+      name: flutter_svg
+      sha256: "35882981abcbfb8c15b286f0cd690ff25bac12d95eff3e25ee207f37d4c42e7f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -784,6 +800,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  image:
+    dependency: "direct main"
+    description:
+      name: image
+      sha256: "1976370a4df3091bb0f72409c187ad1f9132a818bc6b95ca59c0bae1c75c688e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.9.2"
   intl:
     dependency: "direct main"
     description:
@@ -888,6 +912,54 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.0-dev.4"
+  liquid_glass_ui_design:
+    dependency: "direct main"
+    description:
+      name: liquid_glass_ui_design
+      sha256: "9db86795fa5158cd9d3aed962864c6fd322502e24fc6351c05a5873097812b58"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.5"
+  local_auth:
+    dependency: "direct main"
+    description:
+      name: local_auth
+      sha256: "434d854cf478f17f12ab29a76a02b3067f86a63a6d6c4eb8fbfdcfe4879c1b7b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.3.0"
+  local_auth_android:
+    dependency: transitive
+    description:
+      name: local_auth_android
+      sha256: a0bdfcc0607050a26ef5b31d6b4b254581c3d3ce3c1816ab4d4f4a9173e84467
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.56"
+  local_auth_darwin:
+    dependency: transitive
+    description:
+      name: local_auth_darwin
+      sha256: "699873970067a40ef2f2c09b4c72eb1cfef64224ef041b3df9fdc5c4c1f91f49"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.6.1"
+  local_auth_platform_interface:
+    dependency: transitive
+    description:
+      name: local_auth_platform_interface
+      sha256: f98b8e388588583d3f781f6806e4f4c9f9e189d898d27f0c249b93a1973dd122
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
+  local_auth_windows:
+    dependency: transitive
+    description:
+      name: local_auth_windows
+      sha256: bc4e66a29b0fdf751aafbec923b5bed7ad6ed3614875d8151afe2578520b2ab5
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.11"
   logger:
     dependency: transitive
     description:
@@ -968,6 +1040,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
+  native_liquid_glass:
+    dependency: "direct main"
+    description:
+      name: native_liquid_glass
+      sha256: "7cb1a6c6ed3b352f91b9ac2c302ad88a576ac4d177381168112a3dbbd8afa64d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.15"
   nearby_service:
     dependency: "direct main"
     description:
@@ -1056,6 +1136,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.9.1"
+  path_parsing:
+    dependency: transitive
+    description:
+      name: path_parsing
+      sha256: "883402936929eac138ee0a45da5b0f2c80f89913e6dc3bf77eb65b84b409c6ca"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   path_provider:
     dependency: "direct main"
     description:
@@ -1248,6 +1336,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.0"
+  raw_magnifier_plus:
+    dependency: "direct main"
+    description:
+      name: raw_magnifier_plus
+      sha256: "405616aad535ba96296079581fff3808ce31ea011e96094d24b52f8296de2644"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   recase:
     dependency: transitive
     description:
@@ -1621,6 +1717,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.6.0"
+  vector_graphics:
+    dependency: transitive
+    description:
+      name: vector_graphics
+      sha256: "9d0e3b9cb16542ad660daee871e726a10d13a93b7b5391677c3160e8f5e83935"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.3"
+  vector_graphics_codec:
+    dependency: transitive
+    description:
+      name: vector_graphics_codec
+      sha256: "99fd9fbd34d9f9a32efd7b6a6aae14125d8237b10403b422a6a6dfeac2806146"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.13"
+  vector_graphics_compiler:
+    dependency: transitive
+    description:
+      name: vector_graphics_compiler
+      sha256: "4dca4feb77dc3ec7f6e27e49c53241eb8217f55e4f9b12599a27f8903bca5682"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.0"
   vector_math:
     dependency: transitive
     description:
@@ -1759,4 +1879,4 @@ packages:
     version: "3.1.3"
 sdks:
   dart: ">=3.11.0 <4.0.0"
-  flutter: ">=3.41.0"
+  flutter: ">=3.41.2"

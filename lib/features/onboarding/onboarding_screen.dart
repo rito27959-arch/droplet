@@ -54,7 +54,9 @@ import '../../design_system/ouro_spinner.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_typography.dart';
 import '../../shared/widgets/avatar_picker_sheet.dart';
+import '../../design_system/glassmorphism.dart';
 import 'onboarding_animations.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -355,7 +357,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: OuroColors.systemBackground,
-      body: SafeArea(
+      body: IosMagnifierOverlay(
+        child: SafeArea(
         child: Column(
           children: [
             Expanded(
@@ -404,6 +407,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             ),
             _bottomBar(),
           ],
+        ),
         ),
       ),
     );
@@ -1001,36 +1005,40 @@ class _IdentityPage extends StatelessWidget {
           'Vous pouvez en choisir un qui ne vous identifie pas.',
         ),
         const SizedBox(height: DesignTokens.space6),
-        TextField(
-          controller: controller,
-          autofocus: false,
-          textCapitalization: TextCapitalization.words,
-          maxLength: 24,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) => onSubmit(),
-          inputFormatters: [LengthLimitingTextInputFormatter(24)],
-          cursorColor: OuroColors.accent,
-          style: OuroTypography.title3.copyWith(color: OuroColors.label),
-          textAlign: TextAlign.center,
-          decoration: InputDecoration(
-            counterText: '',
-            hintText: 'Votre pseudo',
-            hintStyle:
-                OuroTypography.title3.copyWith(color: OuroColors.tertiaryLabel),
-            filled: true,
-            fillColor: OuroColors.tertiarySystemFill,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
-              borderSide: BorderSide(color: OuroColors.accent, width: 1.5),
+        OuroCard(
+          padding: EdgeInsets.zero,
+          child: TextField(
+            controller: controller,
+            autofocus: false,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 24,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => onSubmit(),
+            inputFormatters: [LengthLimitingTextInputFormatter(24)],
+            cursorColor: OuroColors.accent,
+            magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+            style: OuroTypography.title3.copyWith(color: OuroColors.label),
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              counterText: '',
+              hintText: 'Votre pseudo',
+              hintStyle:
+                  OuroTypography.title3.copyWith(color: OuroColors.tertiaryLabel),
+              filled: true,
+              fillColor: Colors.transparent,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                borderSide: BorderSide(color: OuroColors.accent, width: 1.5),
+              ),
             ),
           ),
         ).animate(delay: 160.ms).fadeIn(duration: 320.ms).moveY(begin: 10),

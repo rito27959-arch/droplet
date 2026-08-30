@@ -78,17 +78,8 @@ def crop_to_tile(img):
         # Aucune marge détectée : l'image est déjà la vignette.
         return img
 
-    # On recadre AU CARRÉ, centré sur ce qu'on a trouvé : une vignette
-    # d'application est carrée par définition, et un recadrage
-    # rectangulaire la déformerait au redimensionnement.
-    #
-    # On retient le côté le PLUS PETIT des deux. Prendre le plus grand
-    # garantissait de ne rien perdre du dessin, mais faisait entrer un
-    # peu de fond sur l'autre axe — la frange claire qu'on voyait au
-    # bord de l'icône. Ce qu'on rogne ainsi n'est de toute façon que le
-    # coin arrondi, rendu transparent juste après.
-    side = min(right - left, bottom - top) + 1
-    cx = (left + right) // 2
+0
+.À    cx = (left + right) // 2
     cy = (top + bottom) // 2
     half = side // 2
     box = (

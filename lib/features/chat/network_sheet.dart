@@ -43,6 +43,7 @@ import '../../design_system/glassmorphism.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_typography.dart';
+import '../../design_system/liquid_bridge.dart';
 
 /// Ouvre le panneau réseau.
 Future<void> showNetworkSheet(BuildContext context) {
@@ -92,15 +93,9 @@ class _NetworkSheet extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: actif
-                        ? OuroColors.systemGreen
-                        : OuroColors.systemGray,
-                  ),
+                LiquidGlassDot(
+                  size: 9,
+                  color: actif ? OuroColors.systemGreen : OuroColors.systemGray,
                 ),
                 const SizedBox(width: DesignTokens.space2),
                 Text(

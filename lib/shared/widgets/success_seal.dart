@@ -19,6 +19,7 @@ import 'package:animated_emoji/animated_emoji.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/design_tokens.dart';
 import 'scene_animee.dart';
@@ -117,15 +118,19 @@ class _SuccessSealState extends State<SuccessSeal> {
               border: Border.all(color: seal, width: 2),
               boxShadow: DesignTokens.glow(seal, radius: 32),
             ),
-            child: Center(
-              child: widget.emoji != null
-                  ? SceneAnimee(
-                      emoji: widget.emoji!,
-                      iconeDeSecours: widget.icon,
-                      taille: 68,
-                      repete: false,
-                    )
-                  : Icon(widget.icon, color: seal, size: 60),
+            child: LiquidContainer(
+              borderRadius: 60,
+              color: seal.withValues(alpha: 0.08),
+              child: Center(
+                child: widget.emoji != null
+                    ? SceneAnimee(
+                        emoji: widget.emoji!,
+                        iconeDeSecours: widget.icon,
+                        taille: 68,
+                        repete: false,
+                      )
+                    : Icon(widget.icon, color: seal, size: 60),
+              ),
             ),
           )
               .animate()

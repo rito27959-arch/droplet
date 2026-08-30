@@ -29,6 +29,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/mesh_message.dart';
@@ -45,6 +46,20 @@ import '../services/group_webrtc_call_service.dart';
 import '../services/notification_service.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../repositories/mesh_repository.dart';
+import '../../features/chat/animated_sticker.dart';
+
+/// Description lisible d'un contenu de message pour les previews.
+///
+/// Les stickers animés ne doivent PAS afficher leur référence technique
+/// (🎞tgs:fetes/confettis) dans la liste des conversations — on affiche
+/// un label lisible à la place.
+String _describeForPreview(MeshMessage last) {
+  if (last.type == 'file') return VoiceNoteMeta.describeAttachment(last.fileName);
+  if (AnimatedStickerCatalog.estUneReference(last.content)) {
+    return '🎞 ${AnimatedStickerCatalog.nomLisible(last.content)}';
+  }
+  return LocationMessage.describe(last.content);
+}
 
 // ── Toast minimal (remplace mesh_toast de l'app éducative) ─────────────────
 //
@@ -165,21 +180,40 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
   /// Messages en attente d'envoi (0 pair connecté au moment du tap).
   final List<_OutboxEntry> _outbox = [];
 
+  /// Génération de l'outbox — incémentée à chaque ajout. Permet de
+  /// détecter si de nouveaux messages sont arrivés pendant qu'on vidait
+  /// la file, et de relancer un flush si nécessaire.
+  int _outboxGeneration = 0;
+
+  /// Ajoute une entrée à l'outbox et incrémente la génération.
+  void _addToOutbox(_OutboxEntry entry) {
+    _outbox.add(entry);
+    _outboxGeneration++;
+  }
+
   MeshNotifier(this._repo, this._showToast) : super(StorageService.getMessages()) {
     _peerSub = _repo.peerEvents?.listen((_) => _flushOutbox());
     _ackSub = _repo.ackEvents.listen((messageId) {
+      // Haptique de livraison : vibrer légèrement quand un message arrive
+      // à destination. iMessage ne fait rien — on fait mieux.
+      HapticFeedback.lightImpact();
       state = state.map((m) {
         if (m.id != messageId) return m;
         return m.copyWith(deliveryCount: _repo.getAckCount(messageId));
       }).toList();
     });
     _readSub = _repo.readEvents.listen((messageId) {
+      HapticFeedback.mediumImpact();
       final now = DateTime.now();
       state = state.map((m) {
         if (m.id != messageId || m.readAt != null) return m;
         return m.copyWith(readAt: now);
       }).toList();
       unawaited(StorageService.updateMessageReadAt(messageId, now));
+      // Messages éphémères : marquer la première lecture et démarrer le
+      // timer de disparition.
+      final msg = state.where((m) => m.id == messageId).firstOrNull;
+      if (msg != null) _markFirstRead(msg);
     });
     _reactionSub = _repo.reactionEvents.listen((evt) {
       _reactionEventCtrl.add(evt);
@@ -203,6 +237,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     });
 
     _loadOutbox();
+    _startEphemeralChecker();
   }
 
   /// Charge la file d'attente persistée au démarrage — les messages
@@ -213,14 +248,14 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     for (final entry in stored) {
       final kind = entry['kind'] as String?;
       if (kind == 'text') {
-        _outbox.add(_OutboxEntry(
+        _addToOutbox(_OutboxEntry(
           messageId: entry['id'] as String,
           kind: _OutboxKind.text,
           targetId: entry['targetId'] as String?,
           groupId: entry['groupId'] as String?,
         ));
       } else if (kind == 'file') {
-        _outbox.add(_OutboxEntry(
+        _addToOutbox(_OutboxEntry(
           messageId: entry['id'] as String,
           kind: _OutboxKind.file,
           targetId: entry['targetId'] as String?,
@@ -234,12 +269,117 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     }
   }
 
+  // ── UNDO SEND ───────────────────────────────────────────────────
+  //
+  // iMessage permet d'annuler l'envoi dans les 2 premières secondes.
+  // On fait pareil : le message reste dans un état « annulable » pendant
+  // 2 secondes après l'envoi. Passé ce délai, il est trop tard.
+
+  /// IDs des messages récemment envoyés et encore annulables.
+  final Set<String> _undoableMessages = {};
+
+  /// Vérifie si un message peut encore être annulé.
+  bool canUndoSend(String messageId) => _undoableMessages.contains(messageId);
+
+  /// Annule l'envoi d'un message : le supprime de l'état et de la base.
+  /// Renvoie `true` si l'annulation a réussi.
+  bool undoSend(String messageId) {
+    if (!_undoableMessages.remove(messageId)) return false;
+    state = state.where((m) => m.id != messageId).toList();
+    unawaited(StorageService.deleteMessage(messageId));
+    return true;
+  }
+
+  /// Enregistre un message comme annulable pendant 2 secondes.
+  void _registerUndoable(String messageId) {
+    _undoableMessages.add(messageId);
+    Timer(const Duration(seconds: 2), () {
+      _undoableMessages.remove(messageId);
+    });
+  }
+
+  // ── MESSAGES ÉPHÉMÈRES ────────────────────────────────────────
+  //
+  // Quand un message a un `expiresInSeconds` défini et que le
+  // destinataire le lit pour la première fois, un timer démarre.
+  // Le message est supprimé quand le timer atteint la durée définie.
+  // Un timer périodique vérifie les messages expirés toutes les 5 secondes.
+
+  Timer? _ephemeralCheckTimer;
+
+  /// Démarre le vérificateur périodique des messages éphémères.
+  void _startEphemeralChecker() {
+    _ephemeralCheckTimer?.cancel();
+    _ephemeralCheckTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _purgeExpiredMessages(),
+    );
+  }
+
+  /// Marque un message comme « première lecture » et planifie sa suppression.
+  void _markFirstRead(MeshMessage message) {
+    if (message.expiresInSeconds == null || message.firstReadAt != null) return;
+    if (message.senderId == _repo.myId) return;
+    final now = DateTime.now();
+    state = state.map((m) {
+      if (m.id != message.id) return m;
+      return m.copyWith(firstReadAt: now);
+    }).toList();
+    unawaited(StorageService.updateMessageFirstReadAt(message.id, now));
+  }
+
+  /// Supprime tous les messages éphémères dont le délai est écoulé.
+  void _purgeExpiredMessages() {
+    final now = DateTime.now();
+    final toDelete = <String>[];
+    for (final m in state) {
+      if (m.expiresInSeconds == null || m.firstReadAt == null) continue;
+      final elapsed = now.difference(m.firstReadAt!).inSeconds;
+      if (elapsed >= m.expiresInSeconds!) {
+        toDelete.add(m.id);
+      }
+    }
+    if (toDelete.isEmpty) return;
+    state = state.where((m) => !toDelete.contains(m.id)).toList();
+    for (final id in toDelete) {
+      unawaited(StorageService.deleteMessage(id));
+    }
+  }
+
+  // ── MESSAGE EDITING ─────────────────────────────────────────────
+  //
+  // iMessage permet de modifier un message après envoi. On fait pareil :
+  // seul l'expéditeur peut modifier, et le badge « modifié » apparaît
+  // dans la bulle.
+
+  /// Modifie le contenu d'un message. Seul l'auteur peut le faire.
+  /// Le badge « modifié » est affiché dans la bulle.
+  void editMessage(String messageId, String newContent) {
+    state = state.map((m) {
+      if (m.id != messageId) return m;
+      if (m.senderId != _repo.myId) return m;
+      return m.copyWith(
+        content: newContent,
+        editedAt: DateTime.now(),
+      );
+    }).toList();
+    // Persister en base.
+    final msg = state.where((m) => m.id == messageId).firstOrNull;
+    if (msg != null) {
+      unawaited(StorageService.saveMessage(msg));
+    }
+  }
+
   /// Envoie un message texte (1:1 ou diffusion). Le message apparaît
   /// TOUT DE SUITE à l'écran avec un statut « en cours d'envoi », même
   /// avant que l'envoi réel ne soit confirmé — l'utilisateur n'attend
   /// jamais devant un écran vide.
   Future<void> sendMessage(String pseudo, String content,
-      {String type = 'text', String? imageUrl, String? audioUrl, String? replyToId, String? targetId, String? effect}) async {
+      {String type = 'text', String? imageUrl, String? audioUrl, String? replyToId, String? targetId, String? effect, String? threadId}) async {
+    // Messages éphémères : si la conversation a un timer, l'appliquer.
+    final ephemeralTimer = targetId != null
+        ? StorageService.getEphemeralTimer(targetId)
+        : 0;
     final msg = MeshMessage(
       id: BleMeshProtocol.generateMessageId(),
       authorPseudo: pseudo,
@@ -254,6 +394,8 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       replyToId: replyToId,
       status: MessageStatus.sending,
       effect: effect,
+      expiresInSeconds: ephemeralTimer > 0 ? ephemeralTimer : null,
+      threadId: threadId,
     );
 
     await StorageService.saveMessage(msg);
@@ -273,6 +415,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
           effect: effect,
         );
         _setStatus(msg.id, MessageStatus.sent);
+        _registerUndoable(msg.id);
       } catch (_) {
         _setStatus(msg.id, MessageStatus.failed);
         _showToast('Échec de l\'envoi du message', type: DropletToastType.error);
@@ -284,7 +427,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       }
     } else {
       _setStatus(msg.id, MessageStatus.pending);
-      _outbox.add(_OutboxEntry(messageId: msg.id, kind: _OutboxKind.text, targetId: targetId));
+      _addToOutbox(_OutboxEntry(messageId: msg.id, kind: _OutboxKind.text, targetId: targetId));
       unawaited(StorageService.saveOutbox({
         'id': msg.id, 'kind': 'text', 'targetId': targetId,
       }));
@@ -296,6 +439,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     required String groupId,
     String? replyToId,
     String? effect,
+    String? threadId,
   }) async {
     final msg = MeshMessage(
       id: BleMeshProtocol.generateMessageId(),
@@ -309,6 +453,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       replyToId: replyToId,
       status: MessageStatus.sending,
       effect: effect,
+      threadId: threadId,
     );
 
     await StorageService.saveMessage(msg);
@@ -334,7 +479,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       }
     } else {
       _setStatus(msg.id, MessageStatus.pending);
-      _outbox.add(_OutboxEntry(messageId: msg.id, kind: _OutboxKind.text, groupId: groupId));
+      _addToOutbox(_OutboxEntry(messageId: msg.id, kind: _OutboxKind.text, groupId: groupId));
       unawaited(StorageService.saveOutbox({
         'id': msg.id, 'kind': 'text', 'groupId': groupId,
       }));
@@ -354,7 +499,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     String? replyToId,
   }) async {
     final fileId = const Uuid().v4();
-    const int hopCount = MeshRepository.kDefaultHopCount;
+    final int hopCount = MeshRepository.kDefaultHopCount;
 
     final msg = MeshMessage(
       id: fileId,
@@ -401,7 +546,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       }
     } else {
       _setStatus(msg.id, MessageStatus.pending);
-      _outbox.add(_OutboxEntry(messageId: fileId, kind: _OutboxKind.file, targetId: targetId, groupId: groupId));
+      _addToOutbox(_OutboxEntry(messageId: fileId, kind: _OutboxKind.file, targetId: targetId, groupId: groupId));
       unawaited(StorageService.saveOutbox({
         'id': fileId, 'kind': 'file', 'targetId': targetId, 'groupId': groupId,
       }));
@@ -423,6 +568,17 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
         reactions.remove(reaction);
       } else {
         reactions.add(reaction);
+      }
+      // Persister en base.
+      unawaited(StorageService.updateMessageReactions(messageId, reactions));
+      // Diffuser au pair via le mesh.
+      final peerId = msg.groupId ?? msg.targetId ?? msg.senderId;
+      if (peerId != null && peerId != _repo.myId) {
+        unawaited(_repo.sendReaction(
+          targetId: peerId,
+          messageId: messageId,
+          emoji: reaction,
+        ));
       }
       return msg.copyWith(reactions: reactions);
     }).toList();
@@ -462,10 +618,16 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
 
   /// Dès qu'un pair se reconnecte, tente d'envoyer tout ce qui attendait
   /// dans la « boîte d'attente ».
+  ///
+  /// Utilise un compteur de génération pour détecter si de nouveaux
+  /// messages sont arrivés pendant le vidage. Si c'est le cas, un
+  /// deuxième flush est programmé automatiquement — on ne perd jamais
+  /// un message ajouté entre le `clear()` et la fin des envois.
   void _flushOutbox() {
     if (_outbox.isEmpty) return;
     if (_repo.transport.connectedPeerCount == 0) return;
 
+    final gen = _outboxGeneration;
     final toFlush = List<_OutboxEntry>.from(_outbox);
     _outbox.clear();
 
@@ -474,6 +636,11 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     for (final entry in toFlush) {
       _setStatus(entry.messageId, MessageStatus.sending);
       _doSendOutboxEntry(entry);
+    }
+
+    // Si de nouveaux messages ont été ajoutés pendant l'envoi, relancer.
+    if (_outboxGeneration != gen && _outbox.isNotEmpty) {
+      scheduleMicrotask(_flushOutbox);
     }
   }
 
@@ -515,7 +682,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       // remet en attente. Le message repartira de lui-même à la
       // prochaine rencontre, exactement comme les autres.
       _setStatus(msg.id, MessageStatus.pending);
-      _outbox.add(entree);
+      _addToOutbox(entree);
       unawaited(StorageService.saveOutbox({
         'id': msg.id,
         'kind': entree.kind == _OutboxKind.file ? 'file' : 'text',
@@ -1157,6 +1324,8 @@ class Conversation {
   final int unreadCount;
   final String? avatarUrl;
   final bool isOnline;
+  final bool isPinned;
+  final bool isMuted;
 
   const Conversation({
     required this.peerId,
@@ -1168,6 +1337,8 @@ class Conversation {
     required this.unreadCount,
     this.avatarUrl,
     this.isOnline = false,
+    this.isPinned = false,
+    this.isMuted = false,
   });
 
   bool get isBroadcast => kind == ConversationKind.broadcast;
@@ -1235,18 +1406,26 @@ class ConversationReadsNotifier extends StateNotifier<Map<String, DateTime>> {
 /// `_groupsRevisionProvider` un peu plus bas).
 final archivedRevisionProvider = StateProvider<int>((ref) => 0);
 
+/// Signal de relecture quand une conversation est épinglée/désépinglée ou
+/// mise en mode silencieux — même pattern que [archivedRevisionProvider].
+final pinMuteRevisionProvider = StateProvider<int>((ref) => 0);
+
 /// LE calcul principal derrière l'écran d'accueil : prend TOUS les
 /// messages stockés et les range en « paquets » par correspondant ou par
 /// groupe pour en faire une conversation, comme trier un tas de lettres
 /// reçues et envoyées en une pile par destinataire.
 final conversationsProvider = Provider<List<Conversation>>((ref) {
   ref.watch(archivedRevisionProvider);
+  ref.watch(pinMuteRevisionProvider);
   final messages = ref.watch(meshMessagesProvider);
   final peers = ref.watch(meshPeerListProvider);
   final reads = ref.watch(conversationReadsProvider);
   final repo = ref.watch(meshRepositoryProvider);
   final myId = repo.myId;
   final archived = StorageService.getArchivedConversations();
+  final pinned = StorageService.getPinnedConversations();
+  final muted = StorageService.getMutedConversations();
+  NotificationService.setArchivedConversations(archived);
 
   final byPeer = <String, List<MeshMessage>>{};
   final byGroup = <String, List<MeshMessage>>{};
@@ -1302,12 +1481,12 @@ final conversationsProvider = Provider<List<Conversation>>((ref) {
               .map((m) => m.authorPseudo)
               .firstOrNull ??
           entry.key,
-      lastMessage: last.type == 'file'
-          ? VoiceNoteMeta.describeAttachment(last.fileName)
-          : LocationMessage.describe(last.content),
+      lastMessage: _describeForPreview(last),
       lastTimestamp: last.timestamp,
       unreadCount: unread,
       isOnline: peer != null,
+      isPinned: pinned.contains(entry.key),
+      isMuted: muted.contains(entry.key),
     ));
   }
 
@@ -1329,11 +1508,11 @@ final conversationsProvider = Provider<List<Conversation>>((ref) {
       kind: ConversationKind.group,
       pseudo: group.name,
       avatarUrl: group.avatarUrl,
-      lastMessage: last.type == 'file'
-          ? VoiceNoteMeta.describeAttachment(last.fileName)
-          : LocationMessage.describe(last.content),
+      lastMessage: _describeForPreview(last),
       lastTimestamp: last.timestamp,
       unreadCount: unread,
+      isPinned: pinned.contains(entry.key),
+      isMuted: muted.contains(entry.key),
     ));
   }
 
@@ -1344,14 +1523,18 @@ final conversationsProvider = Provider<List<Conversation>>((ref) {
       peerId: null,
       kind: ConversationKind.broadcast,
       pseudo: 'Diffusion mesh',
-      lastMessage: last.content,
+      lastMessage: _describeForPreview(last),
       lastTimestamp: last.timestamp,
       unreadCount: 0,
     ));
   }
 
   conversations.removeWhere((c) => archived.contains(c.key));
-  conversations.sort((a, b) => b.lastTimestamp.compareTo(a.lastTimestamp));
+  // Épinglés d'abord, puis par date décroissante.
+  conversations.sort((a, b) {
+    if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+    return b.lastTimestamp.compareTo(a.lastTimestamp);
+  });
   return conversations;
 });
 
@@ -1389,9 +1572,7 @@ final archivedConversationsProvider = Provider<List<Conversation>>((ref) {
       peerId: entry.key,
       kind: ConversationKind.direct,
       pseudo: peer?.pseudo ?? StorageService.getPeerRecord(entry.key)?.pseudo ?? entry.key,
-      lastMessage: last.type == 'file'
-          ? VoiceNoteMeta.describeAttachment(last.fileName)
-          : LocationMessage.describe(last.content),
+      lastMessage: _describeForPreview(last),
       lastTimestamp: last.timestamp,
       unreadCount: 0,
       isOnline: peer != null,
@@ -1408,9 +1589,7 @@ final archivedConversationsProvider = Provider<List<Conversation>>((ref) {
       groupId: entry.key,
       kind: ConversationKind.group,
       pseudo: group.name,
-      lastMessage: last.type == 'file'
-          ? VoiceNoteMeta.describeAttachment(last.fileName)
-          : LocationMessage.describe(last.content),
+      lastMessage: _describeForPreview(last),
       lastTimestamp: last.timestamp,
       unreadCount: 0,
     ));

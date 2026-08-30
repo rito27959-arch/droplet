@@ -220,6 +220,28 @@ class MeshMessage {
   /// un rechargement de l'historique.
   final String? effect;
 
+  /// Nom d'affichage de l'auteur original si ce message a été transféré
+  /// (forward) depuis un autre message — null si le message est original.
+  final String? forwardedFrom;
+
+  /// Date de la dernière édition du message. Null si le message n'a
+  /// jamais été modifié. Affiché comme « modifié » dans la bulle.
+  final DateTime? editedAt;
+
+  /// Durée de vie du message en secondes. Null = pas de disparition.
+  /// Quand le destinataire lit le message, un timer démarre et le
+  /// message est supprimé quand il atteint cette durée.
+  final int? expiresInSeconds;
+
+  /// Timestamp de la première lecture du message par le destinataire.
+  /// Utilisé pour calculer quand le message doit disparaître.
+  final DateTime? firstReadAt;
+
+  /// ID du fil de discussion. Tous les messages d'une même conversation
+  /// en réponse à un message original partagent le même threadId.
+  /// Null si le message n'est pas dans un fil.
+  final String? threadId;
+
   const MeshMessage({
     required this.id,
     required this.authorPseudo,
@@ -243,6 +265,11 @@ class MeshMessage {
     this.readAt,
     this.deliveryCount = 0,
     this.effect,
+    this.forwardedFrom,
+    this.editedAt,
+    this.expiresInSeconds,
+    this.firstReadAt,
+    this.threadId,
   });
 
   /// Fabrique une copie de ce message, en changeant seulement ce qu'on
@@ -270,6 +297,11 @@ class MeshMessage {
     DateTime? readAt,
     int? deliveryCount,
     String? effect,
+    String? forwardedFrom,
+    DateTime? editedAt,
+    int? expiresInSeconds,
+    DateTime? firstReadAt,
+    String? threadId,
   }) {
     return MeshMessage(
       id: id ?? this.id,
@@ -294,6 +326,11 @@ class MeshMessage {
       readAt: readAt ?? this.readAt,
       deliveryCount: deliveryCount ?? this.deliveryCount,
       effect: effect ?? this.effect,
+      forwardedFrom: forwardedFrom ?? this.forwardedFrom,
+      editedAt: editedAt ?? this.editedAt,
+      expiresInSeconds: expiresInSeconds ?? this.expiresInSeconds,
+      firstReadAt: firstReadAt ?? this.firstReadAt,
+      threadId: threadId ?? this.threadId,
     );
   }
 
@@ -322,6 +359,11 @@ class MeshMessage {
     'routeInfo': routeInfo,
     'readAt': readAt?.toIso8601String(),
     'deliveryCount': deliveryCount,
+    'forwardedFrom': forwardedFrom,
+    'editedAt': editedAt?.toIso8601String(),
+    'expiresInSeconds': expiresInSeconds,
+    'firstReadAt': firstReadAt?.toIso8601String(),
+    'threadId': threadId,
   };
 
   /// Relit du texte et reconstruit le message d'origine.
@@ -352,6 +394,15 @@ class MeshMessage {
         ? DateTime.tryParse(json['readAt'] as String)
         : null,
     deliveryCount: json['deliveryCount'] as int? ?? 0,
+    forwardedFrom: json['forwardedFrom'] as String?,
+    editedAt: json['editedAt'] != null
+        ? DateTime.tryParse(json['editedAt'] as String)
+        : null,
+    expiresInSeconds: json['expiresInSeconds'] as int?,
+    firstReadAt: json['firstReadAt'] != null
+        ? DateTime.tryParse(json['firstReadAt'] as String)
+        : null,
+    threadId: json['threadId'] as String?,
   );
 }
 
@@ -652,6 +703,8 @@ class SafetyCheckinRecord {
   final DateTime timestamp;
   final double? lat;
   final double? lon;
+  final String? helpRequest;
+  final int? batteryLevel;
 
   const SafetyCheckinRecord({
     required this.peerId,
@@ -659,9 +712,12 @@ class SafetyCheckinRecord {
     required this.timestamp,
     this.lat,
     this.lon,
+    this.helpRequest,
+    this.batteryLevel,
   });
 
   bool get hasLocation => lat != null && lon != null;
+  bool get isHelpRequest => helpRequest != null;
 
   Map<String, dynamic> toJson() => {
     'peerId': peerId,
@@ -669,6 +725,8 @@ class SafetyCheckinRecord {
     'timestamp': timestamp.toIso8601String(),
     'lat': lat,
     'lon': lon,
+    'helpRequest': helpRequest,
+    'batteryLevel': batteryLevel,
   };
 
   factory SafetyCheckinRecord.fromJson(Map<String, dynamic> json) => SafetyCheckinRecord(
@@ -677,6 +735,8 @@ class SafetyCheckinRecord {
     timestamp: DateTime.parse(json['timestamp'] as String),
     lat: (json['lat'] as num?)?.toDouble(),
     lon: (json['lon'] as num?)?.toDouble(),
+    helpRequest: json['helpRequest'] as String?,
+    batteryLevel: (json['batteryLevel'] as num?)?.toInt(),
   );
 }
 

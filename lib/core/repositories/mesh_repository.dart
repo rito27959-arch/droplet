@@ -40,12 +40,15 @@ import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
 import '../models/mesh_message.dart';
 import '../models/status_media.dart';
+import '../sync/sync_negotiation.dart';
 import '../network/premium_message_queue.dart';
 import '../services/crypto_service.dart';
+import '../services/media_service.dart';
 import '../services/storage_service.dart';
 import '../services/mesh_transport_service.dart';
 import '../services/ble_mesh_protocol.dart';
 import '../services/call_signaling_service.dart';
+import '../../features/nexus_connection/nexus_event.dart';
 
 /// Un message en attente de relais — mis de côté quand on n'a
 /// temporairement aucun pair connecté à qui le transmettre.
@@ -69,7 +72,18 @@ class _PendingRelay {
 /// - Pas de relay BLE si batterie < 15%
 /// - Flush d'outbox différé en background
 class MeshRepository {
-  final MeshTransportService _transport = MeshTransportService();
+  /// Par défaut, le vrai service de transport — mais il peut être
+  /// remplacé, et c'est ce qui permet de faire tourner un NŒUD COMPLET
+  /// de Droplet dans un test : la même logique de messages, d'accusés,
+  /// de déduplication et de relais, mais posée sur des transports
+  /// simulés au lieu de vraies radios.
+  ///
+  /// Sans ce point d'injection, mesurer un taux de livraison ou une
+  /// latence à vingt nœuds supposait vingt téléphones.
+  MeshRepository({MeshTransportService? transport})
+      : _transport = transport ?? MeshTransportService();
+
+  final MeshTransportService _transport;
   bool _initialized = false;
 
   // ── File fiable (retry + backoff exponentiel) ─────────────────────────────
@@ -91,6 +105,8 @@ class MeshRepository {
         onSend: _reliableOnSend,
         onDelivered: (messageId) => _completeSend(messageId, success: true),
         onFailed: (messageId, reason) => _completeSend(messageId, success: false, reason: reason),
+        getCongestionWindow: (peerId) => _transport.protocol.getCongestionWindow(peerId),
+        debugLog: debugPrint,
       )..start());
 
   /// Transmet réellement un paquet sur le mesh. « Succès » = le paquet a
@@ -107,40 +123,39 @@ class MeshRepository {
         ? (task.context as Set<String>).cast<String>()
         : null;
 
-    // ⚠️ LE TYPE DE CONTENU DOIT SUIVRE JUSQU'EN BAS.
-    //
-    // Sans lui, le transport recevait `type: 0x00` pour tout — y compris
-    // pour un fichier. Le Bluetooth, qui écarte les types ≥ 0x20, ne
-    // pouvait donc pas reconnaître un fichier et le prenait en charge
-    // avant de le jeter plus loin, faute de place. On lit l'octet de
-    // type dans l'en-tête de la trame, là où il est déjà écrit.
     final payload = Uint8List.fromList(task.payload);
     final type = payload.length > 1 ? payload[1] : 0x00;
+    final activePeers = _transport.activePeerCount;
+
+    debugPrint('[MeshRepo] _reliableOnSend msg=${task.messageId} '
+        'target=${task.targetId} type=0x${type.toRadixString(16)} '
+        'size=${payload.length}o activePeers=$activePeers '
+        'groups=$interestGroups');
 
     if (task.targetId != 'broadcast') {
       try {
-        final routed =
-            await _transport.sendViaRoute(task.targetId, payload, type: type);
-        if (routed) return true;
-      } catch (_) {
-        // Route introuvable/instable → repli sur la diffusion.
+        final routed = await _transport.sendViaRoute(
+          task.targetId, payload, type: type, priority: task.priority.value);
+        if (routed) {
+          debugPrint('[MeshRepo] routage OK vers ${task.targetId}');
+          return true;
+        }
+      } catch (e) {
+        debugPrint('[MeshRepo] routage vers ${task.targetId} échoué: $e');
       }
     }
 
     try {
-      // ⚠️ ON REND CE QUE LA DIFFUSION A FAIT, plus « y a-t-il des pairs
-      // connectés ? ».
-      //
-      // C'était le dernier maillon du mensonge : même si aucun transport
-      // n'avait pris la charge, la présence d'un pair dans la table
-      // suffisait à déclarer l'envoi réussi. La file n'avait alors aucune
-      // raison de relancer — le message était perdu, et compté comme
-      // livré.
-      return await _transport.broadcastToConnectedPeers(
+      final result = await _transport.broadcastToConnectedPeers(
         payload,
         interestGroups: interestGroups,
+        type: type,
       );
-    } catch (_) {
+      debugPrint('[MeshRepo] diffusion ${result ? "OK" : "ÉCHEC"} '
+          'msg=${task.messageId}');
+      return result;
+    } catch (e) {
+      debugPrint('[MeshRepo] diffusion exception: $e');
       return false;
     }
   }
@@ -166,7 +181,16 @@ class MeshRepository {
       context: interestGroups,
     );
     try {
-      await completer.future.timeout(timeout ?? const Duration(seconds: 30));
+      // ⚠️ LE TIMEOUT DOIT COUVRIR LE BUDGET COMPLET DES RETRIES.
+      //
+      // La file fait 6 tentatives avec backoff exponentiel (100ms → 3.2s)
+      // et un timeout de 30s par tentative. Le timeout total est donc
+      // d'environ 6 × 30s + backoff ≈ 186s. Si le timeout ici est
+      // inférieur, le Completer se résout avant que la file ait fini
+      // ses retries, et le message est marqué « échoué » alors qu'un
+      // envoi ultérieur pourrait réussir.
+      await completer.future.timeout(
+          timeout ?? const Duration(seconds: 180));
     } on TimeoutException {
       _completeSend(messageId);
       _reliableQueue.cancel(messageId);
@@ -177,10 +201,17 @@ class MeshRepository {
 
   void _completeSend(String messageId, {bool success = true, String? reason}) {
     final completer = _sendOutcomes.remove(messageId);
-    if (completer == null || completer.isCompleted) return;
+    if (completer == null || completer.isCompleted) {
+      if (completer == null) {
+        debugPrint('[MeshRepo] _completeSend $messageId: deja retire (null)');
+      }
+      return;
+    }
     if (success) {
+      debugPrint('[MeshRepo] _completeSend $messageId: SUCCES');
       completer.complete();
     } else {
+      debugPrint('[MeshRepo] _completeSend $messageId: ECHEC ($reason)');
       completer.completeError(
         StateError(reason ?? 'Échec de l\'envoi du message $messageId'),
       );
@@ -208,6 +239,10 @@ class MeshRepository {
   final _groupsChangedCtrl = StreamController<String>.broadcast();
   Stream<String> get groupsChangedEvents => _groupsChangedCtrl.stream;
 
+  /// Émet les événements Nexus reçus d'un pair distant.
+  final _nexusEventCtrl = StreamController<NexusEvent>.broadcast();
+  Stream<NexusEvent> get nexusEvents => _nexusEventCtrl.stream;
+
   /// Émet chaque message affichable déchiffré et persisté (1:1, diffusion,
   /// groupe, fichier) — source unique pour l'UI (`MeshNotifier`), qui ne
   /// décode plus le flux brut elle-même. Évite qu'un déchiffrement ou un
@@ -217,6 +252,15 @@ class MeshRepository {
 
   Stream<ConnectedPeer>? get peerEvents => _transport.peerEvents;
   Stream<MeshIncomingData>? get incomingData => _transport.incomingData;
+
+  /// Émet la première fois qu'un pair se connecte dans cette session.
+  ///
+  /// Utilisé par le Nexus pour déclencher l'animation de connexion.
+  /// Les pairs déjà connus avant le lancement de l'app ne déclenchent
+  /// rien — on ne veut pas revoir l'animation à chaque redémarrage.
+  final _firstPeerCtrl = StreamController<ConnectedPeer>.broadcast();
+  Stream<ConnectedPeer> get firstPeerConnection => _firstPeerCtrl.stream;
+  final Set<String> _connectedThisSession = {};
   MeshTransportService get transport => _transport;
 
   String get myId => _myId;
@@ -270,6 +314,31 @@ class MeshRepository {
   /// « J'aime » ou commentaire reçu sur l'un de MES statuts.
   final _statusFeedbackCtrl = StreamController<StatusFeedback>.broadcast();
   Stream<StatusFeedback> get statusFeedbackEvents => _statusFeedbackCtrl.stream;
+
+  /// ⚠️ AJOUTÉ — filet de sécurité pour les diffusions qui échouent
+  /// définitivement.
+  ///
+  /// `sendStatus` et `sendSafetyCheckin` passent par `_enqueueReliable`,
+  /// qui — après épuisement de son budget de tentatives (six essais sur
+  /// ~180 s) — se termine par une `Future` en erreur (`StateError`), pas
+  /// par un simple retour `false`. Contrairement à `sendMessage`/`sendFile`
+  /// (gérés côté `mesh_provider.dart` avec un `try/catch` qui marque le
+  /// message `failed` et prévient l'utilisateur), ces deux fonctions
+  /// n'attrapaient rien : une diffusion de statut, ou pire, un CHECK-IN
+  /// DE SÉCURITÉ qui échoue à joindre le moindre pair pendant trois
+  /// minutes, levait une exception que rien, dans ce paquet, ne
+  /// garantissait de rattraper.
+  ///
+  /// Ce flux est un filet de sécurité additif : il ne remplace pas la
+  /// gestion d'erreur que l'écran appelant peut déjà faire (l'exception
+  /// continue d'être relancée, `await` la verra toujours) — il donne en
+  /// PLUS un point d'écoute fiable, au niveau du dépôt, pour qu'une
+  /// notification de secours (`NotificationService.showSendFailed`, déjà
+  /// prévue pour ce cas précis) puisse être déclenchée même si l'écran
+  /// d'origine ne s'attendait pas à cet échec.
+  final _criticalSendFailureCtrl = StreamController<({String kind, String messageId, String reason})>.broadcast();
+  Stream<({String kind, String messageId, String reason})> get criticalSendFailureEvents =>
+      _criticalSendFailureCtrl.stream;
 
   /// Purge les IDs de messages vus depuis trop longtemps.
   Timer? _pruneTimer;
@@ -358,7 +427,13 @@ class MeshRepository {
 
     _transport.peerEvents.listen((peer) {
       try {
+        // Adapter le nombre de sauts à la densité du mesh.
+        MeshRepository.updateAdaptiveHopCount(_transport.connectedPeerCount);
         if (_transport.connectedPeerCount > 0) flushPendingRelays();
+        // Première connexion dans cette session → signal Nexus.
+        if (_connectedThisSession.add(peer.peerId)) {
+          _firstPeerCtrl.add(peer);
+        }
         if (peer.publicKey == null) {
           // Fire-and-forget : un pair qui se déconnecte pendant l'envoi ne
           // doit jamais faire remonter une exception non rattrapée.
@@ -721,6 +796,37 @@ class MeshRepository {
 
     if (msgType == kRouteAnnounceType) {
       _recevoirRoutes(data);
+      return;
+    }
+
+    // ── Synchronisation différentielle des statuts ──────────────────
+    //
+    // Ces deux échanges ne sont JAMAIS relayés : ils ne concernent que
+    // les deux appareils qui viennent de se rencontrer. Une offre
+    // relayée à travers le mesh proposerait à des inconnus des statuts
+    // qu'on ne leur enverra pas, et déclencherait une avalanche de
+    // demandes sans destinataire.
+    if (msgType == kSyncOfferType) {
+      unawaited(_handleSyncOffer(data).catchError(
+          (e) => debugPrint('[MeshRepo] offre de synchro: $e')));
+      return;
+    }
+    if (msgType == kSyncRequestType) {
+      unawaited(_handleSyncRequest(data).catchError(
+          (e) => debugPrint('[MeshRepo] demande de synchro: $e')));
+      return;
+    }
+
+    if (msgType == kNexusEventType) {
+      try {
+        final json = jsonDecode(utf8.decode(data.data.sublist(2)))
+            as Map<String, dynamic>;
+        final event = NexusEvent.fromJson(json);
+        _nexusEventCtrl.add(event);
+        debugPrint('[MeshRepo] Nexus reçu: seed=${event.seed.substring(0, 8)}...');
+      } catch (e) {
+        debugPrint('[MeshRepo] erreur parsing Nexus: $e');
+      }
       return;
     }
 
@@ -1125,6 +1231,9 @@ class MeshRepository {
   final List<_PendingRelay> _pendingRelays = [];
   static const int _pendingRelaysCap = 256;
 
+  /// Génération des relais en attente — incémentée à chaque ajout.
+  int _pendingRelayGeneration = 0;
+
   /// Rate-limit des réponses hello : un carnet par émetteur (borné) pour
   /// éviter de répondre sans arrêt, + un plafond global de réponses par
   /// fenêtre. Sans cela, une découverte de masse (ou un appareil en boucle)
@@ -1136,7 +1245,27 @@ class MeshRepository {
   static const int _helloRepliesMaxPerWindow = 8;
   static const Duration _helloReplyWindow = Duration(seconds: 5);
 
-  static const int kDefaultHopCount = 5;
+  /// Nombre de sauts par défaut dans un paquet. Le premier octet de
+  /// chaque message porte ce compteur, décrémenté à chaque relais. À
+  /// zéro, le message est jeté — c'est le garde-fou contre les
+  /// boucles infinies.
+  ///
+  /// ⚠️ ADAPTATIF : la valeur est calculée dynamiquement selon la
+  /// densité du mesh (nombre de pairs connectés). Plus le réseau est
+  /// dense, plus on autorise de sauts pour atteindre des pairs éloignés.
+  static int get kDefaultHopCount => _adaptiveHopCount;
+  static int _adaptiveHopCount = 5;
+
+  /// Met à jour le nombre de sauts adaptatif selon la densité du mesh.
+  static void updateAdaptiveHopCount(int connectedPeerCount) {
+    if (connectedPeerCount <= 2) {
+      _adaptiveHopCount = 3;
+    } else if (connectedPeerCount <= 5) {
+      _adaptiveHopCount = 5;
+    } else {
+      _adaptiveHopCount = 7;
+    }
+  }
 
   /// Envoie un message texte — soit ciblé vers une personne précise
   /// ([targetId], chiffré), soit diffusé à tout le mesh en clair si
@@ -1408,12 +1537,21 @@ class MeshRepository {
     data[0] = kDefaultHopCount;
     data[1] = kTextMessageType;
     data.setRange(2, data.length, payloadBytes);
-    await _enqueueReliable(
-      messageId: 'checkin-${DateTime.now().microsecondsSinceEpoch}',
-      targetId: 'broadcast',
-      data: data,
-      priority: MessagePriority.critical,
-    );
+    final checkinId = 'checkin-${DateTime.now().microsecondsSinceEpoch}';
+    try {
+      await _enqueueReliable(
+        messageId: checkinId,
+        targetId: 'broadcast',
+        data: data,
+        priority: MessagePriority.critical,
+      );
+    } catch (e) {
+      // C'est ici, précisément, que le silence serait le plus dangereux :
+      // un check-in « je suis en sécurité » qui échoue sans que personne
+      // ne le sache est pire que l'absence de fonctionnalité elle-même.
+      _criticalSendFailureCtrl.add((kind: 'safety_checkin', messageId: checkinId, reason: e.toString()));
+      rethrow;
+    }
   }
 
   /// Rediffuse manuellement mes annonces (statut, check-in) aux pairs
@@ -1426,29 +1564,55 @@ class MeshRepository {
   /// soit bien passé).
   Future<void> regossipAnnouncements() => _gossipAnnouncementsOnNewPeer();
 
+  /// Envoie un événement Nexus à un pair pour synchroniser l'animation
+  /// de connexion. Le payload est en clair (non chiffré) : il ne contient
+  /// qu'une seed aléatoire et une couleur, aucun secret.
+  Future<void> sendNexusEvent(String targetPeerId, NexusEvent event) async {
+    final jsonPayload = utf8.encode(json.encode(event.toJson()));
+    final data = Uint8List(2 + jsonPayload.length);
+    data[0] = kDefaultHopCount;
+    data[1] = kNexusEventType;
+    data.setRange(2, data.length, jsonPayload);
+    try {
+      await _transport.sendToPeer(targetPeerId, data);
+    } catch (e) {
+      debugPrint('[MeshRepo] échec envoi Nexus vers $targetPeerId: $e');
+    }
+  }
+
   /// Regossipe mon statut actif et mon dernier check-in de sécurité à
   /// chaque nouvelle rencontre de pair — `sendStatus`/`sendSafetyCheckin`
   /// ne diffusent qu'une fois, aux pairs connectés à l'instant T ; sans ce
   /// regossip, publier en étant seul (0 pair) perdait silencieusement
   /// l'annonce pour de bon.
   Future<void> _gossipAnnouncementsOnNewPeer() async {
-    final myStatus = StorageService.getActiveStatuses().where((s) => s.authorId == _myId).firstOrNull;
-    if (myStatus != null) {
-      final payload = <String, dynamic>{
-        'id': myStatus.id,
-        'content': myStatus.content,
-        'createdAt': myStatus.createdAt.toIso8601String(),
-        'expiresAt': myStatus.expiresAt.toIso8601String(),
-      };
-      final jsonMap = <String, dynamic>{'c': json.encode(payload), 's': _myId, 'k': 'status'};
-      final payloadBytes = utf8.encode(json.encode(jsonMap));
-      final data = Uint8List(2 + payloadBytes.length);
-      data[0] = kDefaultHopCount;
-      data[1] = kTextMessageType;
-      data.setRange(2, data.length, payloadBytes);
-      await _transport.broadcastToConnectedPeers(data);
-    }
+    // ── Les statuts : on PROPOSE, on ne rediffuse plus ──────────────
+    //
+    // L'ancienne version renvoyait MON statut, et lui seul, à chaque
+    // rencontre. Deux défauts, dont le second est le plus grave :
+    //
+    //   1. Elle le renvoyait même à quelqu'un qui l'avait déjà.
+    //   2. Elle ne transmettait JAMAIS les statuts des autres. Un statut
+    //      n'atteignait donc que les gens que son auteur croisait en
+    //      personne — alors qu'il est censé circuler « sur tout le
+    //      mesh ». Le relais de proche en proche, qui est la raison
+    //      d'être de Droplet, ne s'appliquait pas aux statuts.
+    //
+    // On propose désormais TOUT ce qu'on connaît, le sien et celui des
+    // autres, sous forme d'identifiants. Le pair réclame ce qui lui
+    // manque, et rien d'autre. Les statuts se propagent enfin de proche
+    // en proche, et le coût reste proportionnel à ce qui manque
+    // vraiment, non à ce qu'on possède.
+    await _envoyerOffreDeSynchro();
 
+    // ── Le check-in de sécurité : rediffusé tel quel ────────────────
+    //
+    // Volontairement laissé à l'identique. Il n'a pas d'identifiant
+    // stable et n'est pas conservé dans un magasin qu'on puisse
+    // comparer : il n'y a donc rien à négocier. Il est minuscule, borné
+    // à une fenêtre de temps courte, et c'est le message le plus
+    // critique de l'app — le rediffuser sans condition est ici la
+    // bonne décision, pas une négligence.
     final checkin = _myLastCheckin;
     if (checkin != null && DateTime.now().difference(checkin.ts) < _checkinGossipWindow) {
       final payload = <String, dynamic>{
@@ -1466,6 +1630,129 @@ class MeshRepository {
       await _transport.broadcastToConnectedPeers(data);
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  //  SYNCHRONISATION DIFFÉRENTIELLE DES STATUTS
+  // ═══════════════════════════════════════════════════════════════════
+  //
+  // Trois temps : j'offre, on me demande, j'envoie. La logique de
+  // décision elle-même est ailleurs, dans `sync_negotiation.dart`, sous
+  // forme de fonctions pures — ce qui permet de la mesurer sans réseau.
+
+  /// Compteurs, pour rendre le gain MESURABLE et non seulement affirmé.
+  int syncOffersSent = 0;
+  int syncOfferBytes = 0;
+  int syncRequestsReceived = 0;
+  int syncStatusesSent = 0;
+
+  /// Les identifiants des statuts encore valides que je connais.
+  List<String> _mesStatutsConnus() =>
+      StorageService.getActiveStatuses().map((s) => s.id).toList();
+
+  Future<void> _envoyerOffreDeSynchro() async {
+    final connus = _mesStatutsConnus();
+    if (connus.isEmpty) return;
+
+    final offre = SyncNegotiation.preparerOffre(mesMessages: connus);
+    if (offre.messageIds.isEmpty) return;
+
+    final corps = offre.encode();
+    final data = Uint8List(2 + corps.length);
+    data[0] = kDefaultHopCount;
+    data[1] = kSyncOfferType;
+    data.setRange(2, data.length, corps);
+
+    syncOffersSent++;
+    syncOfferBytes += data.length;
+    await _transport.broadcastToConnectedPeers(data);
+  }
+
+  /// On me propose des statuts : je réclame ceux qui me manquent.
+  Future<void> _handleSyncOffer(MeshIncomingData data) async {
+    try {
+      if (data.data.length < 2) return;
+      final offre = SyncOffer.decode(
+          Uint8List.sublistView(data.data, 2));
+      final miens = _mesStatutsConnus().toSet();
+
+      final demande = SyncNegotiation.repondreAOffre(
+        offre: offre,
+        mesMessages: miens,
+      );
+      // Rien ne manque : on ne répond RIEN. C'est le cas le plus
+      // fréquent entre deux appareils qui se recroisent, et c'est là que
+      // se joue l'essentiel de l'économie.
+      if (demande.messageIds.isEmpty) return;
+
+      final corps = demande.encode();
+      final paquet = Uint8List(2 + corps.length);
+      paquet[0] = kDefaultHopCount;
+      paquet[1] = kSyncRequestType;
+      paquet.setRange(2, paquet.length, corps);
+
+      await _transport.sendToPeer(data.peerId, paquet);
+    } catch (e) {
+      debugPrint('[MeshRepo] offre de synchro illisible: $e');
+    }
+  }
+
+  /// On me réclame des statuts : je les renvoie, et eux seuls.
+  ///
+  /// La réponse emprunte le format d'annonce ORDINAIRE (`k: 'status'`) :
+  /// le destinataire n'a donc aucun code de réception nouveau à
+  /// exécuter, c'est `_handleStatus` qui les range comme d'habitude.
+  Future<void> _handleSyncRequest(MeshIncomingData data) async {
+    try {
+      if (data.data.length < 2) return;
+      final demande = SyncRequest.decode(
+          Uint8List.sublistView(data.data, 2));
+
+      final parId = {
+        for (final s in StorageService.getActiveStatuses()) s.id: s,
+      };
+      final aEnvoyer = SyncNegotiation.messagesAEnvoyer(
+        demande: demande,
+        mesMessages: parId.keys.toSet(),
+      );
+
+      syncRequestsReceived++;
+      for (final id in aEnvoyer) {
+        final statut = parId[id];
+        if (statut == null) continue;
+
+        final payload = <String, dynamic>{
+          'id': statut.id,
+          'content': statut.content,
+          'createdAt': statut.createdAt.toIso8601String(),
+          'expiresAt': statut.expiresAt.toIso8601String(),
+          // Le média suit le statut : sans lui, le destinataire
+          // recevrait une photo sans savoir qu'il y en a une.
+          if (!StorageService.getStatusMedia(statut.id).isPlainText)
+            'media': StorageService.getStatusMedia(statut.id).toJson(),
+        };
+        // ⚠️ `s` porte l'AUTEUR du statut, pas moi. C'est ce qui permet
+        // au relais de fonctionner : je transmets le statut de quelqu'un
+        // d'autre sans m'en attribuer la paternité.
+        final jsonMap = <String, dynamic>{
+          'c': json.encode(payload),
+          's': statut.authorId,
+          'k': 'status',
+          'm': statut.id,
+        };
+        final bytes = utf8.encode(json.encode(jsonMap));
+        final paquet = Uint8List(2 + bytes.length);
+        paquet[0] = kDefaultHopCount;
+        paquet[1] = kTextMessageType;
+        paquet.setRange(2, paquet.length, bytes);
+
+        syncStatusesSent++;
+        await _transport.sendToPeer(data.peerId, paquet);
+      }
+    } catch (e) {
+      debugPrint('[MeshRepo] demande de synchro illisible: $e');
+    }
+  }
+
 
   void _handleSafetyCheckin(String senderId, String content) {
     try {
@@ -1538,12 +1825,17 @@ class MeshRepository {
     data[0] = kDefaultHopCount;
     data[1] = kTextMessageType;
     data.setRange(2, data.length, payloadBytes);
-    await _enqueueReliable(
-      messageId: 'status-${status.id}',
-      targetId: 'broadcast',
-      data: data,
-      priority: MessagePriority.normal,
-    );
+    try {
+      await _enqueueReliable(
+        messageId: 'status-${status.id}',
+        targetId: 'broadcast',
+        data: data,
+        priority: MessagePriority.normal,
+      );
+    } catch (e) {
+      _criticalSendFailureCtrl.add((kind: 'status', messageId: status.id, reason: e.toString()));
+      rethrow;
+    }
   }
 
   /// Diffuse un fichier destiné à un statut (photo, vidéo, vocal,
@@ -1553,18 +1845,31 @@ class MeshRepository {
   /// destiné à quiconque passe à portée. Le chiffrer supposerait de
   /// connaître à l'avance la liste de ses destinataires — or on ne la
   /// connaît pas, c'est justement tout l'intérêt.
+  ///
+  /// ⚠️ Les images >10 Mo sont automatiquement compressées (JPEG, qualité
+  /// 85, max 2048px) avant envoi — sur un mesh, la bande passante est
+  /// comptée et une photo de 10 Mo prendrait des minutes à traverser.
   Future<String> sendStatusFile({
     required String fileName,
     required Uint8List bytes,
     required String mimeType,
   }) async {
+    // Compression automatique des images volumineuses.
+    final compressed = await MediaService.compressIfNeeded(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
+    );
+
     final fileId = StorageService.generateId();
     await StorageService.saveSharedFile(
-        fileId: fileId, fileName: fileName, bytes: bytes);
+        fileId: fileId, fileName: compressed.name, bytes: compressed.bytes);
     await sendFile(
-      fileName: fileName,
-      bytes: bytes,
-      mimeType: mimeType,
+      fileName: compressed.name,
+      bytes: compressed.bytes,
+      mimeType: compressed.name.endsWith('.jpg') || compressed.name.endsWith('.jpeg')
+          ? 'image/jpeg'
+          : mimeType,
       fileId: fileId,
       forStatus: true,
     );
@@ -1762,9 +2067,9 @@ class MeshRepository {
       debugPrint('[MeshRepo] relais fini msg=$messageId (hops=$remainingHops)');
       return;
     }
-    if (_transport.connectedPeerCount == 0) {
+    if (_transport.activePeerCount == 0) {
       _addPendingRelay(messageId, fullPayload);
-      debugPrint('[MeshRepo] relais différé msg=$messageId (aucun pair)');
+      debugPrint('[MeshRepo] relais différé msg=$messageId (aucun pair actif)');
       return;
     }
     _relayNow(messageId, fullPayload, remainingHops,
@@ -1780,6 +2085,7 @@ class MeshRepository {
       _pendingRelays.removeAt(0);
     }
     _pendingRelays.add(_PendingRelay(messageId, Uint8List.fromList(payload)));
+    _pendingRelayGeneration++;
     StorageService.savePendingRelay(messageId, payload);
   }
 
@@ -1852,8 +2158,14 @@ class MeshRepository {
   /// Dès qu'un pair se reconnecte, on essaie d'envoyer tous les messages
   /// qu'on gardait de côté faute de destinataire disponible — comme
   /// vider la boîte aux lettres d'attente dès que quelqu'un repasse.
+  ///
+  /// Utilise un compteur de génération pour détecter si de nouveaux
+  /// relais sont arrivés pendant le vidage. Si c'est le cas, un
+  /// deuxième flush est programmé — on ne perd jamais un relais ajouté
+  /// entre le `clear()` et la fin des envois.
   void flushPendingRelays() {
     if (_pendingRelays.isEmpty) return;
+    final gen = _pendingRelayGeneration;
     final toForward = List<_PendingRelay>.from(_pendingRelays);
     _pendingRelays.clear();
     StorageService.clearPendingRelays();
@@ -1861,6 +2173,10 @@ class MeshRepository {
     for (final pending in toForward) {
       final hops = pending.payload.isNotEmpty ? pending.payload[0] : 0;
       if (hops > 1) _relayNow(pending.id, pending.payload, hops);
+    }
+    // Si de nouveaux relais ont été ajoutés pendant l'envoi, relancer.
+    if (_pendingRelayGeneration != gen && _pendingRelays.isNotEmpty) {
+      scheduleMicrotask(flushPendingRelays);
     }
   }
 

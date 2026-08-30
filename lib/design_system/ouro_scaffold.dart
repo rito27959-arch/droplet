@@ -45,6 +45,7 @@ class OuroLargeTitleScaffold extends StatefulWidget {
     this.actions,
     this.subtitle,
     this.floatingActionButton,
+    this.floatingNotification,
     this.backgroundColor,
     this.onRefresh,
   });
@@ -62,6 +63,7 @@ class OuroLargeTitleScaffold extends StatefulWidget {
   final Widget? leading;
   final List<Widget>? actions;
   final Widget? floatingActionButton;
+  final Widget? floatingNotification;
   final Color? backgroundColor;
 
   /// Tirer vers le bas pour rafraîchir — utilise l'indicateur iOS.
@@ -194,6 +196,14 @@ class _OuroLargeTitleScaffoldState extends State<OuroLargeTitleScaffold> {
               height: navBarHeight,
             ),
           ),
+          // Notification mesh flottante — si fournie.
+          if (widget.floatingNotification != null)
+            Positioned(
+              top: topPadding + navBarHeight + 8,
+              left: 16,
+              right: 16,
+              child: widget.floatingNotification!,
+            ),
         ],
       ),
     );

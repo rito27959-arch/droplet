@@ -63,7 +63,8 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen>
+    with SingleTickerProviderStateMixin {
   final _map = MapController();
 
   /// Le centre par défaut quand on n'a encore ni position ni contact :
@@ -81,6 +82,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// Vrai quand on refuse d'aller chercher les tuiles sur le réseau.
   bool _offlineOnly = false;
+
+  /// Faux = Voyager (couleur), vrai = satellite.
+  bool _satellite = false;
+
+  // ── ONDE DE PROPAGATION MESH ──────────────────────────────────────
+  //
+  // Quand un message passe par 3+ relais, on affiche une onde de
+  // propagation sur la carte — comme une onde sur l'eau.
+  AnimationController? _waveCtrl;
+  final List<_MeshWave> _waves = [];
 
   /// LE fournisseur de tuiles — un seul, gardé d'un bout à l'autre de la
   /// vie de l'écran.
@@ -103,6 +114,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _tiles = OfflineFirstTileProvider(allowNetwork: !_offlineOnly);
     _checkins = _withLocation(StorageService.getSafetyCheckins());
     _open();
+
+    // ── ANIMATEUR POUR LES ONDES MESH ─────────────────────────────
+    _waveCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..addListener(_tickWaves);
   }
 
   @override
@@ -110,12 +127,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _positionSub?.cancel();
     _checkinSub?.cancel();
     _tiles.dispose();
-    // Le contrôleur est FABRIQUÉ ici, donc c'est à cet écran de le
-    // refermer : `FlutterMap` ne dispose que les contrôleurs qu'il crée
-    // lui-même. Sans cela, chaque ouverture de la carte laissait derrière
-    // elle un flux d'événements toujours ouvert.
+    _waveCtrl?.removeListener(_tickWaves);
+    _waveCtrl?.dispose();
     _map.dispose();
     super.dispose();
+  }
+
+  /// Déclenche une onde de propagation à la position donnée.
+  ///
+  /// Appelé quand un message passe par 3+ relais — l'onde visualise
+  /// le chemin du message à travers le mesh.
+  void triggerWave(LatLng origin, {int hopCount = 3}) {
+    _waves.add(_MeshWave(
+      origin: origin,
+      hopCount: hopCount,
+      startTime: DateTime.now(),
+    ));
+    if (_waveCtrl?.isAnimating != true) {
+      _waveCtrl?.forward(from: 0);
+    }
+  }
+
+  void _tickWaves() {
+    // Nettoyer les ondes terminées (plus de 2 secondes)
+    final now = DateTime.now();
+    _waves.removeWhere((w) =>
+        now.difference(w.startTime).inMilliseconds > 2000);
+    if (_waves.isNotEmpty && mounted) setState(() {});
+    if (_waves.isEmpty) _waveCtrl?.stop();
   }
 
   /// Bascule en ligne / hors connexion.
@@ -127,7 +166,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final ancien = _tiles;
     setState(() {
       _offlineOnly = !_offlineOnly;
-      _tiles = OfflineFirstTileProvider(allowNetwork: !_offlineOnly);
+      _tiles = OfflineFirstTileProvider(allowNetwork: !_offlineOnly, satellite: _satellite);
+    });
+    ancien.dispose();
+  }
+
+  void _toggleSatellite() {
+    final ancien = _tiles;
+    setState(() {
+      _satellite = !_satellite;
+      _tiles = OfflineFirstTileProvider(allowNetwork: !_offlineOnly, satellite: _satellite);
     });
     ancien.dispose();
   }
@@ -292,6 +340,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return 'il y a ${diff.inDays} j';
   }
 
+  /// Le rayon d'un anneau d'onde en fonction du temps écoulé.
+  ///
+  /// L'onde s'étend de 0 à 500m en 2 secondes, avec un léger
+  /// ralentissement en fin de course (ease-out).
+  double _waveRadius(_MeshWave wave, int ring) {
+    final elapsed = DateTime.now().difference(wave.startTime).inMilliseconds;
+    final progress = (elapsed / 2000).clamp(0.0, 1.0);
+    final eased = 1 - (1 - progress) * (1 - progress); // ease-out
+    // Chaque anneau est espacé de 150m
+    return (eased * 500 + ring * 150).toDouble();
+  }
+
+  /// L'opacité d'un anneau d'onde — plus l'anneau est ancien, plus il
+  /// est transparent.
+  double _waveAlpha(_MeshWave wave, int ring) {
+    final elapsed = DateTime.now().difference(wave.startTime).inMilliseconds;
+    final progress = (elapsed / 2000).clamp(0.0, 1.0);
+    // Fade out progressif
+    final fade = (1.0 - progress).clamp(0.0, 1.0);
+    // Les anneaux extérieurs sont plus transparents
+    final ringFade = (1.0 - ring * 0.2).clamp(0.1, 1.0);
+    return fade * ringFade * 0.6;
+  }
+
   // ─────────────────────────────────────────────────────────────
   //  AFFICHAGE
   // ─────────────────────────────────────────────────────────────
@@ -356,7 +428,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           // décide d'où vient chaque tuile — mais `flutter_map` exige
           // qu'il soit renseigné.
           urlTemplate:
-              'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.droplet.droplet',
           maxNativeZoom: 18,
 
@@ -454,6 +526,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             TextSourceAttribution('© OpenStreetMap · © CARTO'),
           ],
         ),
+
+        // ── ONDES DE PROPAGATION MESH ──────────────────────────────
+        //
+        // Quand un message passe par 3+ relais, on affiche des ondes
+        // concentriques qui partent de l'émetteur — comme une onde sur
+        // l'eau. Chaque anneau représente un saut dans le mesh.
+        if (_waves.isNotEmpty)
+          CircleLayer(
+            circles: [
+              for (final wave in _waves)
+                for (var ring = 1; ring <= wave.hopCount; ring++)
+                  CircleMarker(
+                    point: wave.origin,
+                    radius: _waveRadius(wave, ring),
+                    useRadiusInMeter: true,
+                    color: Colors.transparent,
+                    borderColor: OuroColors.meshBlueBright.withValues(
+                      alpha: _waveAlpha(wave, ring),
+                    ),
+                    borderStrokeWidth: 2.0,
+                  ),
+            ],
+          ),
       ],
     );
   }
@@ -558,6 +653,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 );
           },
           label: _offlineOnly ? 'Hors connexion' : 'Calques',
+        ),
+        const SizedBox(height: 12),
+        _round(
+          _satellite ? Icons.map_rounded : Icons.satellite_alt_rounded,
+          () {
+            OuroHaptics.selection();
+            _toggleSatellite();
+            ref.read(toastProvider.notifier).show(
+                  _satellite ? 'Mode satellite' : 'Mode carte',
+                  type: DropletToastType.info,
+                );
+          },
+          label: _satellite ? 'Carte' : 'Satellite',
         ),
       ],
     );
@@ -945,4 +1053,26 @@ class _PeerPin extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── MODÈLE D'ONDE MESH ────────────────────────────────────────────
+//
+// Représente une onde de propagation sur la carte, déclenchée quand
+// un message passe par 3+ relais. L'onde visualise le chemin du
+// message à travers le mesh.
+class _MeshWave {
+  _MeshWave({
+    required this.origin,
+    required this.hopCount,
+    required this.startTime,
+  });
+
+  /// Position de l'émetteur du message.
+  final LatLng origin;
+
+  /// Nombre de relais traversés — détermine le nombre d'anneaux.
+  final int hopCount;
+
+  /// Quand l'onde a commencé — pour calculer le rayon et l'opacité.
+  final DateTime startTime;
 }

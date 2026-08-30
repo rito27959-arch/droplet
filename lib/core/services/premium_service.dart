@@ -83,7 +83,7 @@ class PremiumService {
   /// hors du dépôt (`~/.droplet-keys/licence.key`) et ne doit jamais y
   /// entrer — voir `tool/licence.dart`.
   static const String _clePubliqueLivree =
-      'Ua6tUtYLSFxEMbHHIrEXpRdBR8+AwzM11P+cN1u3QLo=';
+      'zl1PhCId/4HQAr8CSHF81eQF7fqVE5DMu+3XYAiQqAw=';
 
   /// Remplace la clé publique — RÉSERVÉ AUX TESTS.
   ///
@@ -148,6 +148,15 @@ class PremiumService {
     }
   }
 
+  /// Pattern pour extraire une licence du texte environnant.
+  ///
+  /// Quand quelqu'un colle la réponse WhatsApp, il ne colle pas la ligne
+  /// toute seule — il colle « Merci ! Voici votre licence… DROP1.x.y\n… ».
+  /// Sans extraction, `split('.')` produit plus de trois morceaux et la
+  /// licence est rejetée, même parfaitement valide.
+  static final _regexLicence =
+      RegExp(r'DROP1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+');
+
   /// Vérifie un code SANS l'enregistrer. Renvoie `null` s'il est invalide.
   ///
   /// Les trois raisons de rejet — format, appareil, signature — sont
@@ -156,7 +165,13 @@ class PremiumService {
   /// gratuitement quelqu'un qui cherche à contourner.
   static Future<NiveauPremium?> verifier(String code, String identite) async {
     try {
-      final propre = code.trim().replaceAll(RegExp(r'\s+'), '');
+      // On extrait la licence du texte collé. La plupart des gens ne
+      // collent PAS la ligne seule : ils collent la réponse WhatsApp
+      // entière, qui contient des tirets, des mots et des points.
+      final match = _regexLicence.firstMatch(code);
+      final propre = match != null
+          ? match.group(0)!
+          : code.trim().replaceAll(RegExp(r'\s+'), '');
       final parts = propre.split('.');
       if (parts.length != 3 || parts[0] != _prefixe) return null;
 
@@ -167,7 +182,12 @@ class PremiumService {
       // ⚠️ L'APPAREIL D'ABORD. Une licence signée pour quelqu'un d'autre
       // est parfaitement valable — elle ne vaut simplement pas ici.
       final attendu = codeAppareil(identite).replaceAll('-', '');
-      if (charge['d'] != attendu) return null;
+      final appareilLicence = charge['d'] as String?;
+      if (appareilLicence != attendu) {
+        debugPrint('[Premium] appareil non conforme: '
+            'attendu=$attendu, licence=$appareilLicence');
+        return null;
+      }
 
       final signature = Signature(
         base64Url.decode(base64.normalize(parts[2])),
@@ -180,7 +200,10 @@ class PremiumService {
         utf8.encode('$_prefixe.${parts[1]}'),
         signature: signature,
       );
-      if (!valide) return null;
+      if (!valide) {
+        debugPrint('[Premium] signature invalide');
+        return null;
+      }
 
       return switch (charge['k']) {
         'pack' => NiveauPremium.pack,

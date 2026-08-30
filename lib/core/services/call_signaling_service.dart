@@ -164,6 +164,7 @@ class CallSignalingService {
         'sdp': sdp,
         'participants': ?participants,
       }),
+      priority: 1, // high — signaling d'appel
     );
   }
 
@@ -174,6 +175,7 @@ class CallSignalingService {
     await _transport.sendToPeer(
       peerId,
       _buildMessage(kCallAnswer, {'sdp': sdp}),
+      priority: 1, // high
     );
   }
 
@@ -194,6 +196,7 @@ class CallSignalingService {
         'sdpMid': sdpMid,
         'sdpMLineIndex': sdpMLineIndex,
       }),
+      priority: 1, // high
     );
   }
 
@@ -205,6 +208,7 @@ class CallSignalingService {
       await _transport.sendToPeer(
         peerId,
         _buildMessage(kCallHangUp, {}),
+        priority: 1, // high
       );
     } catch (e) { debugPrint('[Signaling] $e'); }
   }

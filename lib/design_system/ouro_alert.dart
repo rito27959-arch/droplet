@@ -33,6 +33,7 @@ import 'package:flutter/material.dart' show showDialog;
 
 import 'ouro_colors.dart';
 import 'ouro_haptics.dart';
+import 'liquid_bridge_native.dart';
 
 /// Une question fermée, posée à la manière d'iOS.
 ///
@@ -41,6 +42,9 @@ import 'ouro_haptics.dart';
 ///
 /// [destructive] passe l'action en rouge : c'est la convention pour tout
 /// ce qui efface, quitte ou révoque.
+///
+/// Sur iOS 26+ : utilise UIAlertController natif avec Liquid Glass.
+/// Sur les autres : CupertinoAlertDialog classique.
 Future<bool?> ouroConfirm(
   BuildContext context, {
   required String title,
@@ -50,6 +54,29 @@ Future<bool?> ouroConfirm(
   bool destructive = false,
 }) {
   OuroHaptics.light();
+
+  if (isNativeGlassAvailable) {
+    return showNativeGlassAlert<bool>(
+      context,
+      title: title,
+      message: message,
+      actions: [
+        NativeGlassAlertAction(
+          id: 'cancel',
+          label: cancelLabel,
+          value: false,
+          isCancel: true,
+        ),
+        NativeGlassAlertAction(
+          id: 'confirm',
+          label: confirmLabel,
+          value: true,
+          destructive: destructive,
+        ),
+      ],
+    );
+  }
+
   return showDialog<bool>(
     context: context,
     builder: (context) => _themed(
@@ -58,8 +85,6 @@ Future<bool?> ouroConfirm(
         content: message == null ? null : Text(message),
         actions: [
           CupertinoDialogAction(
-            // Le bouton d'annulation est en gras : sur iOS, c'est le
-            // choix par défaut, celui qu'on atteint sans réfléchir.
             isDefaultAction: true,
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(cancelLabel),
@@ -90,6 +115,29 @@ Future<T?> ouroChoice<T>(
   String cancelLabel = 'Annuler',
 }) {
   OuroHaptics.light();
+
+  if (isNativeGlassAvailable) {
+    return showNativeGlassAlert<T>(
+      context,
+      title: title,
+      message: message,
+      actions: [
+        for (final option in options)
+          NativeGlassAlertAction(
+            id: option.label,
+            label: option.label,
+            value: option.value,
+            destructive: option.destructive,
+          ),
+        NativeGlassAlertAction(
+          id: 'cancel',
+          label: cancelLabel,
+          isCancel: true,
+        ),
+      ],
+    );
+  }
+
   return showDialog<T>(
     context: context,
     builder: (context) => _themed(
@@ -133,6 +181,13 @@ Future<String?> ouroPrompt(
 }) {
   final controller = TextEditingController(text: initialValue);
   OuroHaptics.light();
+
+  if (isNativeGlassAvailable) {
+    // Sur iOS 26+, on utilise un UITextField natif dans un alert controller
+    // Pour l'instant, fallback sur CupertinoAlertDialog pour le prompt
+    // car LiquidGlassAlert ne supporte pas les champs de saisie
+  }
+
   return showDialog<String>(
     context: context,
     builder: (context) => _themed(

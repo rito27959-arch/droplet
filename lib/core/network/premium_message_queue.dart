@@ -20,6 +20,8 @@ class PremiumMessageQueue {
     this.onSend,
     this.onDelivered,
     this.onFailed,
+    this.getCongestionWindow,
+    this.debugLog,
   });
 
   final int maxRetries;
@@ -28,6 +30,15 @@ class PremiumMessageQueue {
   final void Function(String messageId)? onDelivered;
   final void Function(String messageId, String reason)? onFailed;
 
+  /// Renvoie la fenêtre de congestion AIMD courante pour un peer donné.
+  /// Si null, pas de contrôle de congestion (comportement précédent).
+  final int Function(String peerId)? getCongestionWindow;
+
+  /// Journal de diagnostic optionnel — la classe reste indépendante de
+  /// Flutter (pas d'import `foundation.dart`), l'appelant branche donc
+  /// `debugPrint` ou son propre système de log s'il en a besoin.
+  final void Function(String message)? debugLog;
+
   // === QUEUE ===
   final SplayTreeSet<_QueueEntry> _pending = SplayTreeSet<_QueueEntry>();
   final Map<String, _QueueEntry> _pendingMap = {};
@@ -35,6 +46,11 @@ class PremiumMessageQueue {
   final Set<String> _retryPending = {};
   final Set<String> _finished = {};
   final Map<String, _DeliveryRecord> _deliveryRecords = {};
+
+  // === CONGESTION ===
+  /// Nombre de messages en vol (non acquittés) par pair — pour le contrôle
+  /// de congestion AIMD.
+  final Map<String, int> _inflightPerPeer = {};
 
   // === TIMERS ===
   final Map<String, Timer> _retryTimers = {};
@@ -108,11 +124,22 @@ class PremiumMessageQueue {
     if (_processing.length >= 5) return; // max 5 en parallèle
 
     for (final entry in _pending) {
-      // Un message en attente de retry (backoff en cours) ne doit JAMAIS
-      // être re-dispatché immédiatement — sinon les retries tournent en
-      // boucle serrée au lieu d'attendre le backoff exponentiel.
       if (!_processing.contains(entry.messageId) &&
           !_retryPending.contains(entry.messageId)) {
+
+        // Contrôle de congestion AIMD : les messages normaux/low/background
+        // respectent la fenêtre ; les critical/high passent toujours.
+        final window = getCongestionWindow?.call(entry.targetId);
+        if (window != null && entry.priority.value >= MessagePriority.normal.value) {
+          final inFlight = _inflightPerPeer[entry.targetId] ?? 0;
+          if (inFlight >= window) {
+            debugLog?.call('[Queue] congestion: ${entry.targetId} '
+                'inflight=$inFlight window=$window — '
+                '${entry.priority.name} "${entry.messageId}" en attente');
+            continue; // sauter ce message, essayer le suivant
+          }
+        }
+
         _processEntry(entry);
         break;
       }
@@ -125,6 +152,7 @@ class PremiumMessageQueue {
     entry.lastAttemptAt = DateTime.now();
     entry.attempt++;
     totalSent++;
+    _inflightPerPeer[entry.targetId] = (_inflightPerPeer[entry.targetId] ?? 0) + 1;
 
     final record = _deliveryRecords[entry.messageId];
     if (record != null) {
@@ -132,14 +160,38 @@ class PremiumMessageQueue {
     }
 
     try {
-      final success = await onSend?.call(SendTask(
-            messageId: entry.messageId,
-            targetId: entry.targetId,
-            payload: entry.payload,
-            priority: entry.priority,
-            context: entry.context,
-          )) ??
-          false;
+      // ⚠️ CORRECTIF — le timeout déclaré (`entry.timeout`, hérité de
+      // `defaultTimeout`) était stocké mais jamais lu nulle part dans
+      // cette classe : un `onSend` qui ne se termine jamais (écriture
+      // GATT Bluetooth qui ne rend jamais la main, cas documenté dans
+      // `ble_mesh_transport.dart`) laissait `entry.messageId` dans
+      // `_processing` indéfiniment — un des cinq emplacements
+      // concurrents disponibles restait bloqué pour toujours, avec
+      // aucune retentative, aucun échec remonté. Seul un `.timeout()`
+      // posé PAR L'APPELANT (`MeshRepository._enqueueReliable`)
+      // rattrapait le cas — mais seulement pour les appels qui passent
+      // par ce chemin précis, et seulement l'issue *logique* : le
+      // `Future` sous-jacent, lui, continue de tourner dans le vide.
+      // Le timeout est désormais appliqué ICI, dans la file elle-même,
+      // pour que la garantie ne dépende plus de la discipline de
+      // chaque appelant.
+      final success = await (onSend?.call(SendTask(
+                messageId: entry.messageId,
+                targetId: entry.targetId,
+                payload: entry.payload,
+                priority: entry.priority,
+                context: entry.context,
+              )) ??
+              Future.value(false))
+          .timeout(
+        entry.timeout,
+        onTimeout: () {
+          debugLog?.call(
+              '[Queue] envoi de ${entry.messageId} suspendu au-delà de '
+              '${entry.timeout.inSeconds}s — abandon de cette tentative');
+          return false;
+        },
+      );
 
       if (success) {
         _onDelivered(entry);
@@ -152,12 +204,13 @@ class PremiumMessageQueue {
   }
 
   void _onDelivered(_QueueEntry entry) {
-    if (!_finished.add(entry.messageId)) return; // déjà terminé (ack pendant l'envoi)
+    if (!_finished.add(entry.messageId)) return;
     _processing.remove(entry.messageId);
     _retryPending.remove(entry.messageId);
     _pending.remove(entry);
     _pendingMap.remove(entry.messageId);
     _retryTimers.remove(entry.messageId)?.cancel();
+    _inflightPerPeer[entry.targetId] = max(0, (_inflightPerPeer[entry.targetId] ?? 1) - 1);
 
     _totalDelivered++;
     final latency = DateTime.now().difference(entry.enqueuedAt).inMilliseconds.toDouble();
@@ -176,6 +229,7 @@ class PremiumMessageQueue {
 
   void _onAttemptFailed(_QueueEntry entry, String reason) {
     _processing.remove(entry.messageId);
+    _inflightPerPeer[entry.targetId] = max(0, (_inflightPerPeer[entry.targetId] ?? 1) - 1);
     if (_finished.contains(entry.messageId)) return; // annulé pendant l'envoi
 
     final record = _deliveryRecords[entry.messageId];
@@ -314,9 +368,37 @@ class _QueueEntry implements Comparable<_QueueEntry> {
 
   @override
   int compareTo(_QueueEntry other) {
+    // ⚠️ CORRECTIF — collision silencieuse dans `_pending`.
+    //
+    // `_pending` est un `SplayTreeSet`, dont l'appartenance ET l'ordre
+    // reposent UNIQUEMENT sur `compareTo`. Tant que ce comparateur ne
+    // portait que sur `(priority, enqueuedAt)`, deux messages DIFFÉRENTS
+    // — deux `messageId` distincts — envoyés à la même priorité et
+    // horodatés à la même microseconde (chose banale : `enqueue()` est
+    // souvent appelé en boucle serrée, ex. l'envoi de 100 messages,
+    // Test 5) comparaient égal à zéro. Or pour un `SplayTreeSet`, deux
+    // éléments qui comparent égal sont LE MÊME ÉLÉMENT : `_pending.add()`
+    // sur le second message ne l'ajoutait tout simplement pas.
+    //
+    // Le message restait pourtant dans `_pendingMap` (clé = messageId,
+    // non affecté par ce bug), donnant l'illusion qu'il était bien en
+    // file — `enqueue()` ne renvoie rien et ne lève rien. Mais
+    // `_trySendNext()` ne parcourt QUE `_pending` pour choisir le
+    // prochain message à envoyer : ce message-là n'y était jamais.
+    // Résultat, silencieux et sans exception : un message sur N envoyés
+    // en rafale ne partait jamais, ne réessayait jamais, et ne remontait
+    // jamais en échec. C'est un des deux mécanismes derrière « messages
+    // qui restent bloqués / jamais envoyés ».
+    //
+    // Le messageId, dernier critère, brise toute égalité : deux entrées
+    // ne peuvent plus jamais comparer à zéro sauf à être RÉELLEMENT le
+    // même message (déjà exclu en amont par le test `_pendingMap.
+    // containsKey` dans `enqueue()`).
     final cmp = priority.value.compareTo(other.priority.value);
     if (cmp != 0) return cmp;
-    return enqueuedAt.compareTo(other.enqueuedAt);
+    final cmpTime = enqueuedAt.compareTo(other.enqueuedAt);
+    if (cmpTime != 0) return cmpTime;
+    return messageId.compareTo(other.messageId);
   }
 }
 

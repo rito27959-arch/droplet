@@ -20,6 +20,7 @@ import '../../core/services/mesh_transport_service.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
+import '../../design_system/glassmorphism.dart';
 import '../../shared/widgets/mesh_visualizer.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -46,20 +47,48 @@ class MeshNetworkScreen extends ConsumerWidget {
         title: Text('Réseau mesh',
             style: TextStyle(color: OuroColors.textPrimary, fontWeight: FontWeight.w700)),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(DesignTokens.screenMargin, 8, DesignTokens.screenMargin, DesignTokens.space8),
-        children: [
-          MeshVisualizer(peerCount: peers.length, height: 280),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              peers.isEmpty
-                  ? 'Recherche de pairs à portée…'
-                  : '${peers.length} pair${peers.length > 1 ? 's' : ''} connecté${peers.length > 1 ? 's' : ''}',
-              style: TextStyle(color: OuroColors.textTertiary, fontSize: 13),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+        },
+        color: OuroColors.meshBlueBright,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(DesignTokens.screenMargin, 8, DesignTokens.screenMargin, DesignTokens.space8),
+          children: [
+            // Résumé de santé du réseau
+            if (peers.isNotEmpty) ...[
+              OuroCard(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                margin: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _HealthStat(label: 'Pairs', value: '${peers.length}', icon: Icons.devices_rounded),
+                    _HealthStat(
+                      label: 'Moy. sauts',
+                      value: peers.isEmpty ? '—' : (peers.map((p) => p.hopCount).reduce((a, b) => a + b) / peers.length).toStringAsFixed(1),
+                      icon: Icons.route_rounded,
+                    ),
+                    _HealthStat(
+                      label: 'Signal',
+                      value: peers.any((p) => p.hopCount <= 1) ? 'Fort' : 'Moyen',
+                      icon: Icons.signal_cellular_alt_rounded,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            MeshVisualizer(peerCount: peers.length, height: 280),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                peers.isEmpty
+                    ? 'Recherche de pairs à portée…'
+                    : '${peers.length} pair${peers.length > 1 ? 's' : ''} connecté${peers.length > 1 ? 's' : ''}',
+                style: TextStyle(color: OuroColors.textTertiary, fontSize: 13),
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 24),
           if (peers.isEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 24),
@@ -81,6 +110,7 @@ class MeshNetworkScreen extends ConsumerWidget {
           ],
         ],
       ),
+    ),
     );
   }
 }
@@ -102,42 +132,177 @@ class _PeerRow extends StatelessWidget {
     return labels.isEmpty ? '—' : labels.join(' · ');
   }
 
+  /// Force du signal basée sur le nombre de sauts.
+  int get _signalBars {
+    if (peer.hopCount <= 1) return 3;
+    if (peer.hopCount <= 2) return 2;
+    return 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OuroCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+        onTap: () => _showPeerDetails(context),
+        child: Row(
+          children: [
+            PeerAvatar(pseudo: peer.pseudo, radius: 20, online: true),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(peer.pseudo, style: TextStyle(color: OuroColors.textPrimary, fontWeight: FontWeight.w700)),
+                      if (peer.isGateway) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.podcasts_rounded, size: 14, color: OuroColors.meshBlueBright),
+                      ],
+                    ],
+                  ),
+                  Text(
+                    '${_transportsLabel()} · ${peer.hopCount} saut${peer.hopCount > 1 ? 's' : ''}',
+                    style: TextStyle(color: OuroColors.textTertiary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            // Indicateur de force du signal
+            ...List.generate(3, (i) {
+              final active = i < _signalBars;
+              return Container(
+                width: 3,
+                height: 6 + i * 3,
+                margin: const EdgeInsets.symmetric(horizontal: 1),
+                decoration: BoxDecoration(
+                  color: active ? OuroColors.successGreen : OuroColors.glassBorder,
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPeerDetails(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PeerDetailsSheet(peer: peer),
+    );
+  }
+}
+
+class _PeerDetailsSheet extends StatelessWidget {
+  const _PeerDetailsSheet({required this.peer});
+  final ConnectedPeer peer;
+
+  String _transportsLabel() {
+    final labels = <String>[];
+    if (peer.transports.contains(TransportKind.ble)) labels.add('Bluetooth');
+    if (peer.transports.contains(TransportKind.localWifi)) labels.add('Wi-Fi Local');
+    if (peer.transports.contains(TransportKind.nativeP2P)) labels.add('P2P Natif');
+    return labels.isEmpty ? '—' : labels.join(', ');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: OuroColors.glassBg,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
-        border: Border.all(color: OuroColors.glassBorder),
+        borderRadius: BorderRadius.circular(DesignTokens.radiusXl),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PeerAvatar(pseudo: peer.pseudo, radius: 20, online: true),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(peer.pseudo, style: TextStyle(color: OuroColors.textPrimary, fontWeight: FontWeight.w700)),
-                    if (peer.isGateway) ...[
-                      const SizedBox(width: 6),
-                      Icon(Icons.podcasts_rounded, size: 14, color: OuroColors.meshBlueBright),
-                    ],
-                  ],
-                ),
-                Text(
-                  '${_transportsLabel()} · ${peer.hopCount} saut${peer.hopCount > 1 ? 's' : ''}',
-                  style: TextStyle(color: OuroColors.textTertiary, fontSize: 12),
-                ),
-              ],
+          Center(
+            child: Container(
+              width: 36, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: OuroColors.glassBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
+          Row(
+            children: [
+              PeerAvatar(pseudo: peer.pseudo, radius: 28, online: true),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(peer.pseudo, style: TextStyle(color: OuroColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w700)),
+                    if (peer.isGateway)
+                      Text('Passerelle active', style: TextStyle(color: OuroColors.meshBlueBright, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _DetailRow(icon: Icons.route_rounded, label: 'Chemin', value: '${peer.hopCount} saut${peer.hopCount > 1 ? 's' : ''}'),
+          _DetailRow(icon: Icons.wifi_tethering_rounded, label: 'Transport', value: _transportsLabel()),
+          _DetailRow(icon: Icons.battery_std_rounded, label: 'Batterie', value: '${(peer.batteryLevel * 100).round()}%'),
+          _DetailRow(icon: Icons.speed_rounded, label: 'Score', value: '${peer.connectionScore}'),
+          if (peer.reconnecting)
+            _DetailRow(icon: Icons.sync_rounded, label: 'État', value: 'Reconnexion'),
+          const SizedBox(height: 12),
         ],
       ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: OuroColors.textTertiary),
+          const SizedBox(width: 10),
+          Text(label, style: TextStyle(color: OuroColors.textSecondary, fontSize: 13)),
+          const Spacer(),
+          Text(value, style: TextStyle(color: OuroColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _HealthStat extends StatelessWidget {
+  const _HealthStat({required this.label, required this.value, required this.icon});
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: OuroColors.meshBlueBright),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(color: OuroColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+        Text(label, style: TextStyle(color: OuroColors.textTertiary, fontSize: 11)),
+      ],
     );
   }
 }

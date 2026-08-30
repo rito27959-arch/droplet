@@ -40,6 +40,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:nearby_service/nearby_service.dart';
 import 'ble_mesh_protocol.dart';
+import 'mesh_transport.dart';
 
 /// Stratégie de topologie Nearby Connections — comment se comporter face à
 /// plusieurs appareils repérés en même temps.
@@ -80,9 +81,46 @@ enum NearbyStrategy {
 /// [_peerIdToNearbyId]). Aucun événement `MeshPeerEvent` n'est émis avant
 /// ce second état — le reste de l'app ne doit jamais voir un pair sous son
 /// identifiant technique brut.
-class NativeP2PTransport {
+class NativeP2PTransport implements MeshTransport {
   bool _isRunning = false;
+@override
   bool get isRunning => _isRunning;
+
+  /// Vrai pendant toute la durée du démarrage.
+  ///
+  /// Sans ce drapeau distinct de `_isRunning`, une reprise déclenchée
+  /// pendant qu'un démarrage est encore en cours ressortait
+  /// immédiatement sur le test `if (_isRunning) return;` — donc sans
+  /// erreur, donc considérée comme une réussite par l'appelant, alors
+  /// que rien n'avait abouti.
+  bool _starting = false;
+
+  // ── Contrat MeshTransport ────────────────────────────────────────
+
+  @override
+  String get name => 'p2p';
+
+  @override
+  TransportState get state {
+    if (!_isRunning) return TransportState.stopped;
+    return _connectedPeers.isEmpty
+        ? TransportState.searching
+        : TransportState.active;
+  }
+
+  @override
+  final TransportMetrics metrics = TransportMetrics();
+
+  @override
+  TransportCapabilities get capabilities => const TransportCapabilities(
+        maxPayloadBytes: 50 * 1024 * 1024,
+        maxContentType: 0xFF,
+        portePhotosEtFichiers: true,
+        porteVoixEnDirect: true,
+        // Plus gourmand que le Wi-Fi d'infrastructure : il monte son
+        // propre groupe et maintient la radio active en permanence.
+        coutEnergetique: 0.55,
+      );
   String _myId = '';
   String _myPseudo = '';
 
@@ -92,7 +130,9 @@ class NativeP2PTransport {
   final _peerEventsCtrl = StreamController<MeshPeerEvent>.broadcast();
   final _incomingDataCtrl = StreamController<MeshIncomingData>.broadcast();
 
+  @override
   Stream<MeshPeerEvent> get peerEvents => _peerEventsCtrl.stream;
+  @override
   Stream<MeshIncomingData> get incomingData => _incomingDataCtrl.stream;
 
   NearbyService? _service;
@@ -166,8 +206,18 @@ class NativeP2PTransport {
   /// Allume ce transport : demande les autorisations nécessaires, prépare
   /// le service natif du téléphone, puis lance la recherche des appareils
   /// autour de soi.
+  @override
   Future<void> start(String myId, String myPseudo) async {
-    if (_isRunning) return;
+    if (_isRunning || _starting) {
+      // Un démarrage est déjà en cours : on le signale comme un échec
+      // plutôt que comme une réussite, pour que l'appelant reprogramme
+      // une tentative au lieu de croire le transport prêt.
+      if (_starting) {
+        throw StateError('démarrage Wi-Fi Direct déjà en cours');
+      }
+      return;
+    }
+    _starting = true;
     _isRunning = true;
     _myId = myId;
     _myPseudo = myPseudo;
@@ -179,14 +229,45 @@ class NativeP2PTransport {
       debugPrint('[NativeP2P] service instance created');
 
       if (Platform.isAndroid) {
+        // ⚠️ CET APPEL RESTE SUSPENDU INDÉFINIMENT SUR CERTAINS
+        // APPAREILS, et c'est ce qui empêchait le Wi-Fi Direct de
+        // démarrer — sans jamais lever d'erreur.
+        //
+        // Le mécanisme de la panne mérite d'être compris, parce qu'il
+        // est vicieux :
+        //
+        //   1. `requestPermissions()` de nearby_service ne rend jamais
+        //      la main (constaté sur le Pixel de test).
+        //   2. L'appelant abandonne au bout de huit secondes — mais son
+        //      `.timeout()` n'INTERROMPT PAS ce qui tourne ici : il ne
+        //      fait qu'arrêter d'attendre. Ce `start()` reste donc
+        //      suspendu, et `_isRunning` reste à `true`.
+        //   3. La reprise programmée rappelle `start()` quatre secondes
+        //      plus tard. La toute première ligne, `if (_isRunning)
+        //      return;`, la fait sortir immédiatement — SANS ERREUR.
+        //   4. L'appelant en conclut que le transport a démarré.
+        //
+        // Résultat : le Wi-Fi Direct est annoncé comme actif alors que
+        // rien ne tourne, et plus aucune tentative ne peut aboutir.
+        //
+        // Les permissions dont ce transport a besoin sont de toute façon
+        // demandées en amont et indépendamment par
+        // `MeshTransportService._requestCorePermissions()` — ajouté
+        // précisément parce que cet appel-ci ne les demandait jamais
+        // vraiment. On lui laisse donc trois secondes par acquit de
+        // conscience, puis on poursuit sans lui.
         debugPrint('[NativeP2P] requesting permissions...');
-        final ok = await _service!.android?.requestPermissions() ?? true;
-        debugPrint('[NativeP2P] permissions result: $ok');
-        if (!ok) {
-          debugPrint('[NativeP2P] permissions denied');
-          _isRunning = false;
-          return;
+        var ok = true;
+        try {
+          ok = await _service!.android
+                  ?.requestPermissions()
+                  .timeout(const Duration(seconds: 3)) ??
+              true;
+        } on TimeoutException {
+          debugPrint('[NativeP2P] requestPermissions() suspendu — on '
+              'poursuit avec les permissions demandées en amont');
         }
+        debugPrint('[NativeP2P] permissions result: $ok');
       }
 
       debugPrint('[NativeP2P] initializing...');
@@ -246,9 +327,12 @@ class NativeP2PTransport {
     } catch (e, s) {
       debugPrint('[NativeP2P] start() error: $e\n$s');
       _isRunning = false;
+    } finally {
+      _starting = false;
     }
   }
 
+  @override
   Future<void> stop() async {
     _isRunning = false;
     _peersSub?.cancel();
@@ -552,7 +636,9 @@ class NativeP2PTransport {
   /// Le cas « identifiant Nearby inconnu » est fréquent : un pair peut
   /// être connu du mesh par un autre transport sans avoir jamais achevé
   /// sa poignée de main Nearby. Le taire revenait à jeter le message.
-  Future<bool> sendToPeer(String peerId, Uint8List data) async {
+  @override
+  Future<bool> sendToPeer(String peerId, Uint8List data,
+      {int type = 0x00, int priority = 2}) async {
     final nearbyId = _peerIdToNearbyId[peerId];
     if (nearbyId == null) {
       debugPrint('[NativeP2P] $peerId sans identifiant Nearby connu');
@@ -567,6 +653,7 @@ class NativeP2PTransport {
     }
   }
 
+  @override
   void dispose() {
     _peersSub?.cancel();
     _peerEventsCtrl.close();

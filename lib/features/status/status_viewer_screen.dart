@@ -58,6 +58,7 @@ import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/story_progress_bar.dart';
 import '../chat/voice_note.dart';
 import '../../shared/widgets/scene_animee.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 class StatusViewerScreen extends ConsumerStatefulWidget {
   const StatusViewerScreen({super.key, required this.authorId});
@@ -471,11 +472,13 @@ class _StatusViewerScreenState extends ConsumerState<StatusViewerScreen>
       // classique, il suit donc le mode clair/sombre comme le reste.
       return Scaffold(
         backgroundColor: OuroColors.systemBackground,
-        body: EmptyState(
-          emoji: Scenes.aucunStatut,
-          icon: Icons.timer_off_rounded,
-          title: 'Ce statut a expiré',
-          action: TextButton(onPressed: _close, child: const Text('Fermer')),
+        body: IosMagnifierOverlay(
+          child: EmptyState(
+            emoji: Scenes.aucunStatut,
+            icon: Icons.timer_off_rounded,
+            title: 'Ce statut a expiré',
+            action: TextButton(onPressed: _close, child: const Text('Fermer')),
+          ),
         ),
       );
     }
@@ -494,7 +497,8 @@ class _StatusViewerScreenState extends ConsumerState<StatusViewerScreen>
           backgroundColor: media.backgroundColor != null
               ? Color(media.backgroundColor!)
               : OuroColors.callBackground,
-          body: Stack(
+          body: IosMagnifierOverlay(
+            child: Stack(
             fit: StackFit.expand,
             children: [
               _canvas(status, media),
@@ -548,6 +552,7 @@ class _StatusViewerScreenState extends ConsumerState<StatusViewerScreen>
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -732,12 +737,15 @@ class _StatusViewerScreenState extends ConsumerState<StatusViewerScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AnimatedBuilder(
-            animation: _progress,
-            builder: (context, _) => StoryProgressBar(
-              count: _statuses.length,
-              currentIndex: _index,
-              progress: _progress.value,
+          Semantics(
+            label: 'Progression du statut',
+            child: AnimatedBuilder(
+              animation: _progress,
+              builder: (context, _) => StoryProgressBar(
+                count: _statuses.length,
+                currentIndex: _index,
+                progress: _progress.value,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -764,9 +772,13 @@ class _StatusViewerScreenState extends ConsumerState<StatusViewerScreen>
                   child: Icon(Icons.pause_rounded,
                       color: Colors.white54, size: 20),
                 ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white),
-                onPressed: _close,
+              Semantics(
+                button: true,
+                label: 'Fermer',
+                child: IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  onPressed: _close,
+                ),
               ),
             ],
           ),
@@ -923,6 +935,7 @@ class _ReplyBarState extends State<_ReplyBar> {
               maxLines: 3,
               cursorColor: Colors.white,
               style: const TextStyle(color: Colors.white, fontSize: 15),
+              magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
               onSubmitted: (_) => _send(),
               decoration: InputDecoration(
                 isDense: true,
@@ -952,19 +965,27 @@ class _ReplyBarState extends State<_ReplyBar> {
           // si oui, aimer si non. C'est le même emplacement, donc le même
           // geste, et jamais deux boutons qui se disputent la place.
           if (_hasText)
-            _RoundAction(
-              icon: Icons.arrow_upward_rounded,
-              background: OuroColors.accent,
-              onTap: _send,
+            Semantics(
+              button: true,
+              label: 'Envoyer la réponse',
+              child: _RoundAction(
+                icon: Icons.arrow_upward_rounded,
+                background: OuroColors.accent,
+                onTap: _send,
+              ),
             )
           else
-            _RoundAction(
-              icon: widget.liked
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              background: Colors.black.withValues(alpha: 0.38),
-              foreground: widget.liked ? OuroColors.systemRed : Colors.white,
-              onTap: widget.onLike,
+            Semantics(
+              button: true,
+              label: widget.liked ? 'Retirer le j\'aime' : 'Aimer le statut',
+              child: _RoundAction(
+                icon: widget.liked
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                background: Colors.black.withValues(alpha: 0.38),
+                foreground: widget.liked ? OuroColors.systemRed : Colors.white,
+                onTap: widget.onLike,
+              ),
             ),
         ],
       ),

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Ce que le sélecteur de widgets d'Android affiche sous l'aperçu.
+      C'est la seule phrase que quelqu'un lit avant de décider de poser
+      le widget : elle dit ce qu'il montre, pas ce qu'est l'application.
+    -->
+    <string name="widget_description">Messages en attente et personnes à portée, sans ouvrir l\'application.</string>
+</resources>

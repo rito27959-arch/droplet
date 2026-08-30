@@ -335,6 +335,60 @@ class FakePeer:
         self.send(0, K_CALL_HANGUP, {})
         print("[→] Raccrochage envoyé")
 
+    def test_status(self, content="Statut du faux pair"):
+        """Envoie un statut (même format que sendStatus dans mesh_repository.dart)."""
+        status_id = f"status-{uuid.uuid4().hex[:10]}"
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        payload = {
+            "id": status_id,
+            "content": content,
+            "createdAt": now,
+            "expiresAt": "2099-01-01T00:00:00",
+        }
+        self.send(DEFAULT_HOP_COUNT, K_TEXT, {
+            "c": json.dumps(payload),
+            "s": FAKE_ID,
+            "k": "status",
+        })
+        print(f"[→] Statut diffusé : «{content}» id={status_id[:16]}…")
+
+    def test_safety_checkin(self, lat=None, lon=None):
+        """Envoie un check-in de sécurité (même format que sendSafetyCheckin)."""
+        now = time.strftime("%Y-%m-%dT%H:%M:%S")
+        payload = {
+            "status": "safe",
+            "ts": now,
+        }
+        if lat is not None:
+            payload["lat"] = round(lat, 2)
+        if lon is not None:
+            payload["lon"] = round(lon, 2)
+        self.send(DEFAULT_HOP_COUNT, K_TEXT, {
+            "c": json.dumps(payload),
+            "s": FAKE_ID,
+            "k": "safety_checkin",
+        })
+        print(f"[→] Check-in sécurité diffusé (lat={lat}, lon={lon})")
+
+    def test_position(self, lat=48.8566, lon=2.3522):
+        """Envoie une position géolocalisation."""
+        self.send(DEFAULT_HOP_COUNT, K_TEXT, {
+            "c": json.dumps({"lat": lat, "lon": lon, "ts": time.strftime("%Y-%m-%dT%H:%M:%S")}),
+            "s": FAKE_ID,
+            "k": "location",
+        })
+        print(f"[→] Position envoyée : {lat}, {lon}")
+
+    def test_image_file(self, name="photo-test.jpg", size_kb=50):
+        """Envoie un fichier image simulé via kFileTransferType."""
+        content = bytes(range(256)) * (size_kb * 1024 // 256)
+        self.test_file_transfer(name=name, mime="image/jpeg", content=content)
+
+    def test_video_file(self, name="video-test.mp4", size_kb=200):
+        """Envoie un fichier vidéo simulé via kFileTransferType."""
+        content = bytes(range(256)) * (size_kb * 1024 // 256)
+        self.test_file_transfer(name=name, mime="video/mp4", content=content)
+
     # -- Boucle --------------------------------------------------------------
 
     def run(self, duration):
@@ -368,7 +422,7 @@ def run_tests(peer: FakePeer):
             else:
                 time.sleep(0.05)
 
-    drain(1.5)  # laisser l'app émettre son hello + le drainer tout de suite
+    drain(1.5)
     peer.send_hello()
     drain(1.0)
     peer.test_broadcast_text()
@@ -378,10 +432,21 @@ def run_tests(peer: FakePeer):
     else:
         print("[!] Pas d'id/clé app — E2EE sauté")
     drain(2.0)
+    peer.test_status()
+    drain(2.0)
+    peer.test_safety_checkin(48.8566, 2.3522)
+    drain(2.0)
+    peer.test_position(48.8566, 2.3522)
+    drain(2.0)
     peer.test_file_transfer()
     drain(2.0)
+    peer.test_image_file()
+    drain(2.0)
+    peer.test_video_file()
+    drain(2.0)
     peer.test_call()
-    print("\n[*] Tests envoyés. Écoute des réponses de l'app 12 s…")
+    print("\n[*] Tests envoyés (texte, E2EE, statut, sécurité, position, fichier, image, vidéo, appel).")
+    print("    Écoute des réponses 12 s…")
     peer.run(12)
 
 
@@ -390,7 +455,12 @@ def interactive(peer: FakePeer):
     print("  hello              envoie l'échange de clés")
     print("  text <msg>         message diffusé (clair)")
     print("  enc <msg>          message chiffré E2EE vers l'app")
-    print("  file [name] [mime] transfert de fichier")
+    print("  status <msg>       statut diffusé")
+    print("  safety [lat] [lon]  check-in sécurité")
+    print("  position [lat] [lon] position géolocalisation")
+    print("  file               transfert de fichier texte")
+    print("  image [size_kb]    fichier image simulé")
+    print("  video [size_kb]    fichier vidéo simulé")
     print("  call               offre d'appel + raccrochage")
     print("  quit               quitter")
     while True:
@@ -409,8 +479,26 @@ def interactive(peer: FakePeer):
             peer.test_broadcast_text(arg or "Coucou depuis le faux pair !")
         elif cmd == "enc":
             peer.test_encrypted_text(arg or "Message E2EE de test !")
+        elif cmd == "status":
+            peer.test_status(arg or "Statut du faux pair")
+        elif cmd == "safety":
+            parts2 = arg.split()
+            lat = float(parts2[0]) if len(parts2) > 0 else 48.8566
+            lon = float(parts2[1]) if len(parts2) > 1 else 2.3522
+            peer.test_safety_checkin(lat, lon)
+        elif cmd == "position":
+            parts2 = arg.split()
+            lat = float(parts2[0]) if len(parts2) > 0 else 48.8566
+            lon = float(parts2[1]) if len(parts2) > 1 else 2.3522
+            peer.test_position(lat, lon)
         elif cmd == "file":
             peer.test_file_transfer()
+        elif cmd == "image":
+            size = int(arg) if arg else 50
+            peer.test_image_file(size_kb=size)
+        elif cmd == "video":
+            size = int(arg) if arg else 200
+            peer.test_video_file(size_kb=size)
         elif cmd == "call":
             peer.test_call()
         elif cmd == "quit":

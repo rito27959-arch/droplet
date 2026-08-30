@@ -1,15 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:raw_magnifier_plus/raw_magnifier_plus.dart';
 
 import 'native_magnifier_channel.dart';
 
-/// Overlay de loupe iOS-style.
-///
-/// - **iOS** : utilise l'API native `UITextLoupeSession` via platform channel
-///   pour la vraie loupe système d'Apple (10/10 fidélité).
-/// - **Autres plateformes** : utilise `raw_magnifier_plus` (RawMagnifier natif)
-///   avec forme `RoundedRectangleBorder`.
 class IosMagnifierOverlay extends StatefulWidget {
   const IosMagnifierOverlay({
     super.key,
@@ -42,6 +35,7 @@ class _IosMagnifierOverlayState extends State<IosMagnifierOverlay> {
         details.localPosition.dy,
       );
     }
+    setState(() {});
   }
 
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
@@ -52,6 +46,7 @@ class _IosMagnifierOverlayState extends State<IosMagnifierOverlay> {
         details.localPosition.dy,
       );
     }
+    setState(() {});
   }
 
   void _onLongPressEnd(LongPressEndDetails details) {
@@ -59,11 +54,11 @@ class _IosMagnifierOverlayState extends State<IosMagnifierOverlay> {
     if (_isIOS) {
       NativeMagnifierChannel.hide();
     }
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    // Sur iOS : GestureDetector pour les gestures + loupe native
     if (_isIOS) {
       return GestureDetector(
         onLongPressStart: _onLongPressStart,
@@ -73,25 +68,12 @@ class _IosMagnifierOverlayState extends State<IosMagnifierOverlay> {
       );
     }
 
-    // Sur les autres plateformes : DraggableLoupe avec RawMagnifier
     if (!widget.activated) return widget.child;
 
-    return DraggableLoupe(
-      showOnLongPress: true,
-      loupeSize: Size(widget.lensRadius * 2, widget.lensRadius * 2),
-      magnificationScale: widget.magnification,
-      verticalOffset: widget.lensRadius + 20,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-      ),
-      shadows: [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.25),
-          blurRadius: 16,
-          spreadRadius: 2,
-        ),
-      ],
-      animationDuration: const Duration(milliseconds: 150),
+    return GestureDetector(
+      onLongPressStart: _onLongPressStart,
+      onLongPressMoveUpdate: _onLongPressMoveUpdate,
+      onLongPressEnd: _onLongPressEnd,
       child: widget.child,
     );
   }

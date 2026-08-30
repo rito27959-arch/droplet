@@ -79,24 +79,20 @@ class DesignTokens {
   static const double radiusSheet = 28;
 
   /// Arrondi d'une bulle de conversation.
-  /// Le rayon d'une bulle de conversation.
+  /// Le rayon exact d'une bulle iMessage : 19pt.
   ///
-  /// ⚠️ 22 et non 18. Les messageries iOS ont toutes convergé en 2026
-  /// vers des bulles nettement plus rondes — WhatsApp a explicitement
-  /// rapproché les siennes de celles d'iMessage. Ce n'est pas une mode :
-  /// un angle plus doux réduit la tension visuelle d'une colonne de
-  /// dizaines de bulles empilées, et fait paraître le fil plus calme à
-  /// densité d'information identique.
-  static const double radiusBubble = 22;
+  /// iMessage utilise 19pt pour le corps de la bulle, avec un coin
+  /// « queue » resserré à 6pt du côté de l'expéditeur pour former
+  /// la pointe caractéristique.
+  static const double radiusBubble = 19;
 
   /// Le coin « pointe » qui désigne le locuteur, en bas de la dernière
   /// bulle d'une série.
   ///
-  /// 8 et non 5 : avec des bulles à 22, un angle presque droit à 5
-  /// tranchait sur le reste et redonnait à l'ensemble la dureté qu'on
-  /// venait justement d'enlever. La pointe doit rester lisible comme une
-  /// pointe, pas comme une écorchure.
-  static const double radiusBubbleTail = 8;
+  /// 6pt comme iMessage : le coin le plus proche de l'expéditeur est
+  /// « pincé » pour former la queue de la bulle, tandis que les trois
+  /// autres coins restent à 19pt.
+  static const double radiusBubbleTail = 6;
 
   /// Forme « gélule » — entièrement arrondie.
   static const double radiusFull = 999;

@@ -34,12 +34,19 @@ import 'core/services/notification_service.dart';
 import 'core/services/share_intent_service.dart';
 import 'core/services/avatar_service.dart';
 import 'core/services/premium_service.dart';
+import 'core/services/reponses_differees.dart';
 import 'features/premium/premium_screen.dart';
 import 'core/services/storage_service.dart';
 import 'design_system/ouro_colors.dart';
 import 'design_system/ouro_liquid.dart';
+import 'design_system/mode_transition.dart';
+import 'features/nexus_connection/nexus_shader.dart';
+import 'features/nexus_connection/nexus_overlay.dart';
+import 'features/nexus_connection/nexus_event.dart';
 import 'design_system/ouro_scroll_behavior.dart';
 import 'design_system/ouro_theme.dart';
+import 'design_system/liquid_bridge.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/onboarding/splash_screen.dart';
 import 'features/home/home_shell.dart';
@@ -125,6 +132,10 @@ Future<void> main() async {
   // compiler quand même un programme graphique qu'on n'affichera jamais,
   // c'est payer le coût sans le bénéfice.
   if (!DeviceProfile.sansShader) unawaited(LiquidShader.load());
+  // Précompile le shader Nexus (connexion entre appareils). Même logique
+  // que le shader liquide : on lance la compilation en tâche de fond pour
+  // que l'effet soit prêt quand l'utilisateur en aura besoin.
+  if (!DeviceProfile.sansShader) unawaited(NexusShaderLoader.load());
   // Recense les stickers animés (.tgs / .json Lottie) déposés dans
   // `assets/stickers/`. Rapide — c'est une lecture d'index, pas de
   // fichiers — et sans conséquence si le dossier est vide, ce qui est
@@ -168,49 +179,33 @@ class DropletApp extends ConsumerWidget {
     // `MaterialApp.router` est le widget qui dit à Flutter « voici une
     // application complète, avec un thème (des couleurs) et un système de
     // pages (le routeur, défini plus bas dans ce fichier) ».
-    return MaterialApp.router(
-      title: 'Droplet',
-      debugShowCheckedModeBanner: false,
-      theme: OuroTheme.of(brightness),
-      // Le rebond élastique d'iOS pour TOUTES les listes de l'app, et
-      // plus seulement pour celles à grand titre — voir
-      // `ouro_scroll_behavior.dart`.
-      scrollBehavior: const OuroScrollBehavior(),
-      routerConfig: _router,
-      // `builder` permet d'empiler des widgets qui doivent être présents
-      // sur TOUTES les pages, peu importe laquelle est affichée — comme
-      // des couches de cellophane transparentes posées les unes sur les
-      // autres par-dessus la page du moment.
-      builder: (context, child) => ToastOverlay(
-        child: MeshBootstrap(
-          child: NotificationBridge(
-            child: IncomingCallOverlay(
-              child: GroupIncomingCallOverlay(
-                // ⚠️ Le `KeyedSubtree` n'est pas décoratif : sans lui, le
-                // basculement clair/sombre ne repeindrait qu'une partie de
-                // l'app.
-                //
-                // Les écrans sont créés par le routeur sous forme
-                // d'instances `const` (`const SettingsScreen()`). Flutter
-                // reconnaît qu'il s'agit LITTÉRALEMENT du même objet d'une
-                // reconstruction à l'autre et saute alors leur
-                // reconstruction — une optimisation précieuse d'ordinaire,
-                // mais qui joue contre nous ici, puisque nos couleurs sont
-                // lues par des accesseurs globaux (`OuroColors.label`) et
-                // non via le `Theme`. Les écrans garderaient donc les
-                // couleurs de l'ancien mode jusqu'à ce qu'autre chose les
-                // force à se redessiner.
-                //
-                // En changeant de clé à chaque changement de mode, on
-                // remonte tout l'arbre des écrans d'un coup. Le prix à
-                // payer est la perte de l'état local (position de
-                // défilement, texte en cours de saisie) — acceptable pour
-                // une action rare et volontaire de l'utilisateur, et
-                // l'écran affiché ne change pas : c'est le routeur, pas
-                // cet arbre, qui mémorise où l'on se trouve.
-                child: KeyedSubtree(
-                  key: ValueKey(brightness),
-                  child: child ?? const SizedBox(),
+    // `LiquidThemeProvider` enveloppe le MaterialApp pour fournir le thème
+    // Liquid Glass à TOUS les composants liquid_glass_ui_design de l'app.
+    return LiquidThemeProvider(
+      theme: liquidTheme,
+      child: MaterialApp.router(
+        title: 'Droplet',
+        debugShowCheckedModeBanner: false,
+        theme: OuroTheme.of(brightness),
+        scrollBehavior: const OuroScrollBehavior(),
+        routerConfig: _router,
+        builder: (context, child) => ToastOverlay(
+          child: MeshBootstrap(
+            child: NotificationBridge(
+              child: IncomingCallOverlay(
+                child: GroupIncomingCallOverlay(
+                  child: RepaintBoundary(
+                    // ⚠️ CE BOUNDARY EST LA SOURCE DE L'INSTANTANÉ DE
+                    // TRANSITION DE THÈME. `ModeTransitionOverlay.capture()`
+                    // le lit pour prendre une photo de l'écran AVANT que le
+                    // thème ne change, comme Telegram. Ne pas le retirer ni
+                    // le remplacer par un enfant simple.
+                    key: ModeTransitionOverlay.repaintBoundaryKey,
+                    child: KeyedSubtree(
+                      key: ValueKey(brightness),
+                      child: child ?? const SizedBox(),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -837,10 +832,39 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
   StreamSubscription<MeshStatusRecord>? _statusSub;
   StreamSubscription<SafetyCheckinRecord>? _checkinSub;
   ProviderSubscription<CallState>? _callSub;
+  StreamSubscription<dynamic>? _nexusPeerSub;
+  StreamSubscription<NexusEvent>? _nexusEventSub;
   Timer? _retryTimer;
   // Se souvient si l'appel entrant en cours a fini par être décroché, pour
   // savoir s'il faut afficher « appel manqué » quand il se termine.
   bool _incomingWasConnected = false;
+  // Empêche de lancer plusieurs animations Nexus simultanément.
+  bool _nexusAffiche = false;
+
+  /// Envoie une réponse écrite depuis une notification.
+  ///
+  /// ⚠️ ELLE PASSE PAR LE MÊME CHEMIN QU'UN MESSAGE ORDINAIRE.
+  ///
+  /// La tentation serait d'écrire directement dans la base « puisque
+  /// c'est plus simple ». Ce serait contourner le chiffrement, la file
+  /// d'attente, les accusés de réception et la signature du trajet — et
+  /// produire un message qui n'a l'air normal que dans la liste.
+  ///
+  /// Sans pair à portée, `sendMessage` met en attente de lui-même : la
+  /// réponse repartira à la prochaine rencontre, exactement comme si
+  /// elle avait été tapée dans l'application.
+  Future<void> _repondreDepuisNotification(String route, String texte) async {
+    final id = route.split('/').last;
+    if (id.isEmpty) return;
+    final moi = StorageService.currentUser?.pseudo ?? 'Moi';
+    final notifier = ref.read(meshMessagesProvider.notifier);
+
+    if (route.startsWith('/group/')) {
+      await notifier.sendGroupMessage(moi, texte, groupId: id);
+    } else {
+      await notifier.sendMessage(moi, texte, targetId: id);
+    }
+  }
 
   @override
   void initState() {
@@ -857,6 +881,45 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
       if (!mounted) return;
       _router.go(path);
     });
+
+    // ── RÉPONDRE ET DÉCROCHER SANS OUVRIR L'APPLICATION ────────────
+    //
+    // ⚠️ C'EST ICI, ET NULLE PART AILLEURS, QUE LE MAILLAGE EST
+    // ACCESSIBLE.
+    //
+    // `NotificationService` ne connaît ni les providers ni le réseau, et
+    // ne doit pas les connaître : c'est un afficheur de bulles. Quand
+    // Android nous rend une réponse tapée, il la remet donc ici, au seul
+    // endroit qui sait quoi en faire.
+    NotificationService.bindActions(
+      onRepondre: (route, texte) => _repondreDepuisNotification(route, texte),
+      onLu: (route) {
+        // Marquer lu envoie AUSSI les accusés de lecture, comme si on
+        // avait ouvert la conversation. C'est la vérité : la personne a
+        // lu le message dans la notification.
+        final id = route.split('/').last;
+        unawaited(
+          ref.read(meshMessagesProvider.notifier).sendReadReceipts(id),
+        );
+      },
+      onAppel: (peerId, accepter) {
+        if (accepter) {
+          _router.go('/call/\$peerId');
+        } else {
+          ref.read(callProvider.notifier).hangUp();
+        }
+      },
+    );
+
+    // Les réponses écrites pendant que l'application était fermée. Le
+    // rappel est branché AVANT le premier rejeu : sans lui,
+    // `ReponsesDifferees.rejouer` ne touche à rien et les garde pour
+    // plus tard, ce qui est le bon défaut mais pas le résultat voulu.
+    ReponsesDifferees.onRejouer = (r) => _repondreDepuisNotification(
+          r.route,
+          r.texte,
+        );
+    unawaited(ReponsesDifferees.rejouer());
     // Écoute si une autre app essaie de « partager » du contenu vers
     // Droplet (texte, photo...) et prépare l'écran de choix du contact.
     unawaited(ShareIntentService.init(onShared: () => _router.go('/share-target')));
@@ -916,6 +979,48 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
       if (checkin.peerId == repo.myId) return;
       unawaited(NotificationService.showEmergency(pseudo: checkin.pseudo));
     });
+    // ── NEXUS : animation de connexion ─────────────────────────────────
+    //
+    // Quand un NOUveau pair se connecte pour la première fois dans cette
+    // session, on lance l'animation Nexus sur les DEUX appareils.
+    // L'émetteur envoie un NexusEvent (seed + couleur) au destinataire,
+    // et les deux jouent la même animation synchronisée.
+    _nexusPeerSub = repo.firstPeerConnection.listen((peer) {
+      if (_nexusAffiche) return;
+      if (!mounted) return;
+      _nexusAffiche = true;
+
+      final event = NexusEvent(
+        seed: NexusEvent.generateSeed(),
+        timestamp: DateTime.now().toUtc().toIso8601String(),
+        intensity: 1.0,
+        colorSignature: NexusEvent.deriveColorSignature(repo.myId, peer.peerId),
+      );
+
+      // Envoyer l'événement au pair pour synchroniser les deux animations.
+      unawaited(repo.sendNexusEvent(peer.peerId, event));
+
+      NexusOverlay.show(
+        context,
+        seed: event.seed,
+        colorSignature: event.colorSignature,
+        peerName: peer.pseudo,
+        onComplete: () => _nexusAffiche = false,
+      );
+    });
+    // Quand on REÇOIT un NexusEvent d'un pair (l'autre appareil a détecté
+    // la connexion en premier), on lance la même animation avec sa seed.
+    _nexusEventSub = repo.nexusEvents.listen((event) {
+      if (_nexusAffiche) return;
+      if (!mounted) return;
+      _nexusAffiche = true;
+      NexusOverlay.show(
+        context,
+        seed: event.seed,
+        colorSignature: event.colorSignature,
+        onComplete: () => _nexusAffiche = false,
+      );
+    });
     // Surveille l'état des appels pour détecter deux moments précis :
     // « on m'appelle et l'app est en arrière-plan » (→ notif d'appel
     // entrant) et « on m'a appelé, je n'ai pas répondu, et ça s'est arrêté »
@@ -972,6 +1077,8 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
     _msgSub?.cancel();
     _statusSub?.cancel();
     _checkinSub?.cancel();
+    _nexusPeerSub?.cancel();
+    _nexusEventSub?.cancel();
     _callSub?.close();
     super.dispose();
   }

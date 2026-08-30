@@ -21,11 +21,14 @@
 // ============================================================================
 
 import 'dart:async';
+
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show Random;
 import 'package:flutter/foundation.dart';
 import 'package:nsd/nsd.dart' as nsd;
 import 'ble_mesh_protocol.dart';
+import 'mesh_transport.dart';
 
 /// Transport Wi-Fi local pour OURO PREP.
 ///
@@ -36,7 +39,7 @@ import 'ble_mesh_protocol.dart';
 ///
 /// ## Communication
 /// Sockets TCP bruts (`dart:io`) avec framing `[longueur 4 bytes][payload]`.
-class LocalWifiTransport {
+class LocalWifiTransport implements MeshTransport {
   static const int _discoveryPort = 42069;
 
   /// L'intervalle par défaut entre deux balises « coucou ».
@@ -87,7 +90,48 @@ class LocalWifiTransport {
   final _peerEventsCtrl = StreamController<MeshPeerEvent>.broadcast();
   final _incomingDataCtrl = StreamController<MeshIncomingData>.broadcast();
 
+
+  // ── Contrat MeshTransport ────────────────────────────────────────
+  //
+  // Ce transport remplissait déjà cette forme ; ces quelques membres ne
+  // font que l'écrire noir sur blanc, plus l'état et les capacités que
+  // la couche supérieure devinait jusqu'ici.
+
+  @override
+  String get name => 'wifi';
+
+  @override
+  bool get isRunning => _isRunning;
+
+  @override
+  TransportState get state {
+    if (!_isRunning) return TransportState.stopped;
+    // `_subnetBroadcast == null` est l'exacte définition de « pas
+    // d'interface réseau utilisable » posée par `_resolveBroadcastAddress`.
+    if (_subnetBroadcast == null) return TransportState.unavailable;
+    return _connectedPeers.isEmpty
+        ? TransportState.searching
+        : TransportState.active;
+  }
+
+  @override
+  final TransportMetrics metrics = TransportMetrics();
+
+  @override
+  TransportCapabilities get capabilities => const TransportCapabilities(
+        // Le Wi-Fi local passe par TCP : la taille est bornée par la
+        // mémoire, pas par la radio. 50 Mo est la limite déjà appliquée
+        // aux pièces jointes en amont.
+        maxPayloadBytes: 50 * 1024 * 1024,
+        maxContentType: 0xFF,
+        portePhotosEtFichiers: true,
+        porteVoixEnDirect: true,
+        coutEnergetique: 0.35,
+      );
+
+  @override
   Stream<MeshPeerEvent> get peerEvents => _peerEventsCtrl.stream;
+  @override
   Stream<MeshIncomingData> get incomingData => _incomingDataCtrl.stream;
 
   ServerSocket? _serverSocket;
@@ -95,6 +139,46 @@ class LocalWifiTransport {
   nsd.Discovery? _discovery;
 
   final Map<String, _TcpPeerInfo> _connectedPeers = {};
+
+  // ══ ARBITRAGE DES CONNEXIONS SIMULTANÉES ═══════════════════════════
+  //
+  // Deux appareils qui se découvrent en même temps s'appellent en même
+  // temps : il existe alors DEUX tuyaux entre eux, et il faut en fermer
+  // un.
+  //
+  // ⚠️ LA VERSION PRÉCÉDENTE GARDAIT « LA PLUS RÉCENTE », ET C'EST CE
+  // QUI RENDAIT LE RÉSEAU INSTABLE. « La plus récente » était jugée
+  // localement, donc chacun désignait celle de l'autre : A fermait
+  // A→B pendant que B fermait B→A. Les DEUX tuyaux tombaient, la balise
+  // suivante relançait tout trois secondes plus tard, et le cycle
+  // recommençait sans fin — d'où les `Software caused connection abort`
+  // à répétition.
+  //
+  // La règle est désormais la même des deux côtés, et porte sur une
+  // donnée que les deux connaissent : le nonce annoncé par chacun dans
+  // sa carte de visite.
+  //
+  //     gagne la connexion ouverte par celui dont le nonce est le plus
+  //     grand
+  //
+  // A et B appliquent la même comparaison sur les mêmes deux valeurs :
+  // ils arrivent forcément à la même conclusion, et un seul des deux
+  // ferme. Le nonce est tiré une fois au démarrage ; en cas d'égalité
+  // (improbable sur huit octets), l'identifiant du pair départage, ce
+  // qui garde la règle totale.
+  late String _myNonce;
+
+  /// Qui, de moi ou du pair, l'emporte ?
+  ///
+  /// Fonction pure : c'est ce qui permet de vérifier la symétrie de la
+  /// règle dans un test, sans ouvrir la moindre connexion.
+  @visibleForTesting
+  static bool monNonceLEmporte(
+      String monNonce, String nonceDuPair, String monId, String sonId) {
+    final cmp = monNonce.compareTo(nonceDuPair);
+    if (cmp != 0) return cmp > 0;
+    return monId.compareTo(sonId) > 0;
+  }
   final Map<String, DateTime> _lastBeaconSeen = {};
   Timer? _beaconTimer;
   Timer? _cleanupTimer;
@@ -103,11 +187,19 @@ class LocalWifiTransport {
   /// Allume tout : ouvre une porte d'entrée pour les connexions (le
   /// serveur TCP), commence à écouter les cris « coucou » des autres
   /// (UDP), et s'annonce sur le réseau via mDNS.
+  @override
   Future<void> start(String myId, String myPseudo) async {
     if (_isRunning) return;
     _isRunning = true;
     _myId = myId;
     _myPseudo = myPseudo;
+
+    // Huit octets aléatoires, tirés une fois par session : c'est
+    // l'arbitre des connexions simultanées.
+    final alea = Random.secure();
+    _myNonce = List.generate(8, (_) => alea.nextInt(256))
+        .map((o) => o.toRadixString(16).padLeft(2, '0'))
+        .join();
 
     await _startServer();
     await _resolveBroadcastAddress();
@@ -120,6 +212,7 @@ class LocalWifiTransport {
     debugPrint('[LocalWifi] started on port $_listenPort id=$myId');
   }
 
+  @override
   Future<void> stop() async {
     _isRunning = false;
     _beaconTimer?.cancel();
@@ -133,6 +226,8 @@ class LocalWifiTransport {
     _udpSocket?.close();
     _udpSocket = null;
     _connectingPeerIds.clear();
+    _echecsConsecutifs.clear();
+    _pasAvant.clear();
 
     if (_serverSocket != null) {
       for (final peer in _connectedPeers.values) {
@@ -179,7 +274,8 @@ class LocalWifiTransport {
   /// note son arrivée et on commence à écouter ce qu'il a à dire.
   void _onIncomingConnection(Socket socket) {
     final remoteAddr = '${socket.remoteAddress.address}:${socket.remotePort}';
-    final info = _TcpPeerInfo(address: remoteAddr, socket: socket);
+    final info =
+        _TcpPeerInfo(address: remoteAddr, socket: socket, sortante: false);
     _connectedPeers[remoteAddr] = info;
     _receiveLoop(socket, info);
   }
@@ -198,7 +294,34 @@ class LocalWifiTransport {
         reuseAddress: true,
       );
       _udpSocket!.broadcastEnabled = true;
-      _udpSocket!.listen(_onUdpEvent);
+      _udpSocket!.listen(
+        _onUdpEvent,
+        // ⚠️ CE GESTIONNAIRE D'ERREUR N'EST PAS FACULTATIF.
+        //
+        // Un socket UDP est un flux : quand l'envoi d'un paquet échoue,
+        // dart:io ne lève PAS l'exception à l'endroit de l'appel — il la
+        // dépose dans ce flux, plus tard. Le `try/catch` qui entoure
+        // `send()` dans `_sendBeacon` ne peut donc rien attraper : au
+        // moment où l'erreur arrive, l'appel est terminé depuis
+        // longtemps. Sans `onError` ici, elle remonte jusqu'au sommet et
+        // s'affiche comme un plantage :
+        //
+        //   SocketException: Send failed
+        //   (OS Error: Network is unreachable, errno = 101)
+        //
+        // Or ce n'est pas un plantage, c'est la situation NORMALE de
+        // Droplet : le Wi-Fi est coupé, l'avion est activé, ou l'on
+        // change de réseau — et la balise « coucou, je suis là » part
+        // toutes les trois secondes quoi qu'il arrive. On note donc
+        // l'incident et on continue : le Bluetooth prend le relais, et
+        // le Wi-Fi repartira dès qu'un réseau reviendra.
+        onError: (Object e) =>
+            debugPrint('[LocalWifi] socket UDP indisponible: $e'),
+        // Le flux qui se ferme n'est pas davantage une anomalie : Android
+        // referme le socket de lui-même quand l'interface réseau
+        // disparaît.
+        cancelOnError: false,
+      );
       debugPrint('[LocalWifi] UDP listener on port $_discoveryPort');
     } catch (e) {
       debugPrint('[LocalWifi] UDP bind failed: $e');
@@ -229,32 +352,110 @@ class LocalWifiTransport {
         }
       }
     } catch (e) { debugPrint('[WiFi] $e'); }
-    _subnetBroadcast = InternetAddress('255.255.255.255');
+
+    // ⚠️ PAS DE REPLI SUR 255.255.255.255 ICI, ET C'EST TOUT LE CORRECTIF.
+    //
+    // L'ancienne version, faute d'avoir trouvé une interface, se rabattait
+    // sur la diffusion générale. Or si aucune interface n'a d'adresse
+    // privée, c'est précisément qu'il N'Y A PAS DE RÉSEAU : le noyau n'a
+    // alors aucune route vers cette adresse et rejette chaque envoi avec
+    // `ENETUNREACH`. La balise partant toutes les trois secondes, l'app
+    // fabriquait une exception toutes les trois secondes, indéfiniment.
+    //
+    // `null` signifie donc « transport Wi-Fi hors service » — un ÉTAT, et
+    // non une erreur à répéter. `_sendBeacon` s'abstient tant qu'il vaut
+    // `null`, et retente une résolution de temps en temps pour détecter le
+    // retour du réseau.
+    _subnetBroadcast = null;
   }
 
   /// Envoie le petit cri « coucou, je suis là » à tout le réseau — répété
   /// toutes les 3 secondes tant que l'app tourne.
+  /// Vrai quand on a renoncé à émettre faute de réseau utilisable.
+  bool _reseauIndisponible = false;
+
+  /// Nombre de cycles écoulés depuis la dernière tentative de
+  /// re-résolution, quand le réseau est absent.
+  int _cyclesDepuisTentative = 0;
+
   void _sendBeacon() {
     if (!_isRunning || _udpSocket == null) return;
+
+    // ── Aucune interface utilisable : on se tait ────────────────────
+    //
+    // Émettre dans le vide ne sert à rien, réveille le processeur pour
+    // rien, et produisait le flot d'exceptions `Network is unreachable`.
+    // On re-teste malgré tout périodiquement, sinon le Wi-Fi pourrait
+    // revenir sans que Droplet s'en aperçoive jamais.
+    if (_subnetBroadcast == null) {
+      if (!_reseauIndisponible) {
+        _reseauIndisponible = true;
+        debugPrint('[LocalWifi] aucune interface locale — balise suspendue');
+      }
+      // Une tentative toutes les ~10 périodes (30 s au rythme normal) :
+      // assez souvent pour ne pas rater le retour du réseau, assez rare
+      // pour ne rien coûter en veille.
+      if (++_cyclesDepuisTentative >= 10) {
+        _cyclesDepuisTentative = 0;
+        unawaited(_resolveBroadcastAddress());
+      }
+      return;
+    }
+
+    if (_reseauIndisponible) {
+      _reseauIndisponible = false;
+      _cyclesDepuisTentative = 0;
+      debugPrint('[LocalWifi] interface retrouvée — balise reprise');
+    }
+
     try {
       final payload = utf8.encode(json.encode({
         'peerId': _myId,
         'pseudo': _myPseudo,
         'port': _listenPort,
       }));
-      final targets = [
+      // Deux destinations, et chacune tentée SÉPARÉMENT.
+      //
+      // La diffusion de sous-réseau (192.168.1.255) est celle qui marche
+      // partout ; la diffusion générale (255.255.255.255) rattrape les
+      // configurations Android où la première ne porte pas. Mais cette
+      // seconde est souvent non routable et échoue seule — les traiter
+      // en bloc ferait déclarer le réseau perdu alors que la première
+      // vient de passer.
+      //
+      // ⚠️ Jamais 0.0.0.0 en destination : cette adresse ne désigne
+      // aucune machine, elle ne sert qu'à se mettre à l'écoute.
+      var reussi = 0;
+      for (final target in [
+        _subnetBroadcast!,
         InternetAddress('255.255.255.255'),
-        ?_subnetBroadcast,
-      ];
-      for (final target in targets) {
-        _udpSocket!.send(payload, target, _discoveryPort);
+      ]) {
+        try {
+          _udpSocket!.send(payload, target, _discoveryPort);
+          reussi++;
+        } catch (_) {
+          // Silence volontaire : l'échec d'UNE destination est banal.
+        }
       }
+
+      // Aucune n'est passée : l'interface a disparu. On repasse à l'état
+      // « pas de réseau », ce qui suspend la balise jusqu'à son retour.
+      if (reussi == 0) {
+        debugPrint('[LocalWifi] plus aucune destination joignable');
+        _subnetBroadcast = null;
+        return;
+      }
+
       _beaconCount++;
       if (_beaconCount % 10 == 0) {
         debugPrint('[LocalWifi] beacon #$_beaconCount sent');
       }
     } catch (e) {
-      debugPrint('[LocalWifi] beacon send error: $e');
+      // L'interface a disparu entre-temps. On repasse à l'état « pas de
+      // réseau » plutôt que de réessayer en boucle avec une adresse qui
+      // ne mène nulle part.
+      debugPrint('[LocalWifi] balise impossible, réseau perdu: $e');
+      _subnetBroadcast = null;
     }
   }
 
@@ -436,10 +637,52 @@ class LocalWifiTransport {
   /// via mDNS ou UDP) : ouvre le tuyau TCP, envoie sa carte de visite
   /// (handshake) pour se présenter, puis commence à écouter ce qu'il
   /// répond.
+  // ══ RECUL ENTRE DEUX TENTATIVES ════════════════════════════════════
+  //
+  // `_connectToPeer` est rappelé à CHAQUE balise reçue, soit toutes les
+  // trois secondes. Sans recul, un pair injoignable — pare-feu, adresse
+  // périmée, appareil en veille — était rappelé indéfiniment toutes les
+  // trois secondes, avec cinq secondes d'attente à chaque fois. C'est
+  // une tempête de connexions qui ne sert à rien et vide la batterie.
+  //
+  // L'attente double à chaque échec, jusqu'à cinq minutes, et repart de
+  // zéro dès qu'une connexion aboutit. Une part d'aléatoire s'y ajoute :
+  // sans elle, vingt appareils ayant échoué en même temps réessaieraient
+  // tous à la même seconde, indéfiniment.
+  static const Duration _reculInitial = Duration(seconds: 3);
+  static const Duration _reculMax = Duration(minutes: 5);
+
+  final Map<String, int> _echecsConsecutifs = {};
+  final Map<String, DateTime> _pasAvant = {};
+  final Random _aleaRecul = Random();
+
+  void _noterEchec(String peerId) {
+    final echecs = (_echecsConsecutifs[peerId] ?? 0) + 1;
+    _echecsConsecutifs[peerId] = echecs;
+
+    var attente = _reculInitial * (1 << (echecs - 1).clamp(0, 10));
+    if (attente > _reculMax) attente = _reculMax;
+    // Jusqu'à 30 % de dispersion, pour désynchroniser les appareils.
+    final gigue = Duration(
+        milliseconds: _aleaRecul.nextInt(attente.inMilliseconds ~/ 3 + 1));
+
+    _pasAvant[peerId] = DateTime.now().add(attente + gigue);
+    debugPrint('[LocalWifi] $peerId injoignable ($echecs) — '
+        'nouvelle tentative dans ${(attente + gigue).inSeconds}s');
+  }
+
+  void _noterSucces(String peerId) {
+    _echecsConsecutifs.remove(peerId);
+    _pasAvant.remove(peerId);
+  }
+
   Future<void> _connectToPeer(
     String peerId, String pseudo, InternetAddress address, int port,
   ) async {
     if (_connectedPeers.values.any((p) => p.peerId == peerId)) return;
+
+    final pasAvant = _pasAvant[peerId];
+    if (pasAvant != null && DateTime.now().isBefore(pasAvant)) return;
 
     // Un même pair peut être annoncé plusieurs fois quasi simultanément
     // (un beacon UDP est envoyé à la fois vers 255.255.255.255 ET vers
@@ -464,12 +707,14 @@ class LocalWifiTransport {
       final info = _TcpPeerInfo(
         address: remoteAddr,
         socket: socket,
+        sortante: true,
         peerId: peerId,
         pseudo: pseudo,
       );
       _connectedPeers[remoteAddr] = info;
 
-      final handshake = json.encode({'peerId': _myId, 'pseudo': _myPseudo});
+      final handshake = json.encode(
+          {'peerId': _myId, 'pseudo': _myPseudo, 'nonce': _myNonce});
       _sendRaw(socket, Uint8List.fromList(utf8.encode(handshake)));
 
       _peerEventsCtrl.add(MeshPeerEvent(
@@ -480,10 +725,12 @@ class LocalWifiTransport {
       ));
 
       debugPrint('[LocalWifi] connected to $peerId');
+      _noterSucces(peerId);
 
       _receiveLoop(socket, info);
     } catch (e) {
       debugPrint('[LocalWifi] connect to $peerId failed: $e');
+      _noterEchec(peerId);
     } finally {
       _connectingPeerIds.remove(peerId);
     }
@@ -529,15 +776,19 @@ class LocalWifiTransport {
           buffer.removeRange(0, expectedLength);
           readingLength = true;
 
-          if (info.peerId == null) {
-            // Premier message reçu sur cette connexion : ce DOIT être la
-            // carte de visite (handshake) — on ne sait pas encore qui
-            // est ce pair.
+          if (!info.poigneeRecue) {
+            // Premier message d'une connexion : c'est TOUJOURS la carte
+            // de visite, entrante comme sortante. L'ancien test portait
+            // sur `peerId == null`, ce qui excluait les connexions
+            // sortantes — leur carte de visite était alors traitée comme
+            // un message du mesh.
+            info.poigneeRecue = true;
             try {
               final handshake = json.decode(utf8.decode(payload))
                   as Map<String, dynamic>;
-              info.peerId = handshake['peerId'] as String?;
-              info.pseudo = handshake['pseudo'] as String?;
+              info.peerId = (handshake['peerId'] as String?) ?? info.peerId;
+              info.pseudo = (handshake['pseudo'] as String?) ?? info.pseudo;
+              info.nonceDuPair = handshake['nonce'] as String?;
               if (info.peerId != null) {
                 // Deux connexions simultanées vers le même pair peuvent
                 // coexister (découverte mDNS + UDP en parallèle, ou
@@ -545,16 +796,44 @@ class LocalWifiTransport {
                 // `sendToPeer` choisirait alors arbitrairement entre les
                 // deux, y compris un socket déjà fermé côté distant. On ne
                 // garde que la connexion la plus récente par pair.
-                final duplicates = _connectedPeers.entries
-                    .where((e) => e.value.peerId == info.peerId && e.value.socket != socket)
-                    .map((e) => e.key)
+                final doublons = _connectedPeers.entries
+                    .where((e) =>
+                        e.value.peerId == info.peerId &&
+                        e.value.socket != socket)
                     .toList();
-                for (final key in duplicates) {
-                  final stale = _connectedPeers.remove(key);
-                  if (stale != null) {
-                    stale.superseded = true;
-                    stale.socket.destroy();
-                  }
+
+                for (final e in doublons) {
+                  final autre = e.value;
+
+                  // Laquelle des deux garder ? La règle porte sur les
+                  // nonces, que les deux appareils connaissent, et non
+                  // sur l'ordre d'arrivée, que chacun voit différemment.
+                  final nonceDuPair =
+                      info.nonceDuPair ?? autre.nonceDuPair ?? '';
+                  final jeGagne = monNonceLEmporte(
+                    _myNonce,
+                    nonceDuPair,
+                    _myId,
+                    info.peerId!,
+                  );
+
+                  // Si je gagne, c'est MA connexion sortante qui
+                  // survit ; sinon c'est la sienne, que je vois comme
+                  // entrante. On ferme l'autre — et le pair, appliquant
+                  // la même règle aux mêmes valeurs, ferme exactement
+                  // celle que je garde ouverte.
+                  final aFermer = jeGagne
+                      ? (info.sortante ? autre : info)
+                      : (info.sortante ? info : autre);
+                  final aGarder = identical(aFermer, info) ? autre : info;
+
+                  aFermer.superseded = true;
+                  _connectedPeers.removeWhere((_, v) => identical(v, aFermer));
+                  aFermer.socket.destroy();
+
+                  debugPrint('[LocalWifi] double connexion vers '
+                      '${info.peerId} — on garde la '
+                      '${aGarder.sortante ? "sortante" : "entrante"}');
                 }
                 _lastBeaconSeen[info.peerId!] = DateTime.now();
                 _peerEventsCtrl.add(MeshPeerEvent(
@@ -586,6 +865,7 @@ class LocalWifiTransport {
         _onPeerDisconnected(socket, info);
       },
     );
+    _guardSocket(socket);
   }
 
   void _onPeerDisconnected(Socket socket, _TcpPeerInfo info) {
@@ -608,7 +888,9 @@ class LocalWifiTransport {
 
   /// Envoie des données à un pair déjà connecté par ce chemin.
   /// Envoie [data] à [peerId]. Renvoie `false` si rien n'est parti.
-  Future<bool> sendToPeer(String peerId, Uint8List data) async {
+  @override
+  Future<bool> sendToPeer(String peerId, Uint8List data,
+      {int type = 0x00, int priority = 2}) async {
     final peer = _connectedPeers.values.where(
       (p) => p.peerId == peerId,
     );
@@ -642,9 +924,40 @@ class LocalWifiTransport {
       (data.length >> 8) & 0xFF,
       data.length & 0xFF,
     ]);
-    socket.add(Uint8List.fromList([...lengthBytes, ...data]));
+    // ⚠️ `add` sur un socket déjà mort ne lève pas toujours ici : selon
+    // le moment, l'échec est signalé PLUS TARD, par le `Future` que le
+    // socket expose sous le nom `done`. C'est ce qui produisait, sans
+    // que rien ne le rattrape :
+    //
+    //   SocketException: Software caused connection abort (errno = 103)
+    //
+    // Situation on ne peut plus banale ici : le pair s'éloigne, le
+    // groupe Wi-Fi Direct se dissout, l'autre téléphone se met en
+    // veille. Le `try` couvre l'échec immédiat ; `_guardSocket` couvre
+    // l'échec différé.
+    try {
+      socket.add(Uint8List.fromList([...lengthBytes, ...data]));
+    } catch (e) {
+      debugPrint('[LocalWifi] écriture impossible sur le socket: $e');
+    }
   }
 
+  /// Neutralise les erreurs différées d'un socket TCP.
+  ///
+  /// Un socket expose un `Future done` qui se termine en ERREUR quand la
+  /// liaison casse pendant une écriture. Personne ne l'attendant, cette
+  /// erreur remontait jusqu'au sommet de l'app et s'affichait comme un
+  /// plantage — alors que la déconnexion est déjà traitée proprement par
+  /// `onDone`/`onError` de la lecture, qui préviennent le reste de l'app.
+  /// On se contente donc de la noter.
+  void _guardSocket(Socket socket) {
+    unawaited(socket.done.catchError((Object e) {
+      debugPrint('[LocalWifi] liaison interrompue: $e');
+      return socket;
+    }));
+  }
+
+  @override
   void dispose() {
     _beaconTimer?.cancel();
     _cleanupTimer?.cancel();
@@ -663,6 +976,26 @@ class _TcpPeerInfo {
   String? peerId;
   String? pseudo;
 
+  /// Vrai si c'est NOUS qui avons composé le numéro.
+  ///
+  /// Indispensable pour départager deux connexions simultanées : la
+  /// règle d'arbitrage désigne un GAGNANT par son initiateur, et il faut
+  /// donc savoir de quel côté on se trouve.
+  final bool sortante;
+
+  /// Le nonce annoncé par le pair dans sa carte de visite.
+  String? nonceDuPair;
+
+  /// Vrai une fois la carte de visite reçue.
+  ///
+  /// Remplace l'ancien test « `peerId == null` », qui ne fonctionnait que
+  /// sur les connexions ENTRANTES : sur une connexion sortante, le
+  /// `peerId` était déjà renseigné, si bien que la carte de visite du
+  /// pair était prise pour un message ordinaire et injectée telle quelle
+  /// dans le mesh — du JSON dont le premier octet, `{`, était lu comme
+  /// un compteur de sauts.
+  bool poigneeRecue = false;
+
   /// Vrai si ce socket a été remplacé par une connexion plus récente vers
   /// le même pair — sa fermeture ne doit alors pas émettre un faux
   /// événement de déconnexion (le pair reste joignable via l'autre socket).
@@ -671,6 +1004,7 @@ class _TcpPeerInfo {
   _TcpPeerInfo({
     required this.address,
     required this.socket,
+    required this.sortante,
     this.peerId,
     this.pseudo,
   });

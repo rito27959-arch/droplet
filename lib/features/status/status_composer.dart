@@ -61,6 +61,7 @@ import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_typography.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../core/services/storage_service.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 /// Ouvre le compositeur et publie le statut. Renvoie `true` si quelque
 /// chose a effectivement été publié.
@@ -126,6 +127,40 @@ const List<TextStyle> _fonts = [
   TextStyle(fontWeight: FontWeight.w300, letterSpacing: 1.5),
 ];
 
+/// Filtres d'image pour les statuts photo.
+class _ImageFilter {
+  const _ImageFilter({required this.label, required this.matrix});
+  final String label;
+  final List<double> matrix;
+}
+
+const List<_ImageFilter> _imageFilters = [
+  _ImageFilter(label: 'Original', matrix: [
+    1, 0, 0, 0, 0,
+    0, 1, 0, 0, 0,
+    0, 0, 1, 0, 0,
+    0, 0, 0, 1, 0,
+  ]),
+  _ImageFilter(label: 'Sombre', matrix: [
+    0.7, 0, 0, 0, 0,
+    0, 0.7, 0, 0, 0,
+    0, 0, 0.7, 0, 0,
+    0, 0, 0, 1, 0,
+  ]),
+  _ImageFilter(label: 'Lumineux', matrix: [
+    1.3, 0, 0, 0, 0.1,
+    0, 1.3, 0, 0, 0.1,
+    0, 0, 1.3, 0, 0.1,
+    0, 0, 0, 1, 0,
+  ]),
+  _ImageFilter(label: 'Vintage', matrix: [
+    0.6, 0.3, 0.1, 0, 0,
+    0.2, 0.6, 0.2, 0, 0,
+    0.1, 0.2, 0.5, 0, 0,
+    0, 0, 0, 1, 0,
+  ]),
+];
+
 class StatusComposerScreen extends ConsumerStatefulWidget {
   const StatusComposerScreen({super.key});
 
@@ -153,6 +188,7 @@ class _StatusComposerScreenState extends ConsumerState<StatusComposerScreen>
   File? _mediaFile;
   String? _mediaMime;
   StatusMediaKind _mediaKind = StatusMediaKind.none;
+  int _filterIndex = 0;
 
   // ── Caméra ───────────────────────────────────────────────────────
   CameraController? _camera;
@@ -277,6 +313,7 @@ class _StatusComposerScreenState extends ConsumerState<StatusComposerScreen>
       }
       _mediaFile = null;
       _mediaMime = null;
+      _filterIndex = 0;
       _mediaKind = mode == _Mode.voice
           ? StatusMediaKind.voice
           : StatusMediaKind.none;
@@ -1029,7 +1066,8 @@ class _StatusComposerScreenState extends ConsumerState<StatusComposerScreen>
       // Le compositeur est plein écran et toujours sombre : c'est une
       // toile, pas une page de réglages. Les icônes système doivent donc
       // rester claires même quand l'app est en mode clair.
-      body: AnnotatedRegion<SystemUiOverlayStyle>(
+      body: IosMagnifierOverlay(
+        child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
         child: Stack(
           children: [
@@ -1044,6 +1082,7 @@ class _StatusComposerScreenState extends ConsumerState<StatusComposerScreen>
               child: _bottomStack(keyboardOpen),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -1074,6 +1113,7 @@ class _StatusComposerScreenState extends ConsumerState<StatusComposerScreen>
             textAlign: TextAlign.center,
             textCapitalization: TextCapitalization.sentences,
             cursorColor: Colors.white,
+            magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
             style: _fonts[_fontIndex].copyWith(
               color: Colors.white,
               // Le texte rétrécit à mesure qu'il s'allonge, comme dans
@@ -1196,7 +1236,51 @@ class _StatusComposerScreenState extends ConsumerState<StatusComposerScreen>
   Widget _cameraCanvas() {
     final captured = _mediaFile;
     if (captured != null && _mediaKind == StatusMediaKind.photo) {
-      return Center(child: Image.file(captured, fit: BoxFit.contain));
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: _filterIndex == 0
+                ? Image.file(captured, fit: BoxFit.contain)
+                : ColorFiltered(
+                    colorFilter: ColorFilter.matrix(_imageFilters[_filterIndex].matrix),
+                    child: Image.file(captured, fit: BoxFit.contain),
+                  ),
+          ),
+          // Sélecteur de filtres
+          Positioned(
+            left: 0, right: 0, bottom: 80,
+            child: SizedBox(
+              height: 50,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: _imageFilters.length,
+                itemBuilder: (_, i) {
+                  final f = _imageFilters[i];
+                  final selected = i == _filterIndex;
+                  return GestureDetector(
+                    onTap: () => setState(() => _filterIndex = i),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white.withValues(alpha: 0.25) : Colors.black.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(20),
+                        border: selected ? Border.all(color: Colors.white, width: 1.5) : null,
+                      ),
+                      child: Center(
+                        child: Text(f.label, style: TextStyle(
+                          color: Colors.white, fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w400)),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      );
     }
     if (captured != null && _mediaKind == StatusMediaKind.video) {
       // La vidéo se REGARDE avant d'être publiée, en boucle. Une simple

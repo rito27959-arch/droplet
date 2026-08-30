@@ -376,6 +376,32 @@ class TelegramGradientPalettes {
     Color(0xFF14536B),
   ];
 
+  // ── PALETTES ADAPTATIVES AU CONTENU ──────────────────────────────
+  //
+  // Ces palettes sont utilisées quand le thème adaptatif est actif :
+  // le fond change légèrement selon le type du dernier message.
+
+  /// Fond neutre pour messages texte — pas de couleur dominante.
+  static const List<Color> texte = mesh;
+
+  /// Fond légèrement chaud pour les photos — comme si la dernière image
+  /// avait laissé sa dominante colorée sur le fond.
+  static const List<Color> photo = [
+    Color(0xFF1A1A2E),
+    Color(0xFF2D1B3D),
+    Color(0xFF151525),
+    Color(0xFF3A2240),
+  ];
+
+  /// Fond avec un gradient subtil pour les vocaux — comme si la voix
+  /// résonnait dans l'espace.
+  static const List<Color> vocal = [
+    Color(0xFF0E1A2A),
+    Color(0xFF162A3A),
+    Color(0xFF0A1520),
+    Color(0xFF1E3545),
+  ];
+
   /// Les ors éteints d'un coucher de soleil sur la latérite.
   static const List<Color> laterite = [
     Color(0xFF2E1A12),
@@ -473,6 +499,7 @@ class TelegramGradientPalettes {
     'nebuleuse': nebuleuse,
     'palmeraie': palmeraie,
     'ardoise': ardoise,
+    'adaptatif': mesh, // Le mode adaptatif utilise mesh par défaut
   };
 
   static const Map<String, List<Color>> toutesClaires = {
@@ -485,6 +512,7 @@ class TelegramGradientPalettes {
     'nebuleuse': nebuleuseClair,
     'palmeraie': palmeraieClair,
     'ardoise': ardoiseClair,
+    'adaptatif': meshClair,
   };
 
   static const Map<String, String> etiquettes = {
@@ -497,7 +525,20 @@ class TelegramGradientPalettes {
     'nebuleuse': 'Nébuleuse',
     'palmeraie': 'Palmeraie',
     'ardoise': 'Ardoise',
+    'adaptatif': 'Adaptatif',
   };
+
+  /// La palette adaptative selon le type de contenu.
+  ///
+  /// En mode adaptatif, le fond change légèrement selon le type du
+  /// dernier message envoyé — texte, photo, ou vocal.
+  static List<Color> pourContenu(String typeContenu, {required bool sombre}) {
+    return switch (typeContenu) {
+      'photo' => sombre ? photo : photo,
+      'audio' || 'voice' => sombre ? vocal : vocal,
+      _ => sombre ? texte : texte,
+    };
+  }
 
   /// La palette correspondant à une clé, dans la bonne luminosité.
   ///

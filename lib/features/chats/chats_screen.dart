@@ -28,9 +28,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 import '../../core/providers/mesh_provider.dart';
 import '../../core/services/storage_service.dart';
 import '../../core/services/crash_journal.dart';
+import '../../core/services/media_service.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_typography.dart';
 import '../../shared/widgets/bulle_guide.dart';
@@ -42,6 +44,7 @@ import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/scene_animee.dart';
 import '../status/status_composer.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 class ChatsScreen extends ConsumerStatefulWidget {
   const ChatsScreen({super.key});
@@ -173,6 +176,20 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     ref.read(archivedRevisionProvider.notifier).state++;
   }
 
+  Future<void> _pinConversation(Conversation c) async {
+    OuroHaptics.medium();
+    await StorageService.setConversationPinned(c.key, !c.isPinned);
+    if (!mounted) return;
+    ref.read(pinMuteRevisionProvider.notifier).state++;
+  }
+
+  Future<void> _muteConversation(Conversation c) async {
+    OuroHaptics.medium();
+    await StorageService.setConversationMuted(c.key, !c.isMuted);
+    if (!mounted) return;
+    ref.read(pinMuteRevisionProvider.notifier).state++;
+  }
+
   Future<void> _openArchived() async {
     OuroHaptics.selection();
     await showModalBottomSheet<void>(
@@ -188,6 +205,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(archivedRevisionProvider);
+    ref.watch(pinMuteRevisionProvider);
     final all = ref.watch(conversationsProvider);
     final conversations = _query.isEmpty
         ? all
@@ -197,7 +215,29 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     final peers = ref.watch(meshPeerListProvider);
     final archivedCount = StorageService.getArchivedConversations().length;
 
-    return OuroLargeTitleScaffold(
+    // ── LE WIDGET D'ÉCRAN D'ACCUEIL ──────────────────────────────
+    //
+    // ⚠️ MIS À JOUR DEPUIS ICI, ET APRÈS L'IMAGE.
+    //
+    // C'est le seul écran qui connaît à la fois le nombre de messages
+    // non lus et le nombre de pairs — les deux chiffres du widget. Les
+    // recalculer ailleurs aurait donné deux comptes qui divergent, et un
+    // widget qui contredit l'application est pire qu'un widget absent.
+    //
+    // `addPostFrameCallback` parce qu'un appel de canal natif pendant
+    // `build` déclenche une reconstruction en pleine construction. Et
+    // `unawaited` parce que l'affichage ne doit jamais attendre le
+    // lanceur d'Android.
+    final nonLus = all.fold<int>(0, (t, c) => t + c.unreadCount);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(MediaService.majWidget(
+        nonLus: nonLus,
+        pairs: peers.length,
+      ));
+    });
+
+    return IosMagnifierOverlay(
+      child: OuroLargeTitleScaffold(
       title: 'Discussions',
       // Le sous-titre remplace à lui seul l'ancienne grande carte animée
       // du réseau : l'information utile (« combien de personnes sont
@@ -206,6 +246,9 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           ? 'Recherche de pairs…'
           : '${peers.length} pair${peers.length > 1 ? 's' : ''} à proximité',
       onRefresh: _onRefresh,
+      floatingNotification: _MeshNotificationBanner(
+        conversations: all,
+      ),
       leading: KeyedSubtree(
         key: _cleReglages,
         child: OuroBarButton(
@@ -238,9 +281,6 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
             child: _BandeauRapport(
               onEnvoyer: () async {
                 await afficherJournal(context);
-                // Qu'il ait envoyé, effacé ou simplement regardé : il
-                // SAIT maintenant. Le bandeau a fait son travail et ne
-                // doit pas revenir pour les mêmes lignes.
                 await CrashJournal.marquerVu();
                 if (mounted) setState(() => _rapportEnAttente = false);
               },
@@ -260,17 +300,91 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
         if (conversations.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: _EmptyChats(searching: _query.isNotEmpty),
-          )
-        else
-          SliverList.builder(
-            itemCount: conversations.length,
-            itemBuilder: (context, i) => _ConversationRow(
-              conversation: conversations[i],
-              onArchive: () => _archiveConversation(conversations[i]),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _EmptyChats(
+                key: ValueKey(_query.isEmpty ? 'empty' : 'search_$_query'),
+                searching: _query.isNotEmpty,
+              ),
             ),
+          )
+        else ...[
+          // ── Épinglées ─────────────────────────────────────────────
+          if (_query.isEmpty && conversations.any((c) => c.isPinned)) ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  DesignTokens.screenMargin,
+                  DesignTokens.space3,
+                  DesignTokens.screenMargin,
+                  DesignTokens.space1,
+                ),
+                child: Text(
+                  'ÉPINGLÉES',
+                  style: OuroTypography.caption1.copyWith(
+                    color: OuroColors.secondaryLabel,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ),
+            SliverList.builder(
+              key: ValueKey('pinned_${conversations.length}'),
+              itemCount: conversations.where((c) => c.isPinned).length,
+              itemBuilder: (context, i) {
+                final pinned = conversations.where((c) => c.isPinned).toList();
+                return _ConversationRow(
+                  key: ValueKey(pinned[i].key),
+                  conversation: pinned[i],
+                  onArchive: () => _archiveConversation(pinned[i]),
+                  onPin: () => _pinConversation(pinned[i]),
+                  onMute: () => _muteConversation(pinned[i]),
+                );
+              },
+            ),
+          ],
+          // ── Autres ────────────────────────────────────────────────
+          if (_query.isEmpty && conversations.any((c) => !c.isPinned))
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  DesignTokens.screenMargin,
+                  conversations.any((c) => c.isPinned) ? DesignTokens.space3 : DesignTokens.space1,
+                  DesignTokens.screenMargin,
+                  DesignTokens.space1,
+                ),
+                child: Text(
+                  'DISCUSSIONS',
+                  style: OuroTypography.caption1.copyWith(
+                    color: OuroColors.secondaryLabel,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ),
+          SliverList.builder(
+            key: ValueKey('list_${_query}_${conversations.length}'),
+            itemCount: _query.isEmpty
+                ? conversations.where((c) => !c.isPinned).length
+                : conversations.length,
+            itemBuilder: (context, i) {
+              final list = _query.isEmpty
+                  ? conversations.where((c) => !c.isPinned).toList()
+                  : conversations;
+              return _ConversationRow(
+                key: ValueKey(list[i].key),
+                conversation: list[i],
+                onArchive: () => _archiveConversation(list[i]),
+                onPin: () => _pinConversation(list[i]),
+                onMute: () => _muteConversation(list[i]),
+              );
+            },
           ),
+        ],
       ],
+      ),
     );
   }
 
@@ -462,36 +576,41 @@ class _SearchField extends StatelessWidget {
       ),
       child: SizedBox(
         height: 36,
-        child: TextField(
-          controller: controller,
-          style: OuroTypography.body.copyWith(color: OuroColors.label),
-          cursorColor: OuroColors.accent,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'Rechercher',
-            hintStyle: OuroTypography.body.copyWith(
-              color: OuroColors.tertiaryLabel,
-            ),
-            prefixIcon: Icon(
-              Icons.search_rounded,
-              color: OuroColors.tertiaryLabel,
-              size: DesignTokens.iconMd,
-            ),
-            prefixIconConstraints: const BoxConstraints(minWidth: 34),
-            filled: true,
-            fillColor: OuroColors.tertiarySystemFill,
-            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-              borderSide: BorderSide.none,
+        child: OuroCard(
+          padding: EdgeInsets.zero,
+          borderRadius: DesignTokens.radiusMd,
+          child: TextField(
+            controller: controller,
+            style: OuroTypography.body.copyWith(color: OuroColors.label),
+            cursorColor: OuroColors.accent,
+            magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Rechercher',
+              hintStyle: OuroTypography.body.copyWith(
+                color: OuroColors.tertiaryLabel,
+              ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: OuroColors.tertiaryLabel,
+                size: DesignTokens.iconMd,
+              ),
+              prefixIconConstraints: const BoxConstraints(minWidth: 34),
+              filled: true,
+              fillColor: Colors.transparent,
+              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
         ),
@@ -508,10 +627,18 @@ class _SearchField extends StatelessWidget {
 /// iOS : avatar, nom, aperçu sur deux lignes, heure et chevron à droite,
 /// et un séparateur qui démarre après l'avatar.
 class _ConversationRow extends StatefulWidget {
-  const _ConversationRow({required this.conversation, required this.onArchive});
+  const _ConversationRow({
+    super.key,
+    required this.conversation,
+    required this.onArchive,
+    required this.onPin,
+    required this.onMute,
+  });
 
   final Conversation conversation;
   final VoidCallback onArchive;
+  final VoidCallback onPin;
+  final VoidCallback onMute;
 
   @override
   State<_ConversationRow> createState() => _ConversationRowState();
@@ -562,21 +689,21 @@ class _ConversationRowState extends State<_ConversationRow> {
             child: unread
                 ? Padding(
                     padding: const EdgeInsets.only(top: 20),
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: OuroColors.accent,
-                      ),
+                    child: LiquidBadge(
+                      text: c.unreadCount > 9 ? '9+' : '${c.unreadCount}',
+                      color: OuroColors.accent,
+                      child: const SizedBox.shrink(),
                     ),
                   )
                 : null,
           ),
-          PeerAvatar(
-            pseudo: c.pseudo,
-            radius: _avatarSize / 2,
-            online: c.isOnline,
+          Hero(
+            tag: 'avatar-${c.peerId}',
+            child: PeerAvatar(
+              pseudo: c.pseudo,
+              radius: _avatarSize / 2,
+              online: c.isOnline,
+            ),
           ),
           const SizedBox(width: DesignTokens.space3),
           Expanded(
@@ -599,10 +726,21 @@ class _ConversationRowState extends State<_ConversationRow> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: OuroTypography.headline.copyWith(
-                          color: OuroColors.label,
+                          color: c.isMuted
+                              ? OuroColors.tertiaryLabel
+                              : OuroColors.label,
                         ),
                       ),
                     ),
+                    // Icône d'épingle pour les conversations épinglées.
+                    if (c.isPinned) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.push_pin_rounded,
+                        size: 12,
+                        color: OuroColors.secondaryLabel,
+                      ),
+                    ],
                     const SizedBox(width: DesignTokens.space2),
                     Text(
                       formatMessageTime(c.lastTimestamp),
@@ -619,15 +757,28 @@ class _ConversationRowState extends State<_ConversationRow> {
                   ],
                 ),
                 const SizedBox(height: 1),
-                Text(
-                  c.lastMessage,
-                  // Deux lignes d'aperçu, comme Messages — une seule ligne
-                  // rend la liste pauvre et donne peu de contexte.
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: OuroTypography.subheadline.copyWith(
-                    color: OuroColors.secondaryLabel,
-                  ),
+                Row(
+                  children: [
+                    // Icône de mode silencieux.
+                    if (c.isMuted) ...[
+                      Icon(
+                        Icons.volume_off_rounded,
+                        size: 14,
+                        color: OuroColors.tertiaryLabel,
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(
+                      child: Text(
+                        c.lastMessage,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: OuroTypography.subheadline.copyWith(
+                          color: OuroColors.secondaryLabel,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -651,10 +802,6 @@ class _ConversationRowState extends State<_ConversationRow> {
         ),
       ),
       confirmDismiss: (_) async {
-        // La ligne ne se retire pas d'elle-même : `onArchive` met à jour
-        // le stockage, et c'est le filtre du provider qui la fait
-        // disparaître au prochain rendu — pas de conflit entre la gestion
-        // interne de Dismissible et le rebuild piloté par Riverpod.
         widget.onArchive();
         return false;
       },
@@ -668,10 +815,9 @@ class _ConversationRowState extends State<_ConversationRow> {
               setState(() => _pressed = false);
               _open();
             },
+            onLongPress: () => _showContextMenu(),
             child: row,
           ),
-          // Le séparateur démarre après l'avatar, jamais au bord — c'est
-          // le détail iOS qui fait suivre la colonne de texte à l'œil.
           Padding(
             padding: EdgeInsets.only(left: _textInset),
             child: Divider(
@@ -681,6 +827,80 @@ class _ConversationRowState extends State<_ConversationRow> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showContextMenu() {
+    OuroHaptics.medium();
+    final c = widget.conversation;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => FrostedSheet(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // En-tête : nom de la conversation
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: DesignTokens.space4,
+                vertical: DesignTokens.space3,
+              ),
+              child: Row(
+                children: [
+                  PeerAvatar(
+                    pseudo: c.pseudo,
+                    radius: 20,
+                    online: c.isOnline,
+                  ),
+                  const SizedBox(width: DesignTokens.space3),
+                  Expanded(
+                    child: Text(
+                      c.pseudo,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: OuroTypography.headline.copyWith(
+                        color: OuroColors.label,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
+            _SheetAction(
+              icon: c.isPinned
+                  ? Icons.push_pin_rounded
+                  : Icons.push_pin_outlined,
+              label: c.isPinned ? 'Désépingler' : 'Épingler en haut',
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                widget.onPin();
+              },
+            ),
+            Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
+            _SheetAction(
+              icon: c.isMuted
+                  ? Icons.volume_up_rounded
+                  : Icons.volume_off_rounded,
+              label: c.isMuted ? 'Activer les notifications' : 'Couper le son',
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                widget.onMute();
+              },
+            ),
+            Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
+            _SheetAction(
+              icon: Icons.archive_rounded,
+              label: 'Archiver',
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                widget.onArchive();
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -794,7 +1014,7 @@ class _SheetAction extends StatelessWidget {
 
 /// État vide de la liste des conversations.
 class _EmptyChats extends StatelessWidget {
-  const _EmptyChats({required this.searching});
+  const _EmptyChats({super.key, required this.searching});
   final bool searching;
 
   @override
@@ -899,51 +1119,229 @@ class _ArchivedSheet extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                         vertical: DesignTokens.space2,
                       ),
-                      child: Row(
-                        children: [
-                          PeerAvatar(pseudo: c.pseudo, radius: 20),
-                          const SizedBox(width: DesignTokens.space3),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  c.pseudo,
-                                  style: OuroTypography.body.copyWith(
-                                    color: OuroColors.label,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          if (c.peerId != null) {
+                            context.push('/chat/${c.peerId}');
+                          } else if (c.groupId != null) {
+                            context.push('/group/${c.groupId}');
+                          }
+                        },
+                        child: Row(
+                          children: [
+                            PeerAvatar(pseudo: c.pseudo, radius: 20),
+                            const SizedBox(width: DesignTokens.space3),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    c.pseudo,
+                                    style: OuroTypography.body.copyWith(
+                                      color: OuroColors.label,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  c.lastMessage,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: OuroTypography.footnote.copyWith(
-                                    color: OuroColors.secondaryLabel,
+                                  Text(
+                                    c.lastMessage,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: OuroTypography.footnote.copyWith(
+                                      color: OuroColors.secondaryLabel,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          TextButton(
-                            onPressed: () async {
-                              OuroHaptics.medium();
-                              await StorageService.setConversationArchived(
-                                c.key,
-                                false,
-                              );
-                              ref
-                                  .read(archivedRevisionProvider.notifier)
-                                  .state++;
-                            },
-                            child: const Text('Désarchiver'),
-                          ),
-                        ],
+                            TextButton(
+                              onPressed: () async {
+                                OuroHaptics.medium();
+                                await StorageService.setConversationArchived(
+                                  c.key,
+                                   false,
+                                );
+                                ref
+                                    .read(archivedRevisionProvider.notifier)
+                                    .state++;
+                              },
+                              child: const Text('Désarchiver'),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ─────────────────────────────────────────────────────────────
+///  NOTIFICATION MESH FLOTTANTE
+/// ─────────────────────────────────────────────────────────────
+///
+/// Bulle flottante en haut de l'écran d'accueil qui montre le dernier
+/// message reçu du mesh, avec un mini avatar et un preview. Pas de push
+/// notification classique — c'est un élément in-app qui apparaît quand
+/// un message arrive pendant qu'on est sur l'écran d'accueil.
+///
+/// L'animation est un slide-in par le haut avec un léger bounce, puis
+/// un slide-out après 4 secondes ou au tap.
+class _MeshNotificationBanner extends StatefulWidget {
+  const _MeshNotificationBanner({required this.conversations});
+
+  final List<Conversation> conversations;
+
+  @override
+  State<_MeshNotificationBanner> createState() =>
+      _MeshNotificationBannerState();
+}
+
+class _MeshNotificationBannerState extends State<_MeshNotificationBanner>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _ctrl;
+  Animation<Offset>? _slideAnim;
+  Conversation? _lastUnread;
+  bool _dismissed = false;
+
+  @override
+  void didUpdateWidget(_MeshNotificationBanner old) {
+    super.didUpdateWidget(old);
+    _checkForNewMessage();
+  }
+
+  void _checkForNewMessage() {
+    if (_dismissed) return;
+    // Trouver la conversation avec le dernier message non lu
+    final unread = widget.conversations
+        .where((c) => c.unreadCount > 0)
+        .toList()
+      ..sort((a, b) => b.lastTimestamp.compareTo(a.lastTimestamp));
+
+    if (unread.isEmpty) {
+      if (_ctrl?.isAnimating == true) _dismiss();
+      return;
+    }
+
+    final latest = unread.first;
+    // Si c'est un nouveau message non lu qu'on n'affichait pas
+    if (_lastUnread?.key != latest.key) {
+      _lastUnread = latest;
+      _show(latest);
+    }
+  }
+
+  void _show(Conversation conv) {
+    _dismissed = false;
+    _ctrl?.dispose();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, -1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _ctrl!,
+      curve: Curves.elasticOut,
+    ));
+    _ctrl!.forward();
+    // Auto-masquer après 4 secondes
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted && !_dismissed) _dismiss();
+    });
+  }
+
+  void _dismiss() {
+    _dismissed = true;
+    _ctrl?.reverse().then((_) {
+      if (mounted) setState(() => _lastUnread = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final conv = _lastUnread;
+    if (conv == null || _ctrl == null || _slideAnim == null) {
+      return const SizedBox.shrink();
+    }
+
+    return SlideTransition(
+      position: _slideAnim!,
+      child: GestureDetector(
+        onTap: () {
+          _dismiss();
+          // TODO: naviguer vers la conversation
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: OuroColors.systemBackground.withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              PeerAvatar(pseudo: conv.pseudo, radius: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      conv.pseudo,
+                      style: OuroTypography.subheadline.copyWith(
+                        color: OuroColors.label,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      conv.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: OuroTypography.footnote.copyWith(
+                        color: OuroColors.secondaryLabel,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: OuroColors.meshBlueBright,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${conv.unreadCount}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

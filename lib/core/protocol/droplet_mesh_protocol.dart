@@ -1,5 +1,13 @@
 import 'dart:collection';
 import 'dart:math';
+import 'dart:typed_data';
+import 'package:cryptography/cryptography.dart';
+
+/// Callback pour persister les IDs vus dans le stockage permanent.
+///
+/// Appelé à chaque nouveau message dédupliqué, de manière batchée
+/// par le service de stockage pour ne pas surcharger SQLite.
+typedef SeenStoreCallback = void Function(String messageId);
 
 /// DropletMesh Protocol v2 — protocole de réseau maillé adaptatif conçu
 /// pour rivaliser avec les protocoles Internet classiques.
@@ -8,8 +16,9 @@ import 'dart:math';
 /// - Routing adaptatif (Dijkstra pondéré avec métriques dynamiques)
 /// - Congestion control (AIMD inspiré de TCP Reno)
 /// - Store-and-forward avec priorités
-/// - Deduplication par Bloom Filter
+/// - Deduplication par Bloom Filter + set persisté
 /// - Chiffrement E2E Signal-compatible (X25519 + AES-256-GCM)
+/// - Signature Ed25519 des messages routés
 ///
 /// Ce protocole surpasse le routing statique d'Internet car :
 /// 1. Chaque nœud est un routeur (pas de topology fixe)
@@ -22,6 +31,8 @@ class DropletMeshProtocol {
     this.maxHops = 10,
     this.congestionWindowMin = 1,
     this.congestionWindowMax = 64,
+    this.seenStore,
+    this.staleRouteTimeout = const Duration(seconds: 90),
   });
 
   final String myId;
@@ -29,10 +40,44 @@ class DropletMeshProtocol {
   final int congestionWindowMin;
   final int congestionWindowMax;
 
+  /// Timeout avant qu'une route ne soit considérée comme périmée.
+  /// Doit être > 2× l'intervalle d'annonce (45s) pour éviter les
+  /// faux positifs. Défaut : 90 secondes.
+  final Duration staleRouteTimeout;
+
+  /// Callback optionnel pour persister les IDs vus — branché sur
+  /// `StorageService.addSeenMessageId` au démarrage du mesh.
+  final SeenStoreCallback? seenStore;
+
   // === STATE ===
   final Map<String, RouteEntry> _routingTable = {};
   final Map<String, LinkMetrics> _linkMetrics = {};
+
+  /// Routes alternatives par destination — utilisées en cas d'échec
+  /// de la route principale. Clé = destination, valeur = liste de routes
+  /// triées par qualité (meilleure en premier).
+  final Map<String, List<RouteEntry>> _alternateRoutes = {};
+
+  /// Bloom filter en mémoire — premier filtre O(1) pour la dédup.
+  /// Complété par le set persisté via [seenStore] pour survivre aux
+  /// redémarrages. Le bloom filter est consulté EN PREMIER (rapide,
+  /// zéro I/O) ; seul un « peut-être vu » lance la consultation du
+  /// set persisté (plus lent mais exact).
   final BloomFilter _dedupFilter = BloomFilter(expectedItems: 50000, falsePositiveRate: 0.001);
+
+  /// Set externe persisté (via StorageService) — source de vérité
+  /// pour la dédup après redémarrage. Le Bloom filter est reconstructible
+  /// à partir de ce set au lancement.
+  Set<String> _persistedSeen = {};
+
+  /// Remplace le set persisté (au chargement initial depuis SQLite).
+  void loadPersistedSeen(Set<String> ids) {
+    _persistedSeen = ids;
+    for (final id in ids) {
+      _dedupFilter.add(id);
+    }
+  }
+
   final SplayTreeSet<MessageQueueEntry> _outbox = SplayTreeSet<MessageQueueEntry>();
   final Map<String, CongestionState> _congestionStates = {};
   int _sequenceNumber = 0;
@@ -40,16 +85,27 @@ class DropletMeshProtocol {
   // === ROUTING ===
 
   /// Met à jour la table de routage avec les informations reçues.
+  /// La meilleure route est en première position ; les alternatives sont
+  /// conservées pour le basculement automatique en cas d'échec.
   void updateRoutingTable(String destination, String nextHop, int hopCount, double metric) {
+    final newRoute = RouteEntry(
+      destination: destination,
+      nextHop: nextHop,
+      hopCount: hopCount,
+      metric: metric,
+      lastUpdated: DateTime.now(),
+    );
+
     final existing = _routingTable[destination];
     if (existing == null || _meilleure(hopCount, metric, existing)) {
-      _routingTable[destination] = RouteEntry(
-        destination: destination,
-        nextHop: nextHop,
-        hopCount: hopCount,
-        metric: metric,
-        lastUpdated: DateTime.now(),
-      );
+      // La nouvelle route est la meilleure — l'ancienne devient alternative.
+      if (existing != null) {
+        _addAlternateRoute(destination, existing);
+      }
+      _routingTable[destination] = newRoute;
+    } else {
+      // Pas la meilleure — stocker comme alternative.
+      _addAlternateRoute(destination, newRoute);
     }
   }
 
@@ -83,6 +139,37 @@ class DropletMeshProtocol {
   /// continuent d'arriver, et modifier la table pendant son itération
   /// ferait tomber le parcours.
   List<RouteEntry> snapshotRoutes() => List.of(_routingTable.values);
+
+  /// Ajoute une route comme alternative pour une destination.
+  /// Garde au maximum 3 alternatives par destination.
+  void _addAlternateRoute(String destination, RouteEntry route) {
+    final alts = _alternateRoutes.putIfAbsent(destination, () => []);
+    // Éviter les doublons (même nextHop).
+    alts.removeWhere((r) => r.nextHop == route.nextHop);
+    alts.add(route);
+    // Trier par qualité (meilleure en premier).
+    alts.sort((a, b) {
+      if (a.hopCount != b.hopCount) return a.hopCount.compareTo(b.hopCount);
+      return a.metric.compareTo(b.metric);
+    });
+    // Borner à 3 alternatives.
+    if (alts.length > 3) alts.removeRange(3, alts.length);
+  }
+
+  /// Bascule sur une route alternative quand la route principale échoue.
+  /// Renvoie la nouvelle route principale, ou `null` si aucune alternative.
+  RouteEntry? failoverRoute(String destination) {
+    final alts = _alternateRoutes[destination];
+    if (alts != null && alts.isNotEmpty) {
+      final best = alts.removeAt(0);
+      _routingTable[destination] = best;
+      if (alts.isEmpty) _alternateRoutes.remove(destination);
+      return best;
+    }
+    _routingTable.remove(destination);
+    _alternateRoutes.remove(destination);
+    return null;
+  }
 
   RouteEntry? getRoute(String destination) {
     // D'abord, route directe si le pair est immédiatement joignable.
@@ -148,16 +235,40 @@ class DropletMeshProtocol {
     return _congestionStates[peerId]?.congestionWindow.toInt() ?? congestionWindowMin;
   }
 
-  // === DEDUPLICATION (Bloom Filter) ===
+  // === DEDUPLICATION (Bloom Filter + Set persisté) ===
+  //
+  // La dédup en deux couches est essentielle pour un mesh DTN :
+  //
+  // 1. Le Bloom filter (en mémoire) est le premier filtre — O(1), zéro I/O.
+  //    Si le bloom dit « pas vu », c'est certain : on traite le message.
+  // 2. Si le bloom dit « peut-être vu » (faux positif ou vrai doublon),
+  //    on consulte le set persisté (SQLite via StorageService) pour
+  //    confirmer — plus lent mais exact.
+  // 3. Si le set persisté confirme : c'est un doublon, on abandonne.
+  // 4. Sinon : c'est un faux positif du bloom, on traite le message.
+  //
+  // Sans cette double couche, un redémarrage effaçait le bloom filter
+  // et les messages déjà vus étaient re-relayés → tempête de flood.
 
-  /// Vérifie si un message a déjà été vu — O(1) avec bloom filter.
+  /// Vérifie si un message a déjà été vu.
+  ///
+  /// D'abord le Bloom filter (rapide), puis le set persisté si le bloom
+  /// dit « peut-être ». Renvoie `true` si le message est un doublon avéré.
   bool isDuplicate(String messageId) {
-    return _dedupFilter.check(messageId);
+    // Bloom filter dit « certainement pas vu » → pas un doublon.
+    if (!_dedupFilter.check(messageId)) return false;
+    // Bloom dit « peut-être vu » → vérifier le set persisté (source de vérité).
+    return _persistedSeen.contains(messageId);
   }
 
-  /// Enregistre un message comme vu.
+  /// Enregistre un message comme vu dans les deux couches.
   void markSeen(String messageId) {
     _dedupFilter.add(messageId);
+    final isNew = _persistedSeen.add(messageId);
+    // Persister via le callback (batché par StorageService).
+    if (isNew && seenStore != null) {
+      seenStore!(messageId);
+    }
   }
 
   // === MESSAGE QUEUE (Priority) ===
@@ -219,10 +330,71 @@ class DropletMeshProtocol {
     return routes.entries.map((e) => RouteEntry.fromJson(e.key, e.value)).toList();
   }
 
-  /// Nettoie les routes expirées (>60 secondes sans mise à jour).
+  /// Nettoie les routes expirées (>staleRouteTimeout sans mise à jour).
+  /// Le timeout par défaut (90s) est > 2× l'intervalle d'annonce (45s)
+  /// pour éviter de poteler des routes valides.
   void pruneStaleRoutes() {
-    final cutoff = DateTime.now().subtract(const Duration(seconds: 60));
+    final cutoff = DateTime.now().subtract(staleRouteTimeout);
     _routingTable.removeWhere((_, v) => v.lastUpdated.isBefore(cutoff));
+    // Aussi nettoyer les alternatives périmées.
+    _alternateRoutes.removeWhere((_, routes) {
+      routes.removeWhere((r) => r.lastUpdated.isBefore(cutoff));
+      return routes.isEmpty;
+    });
+  }
+
+  // === MESSAGE SIGNING (Ed25519) ===
+  //
+  // Inspiré de Kabootar et BitChat : chaque message routé est signé
+  // avec la clé Ed25519 de l'émetteur. Cela permet au destinataire
+  // final de vérifier que le message n'a pas été modifié en cours de
+  // route, et qu'il vient bien de qui prétend l'envoyer.
+  //
+  // Sans signature, un relayeur malveillant pourrait :
+  //   - Injecter de faux messages qui passent le déchiffrement AES-GCM
+  //   - Modifier les champs de routing (TTL, destination)
+  //   - Se faire passer pour un autre expéditeur
+
+  static final _ed25519 = Ed25519();
+
+  /// Signe un payload avec la clé Ed25519 d'identité.
+  ///
+  /// [payload] : les octets à signer (typiquement le corps du message
+  /// chiffré + les champs de routing).
+  /// [identityKeyPair] : la paire de clés Ed25519 (X25519 pour l'accord,
+  /// Ed25519 pour la signature — deux paires distinctes).
+  ///
+  /// Renvoie la signature en octets bruts (64 octets pour Ed25519).
+  static Future<Uint8List> signPayload({
+    required Uint8List payload,
+    required SimpleKeyPair identityKeyPair,
+  }) async {
+    final signature = await _ed25519.sign(
+      payload,
+      keyPair: identityKeyPair,
+    );
+    return Uint8List.fromList(signature.bytes);
+  }
+
+  /// Vérifie la signature Ed25519 d'un payload.
+  ///
+  /// [payload] : les octets qui ont été signés.
+  /// [signatureBytes] : la signature à vérifier (64 octets).
+  /// [publicKeyBytes] : la clé publique Ed25519 de l'émetteur (32 octets).
+  ///
+  /// Renvoie `true` si la signature est valide, `false` sinon.
+  static Future<bool> verifySignature({
+    required Uint8List payload,
+    required Uint8List signatureBytes,
+    required Uint8List publicKeyBytes,
+  }) async {
+    try {
+      final publicKey = SimplePublicKey(publicKeyBytes, type: KeyPairType.ed25519);
+      final signature = Signature(signatureBytes, publicKey: publicKey);
+      return await _ed25519.verify(payload, signature: signature);
+    } catch (_) {
+      return false;
+    }
   }
 }
 
@@ -316,6 +488,7 @@ class MessageQueueEntry implements Comparable<MessageQueueEntry> {
     required this.priority,
     required this.attempt,
     required this.enqueuedAt,
+    this.signature,
   });
 
   final String messageId;
@@ -324,6 +497,10 @@ class MessageQueueEntry implements Comparable<MessageQueueEntry> {
   final MessagePriority priority;
   final int attempt;
   final DateTime enqueuedAt;
+
+  /// Signature Ed25519 du payload (64 octets), si signé.
+  /// Null pour les messages non signés (broadcast, hellos).
+  final Uint8List? signature;
 
   /// Délai exponentiel avec jitter : min(2^attempt * 100ms, 30s) + jitter.
   Duration get retryDelay {
@@ -335,15 +512,29 @@ class MessageQueueEntry implements Comparable<MessageQueueEntry> {
   @override
   int compareTo(MessageQueueEntry other) {
     // Priorité d'abord, puis plus vieux d'abord (FIFO dans même priorité).
+    //
+    // ⚠️ CORRECTIF — même défaut que `PremiumMessageQueue._QueueEntry`
+    // (voir le commentaire détaillé là-bas). `_outbox` est un
+    // `SplayTreeSet<MessageQueueEntry>` : sans troisième critère, deux
+    // messages distincts enfilés à la même priorité pendant la même
+    // microseconde (`enqueuedAt` égal) comparaient à zéro, et le second
+    // `_outbox.add(...)` dans `enqueueMessage` ne l'ajoutait pas — le
+    // message disparaissait silencieusement, sans jamais atteindre
+    // `dequeueMessage`. Le `messageId` départage tout le reste.
     final cmp = priority.value.compareTo(other.priority.value);
     if (cmp != 0) return cmp;
-    return enqueuedAt.compareTo(other.enqueuedAt);
+    final cmpTime = enqueuedAt.compareTo(other.enqueuedAt);
+    if (cmpTime != 0) return cmpTime;
+    return messageId.compareTo(other.messageId);
   }
 }
 
 /// Bloom Filter optimisé mémoire — O(1) lookup/insert, ~1.2 bits/element.
+/// Se réinitialise automatiquement quand la capacité estimée est dépassée
+/// pour éviter la dérive des faux positifs.
 class BloomFilter {
-  BloomFilter({required int expectedItems, required double falsePositiveRate}) {
+  BloomFilter({required int expectedItems, required double falsePositiveRate})
+      : _expectedItems = expectedItems {
     _size = _optimalSize(expectedItems, falsePositiveRate);
     _hashCount = _optimalHashCount(_size, expectedItems);
     _bits = List<bool>.filled(_size, false);
@@ -352,6 +543,8 @@ class BloomFilter {
   late final int _size;
   late final int _hashCount;
   late final List<bool> _bits;
+  final int _expectedItems;
+  int _addedCount = 0;
 
   static int _optimalSize(int n, double p) {
     return (-(n * log(p)) / (log(2) * log(2))).ceil();
@@ -365,6 +558,12 @@ class BloomFilter {
     for (var i = 0; i < _hashCount; i++) {
       final idx = _hash(item, i) % _size;
       _bits[idx] = true;
+    }
+    _addedCount++;
+    // Réinitialiser quand on dépasse 1.5× la capacité attendue pour
+    // maintenir un taux de faux positifs raisonnable.
+    if (_addedCount > (_expectedItems * 1.5).toInt()) {
+      reset();
     }
   }
 
@@ -387,5 +586,6 @@ class BloomFilter {
   /// Réinitialise le filter quand il est trop plein.
   void reset() {
     _bits.fillRange(0, _size, false);
+    _addedCount = 0;
   }
 }

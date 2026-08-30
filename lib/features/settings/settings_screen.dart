@@ -18,6 +18,7 @@
 // alourdir les lignes elles-mêmes.
 // ============================================================================
 
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,9 +37,12 @@ import '../../design_system/ouro_list.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/glassmorphism.dart';
 import '../../design_system/design_tokens.dart';
+import '../../design_system/liquid_bridge.dart';
+import '../../design_system/mode_transition.dart';
 import '../../shared/widgets/avatar_picker_sheet.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/premium_badge.dart';
+import '../../shared/widgets/moon_sun_avatar.dart';
 import 'journal_sheet.dart';
 import '../chat/telegram_gradient_background.dart';
 import '../contribution/contribution_screen.dart';
@@ -320,7 +324,12 @@ class _ProfileCardState extends State<_ProfileCard> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  PeerAvatar(pseudo: pseudo, radius: 30, imagePath: chemin),
+                  chemin == null
+                      ? MoonSunAvatar(
+                          pseudo: pseudo,
+                          radius: 30,
+                        )
+                      : PeerAvatar(pseudo: pseudo, radius: 30, imagePath: chemin),
                   // La pastille d'appareil photo : sans elle, rien
                   // n'indique que l'avatar est touchable, et personne
                   // n'appuie sur un avatar.
@@ -525,16 +534,57 @@ class _AppearanceSection extends ConsumerWidget {
             },
             title: mode.label,
             showChevron: false,
-            // La coche bleue à droite de la ligne choisie, comme dans
-            // toutes les listes de sélection d'iOS.
             trailing: mode == current
                 ? Icon(Icons.check_rounded,
                     size: 20, color: OuroColors.accent)
                 : const SizedBox(width: 20),
-            onTap: () {
+            onTap: () async {
               if (mode == current) return;
               OuroHaptics.selection();
+
+              // Direction du changement pour la couleur du cercle.
+              final targetBrightness = mode.resolve(Brightness.dark);
+              final toDark = targetBrightness == Brightness.dark;
+
+              // ⚠️ TOUT CE QUI SUIT EST SYNCHRONE AVANT set() :
+              // Overlay.of, MediaQuery.of, et la capture doivent tous
+              // être faits AVANT que set() ne déclenche le rebuild
+              // (via ValueKey(brightness) dans main.dart) qui invalide
+              // le contexte courant.
+              OverlayState? overlay;
+              Size? screenSize;
+              ui.Image? snapshot;
+
+              try {
+                overlay = Overlay.of(context);
+                screenSize = MediaQuery.of(context).size;
+                snapshot = await ModeTransitionOverlay.capture()
+                    .timeout(const Duration(seconds: 2), onTimeout: () => null);
+              } catch (_) {
+                // La capture peut échouer — ce n'est pas grave, le
+                // changement de thème fonctionne quand même.
+              }
+
+              final tapPosition = screenSize != null
+                  ? Offset(screenSize.width / 2, 250)
+                  : Offset.zero;
+
+              // Appliquer le thème — déclenche un rebuild complet via
+              // ValueKey(brightness) dans MaterialApp.
               ref.read(appearanceProvider.notifier).set(mode);
+
+              // Lancer la transition Telegram si la capture a réussi.
+              // L'overlay reste valide même après le rebuild car c'est
+              // un objet OverlayState, pas un contexte.
+              if (overlay != null) {
+                ModeTransitionOverlay.showWithImage(
+                  overlay,
+                  tapPosition,
+                  snapshot,
+                  toDark: toDark,
+                  screenSize: screenSize ?? Size.zero,
+                );
+              }
             },
           ),
       ],
@@ -622,7 +672,7 @@ class _BackgroundServiceRowState extends ConsumerState<_BackgroundServiceRow> {
                   ? 'Actif même app fermée'
                   : 'Actif seulement app ouverte',
           showChevron: false,
-          trailing: Switch.adaptive(
+          trailing: LiquidGlassSwitch(
             value: running,
             onChanged: _running == null ? null : _toggle,
           ),

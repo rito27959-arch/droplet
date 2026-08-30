@@ -32,6 +32,7 @@ import '../../design_system/ouro_spinner.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
+import '../../design_system/liquid_bridge.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/scene_animee.dart';
 
@@ -221,6 +222,41 @@ class _SafetyScreenState extends ConsumerState<SafetyScreen> {
     }
   }
 
+  /// Demande d'aide — envoie un check-in « j'ai besoin d'aide » au mesh.
+  Future<void> _sendHelpRequest() async {
+    final includeLocation = await ouroChoice<bool>(
+      context,
+      title: "Diffuser « J'ai besoin d'aide » ?",
+      message: 'Ce statut signalera aux pairs à portée que tu as besoin '
+          "d'assistance. Tu peux inclure une position approximative.",
+      options: const [
+        OuroChoiceOption(label: 'Avec position approx.', value: true),
+        OuroChoiceOption(label: 'Sans position', value: false),
+      ],
+    );
+    if (includeLocation == null || !mounted) return;
+
+    setState(() => _sending = true);
+    try {
+      double? lat;
+      double? lon;
+      if (includeLocation) {
+        final position = await _tryGetApproxLocation();
+        lat = position?.latitude;
+        lon = position?.longitude;
+      }
+      await ref.read(meshRepositoryProvider).sendSafetyCheckin(lat: lat, lon: lon);
+      HapticFeedback.heavyImpact();
+      if (!mounted) return;
+      ref.read(toastProvider.notifier).show("Demande d'aide diffusée au mesh", type: DropletToastType.warning);
+    } catch (e) {
+      if (!mounted) return;
+      ref.read(toastProvider.notifier).show('Échec de la diffusion', type: DropletToastType.error);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   String _timeAgo(DateTime t) {
     final diff = DateTime.now().difference(t);
     if (diff.inMinutes < 1) return 'à l\'instant';
@@ -243,10 +279,14 @@ class _SafetyScreenState extends ConsumerState<SafetyScreen> {
           // La carte est l'autre moitié de cet écran : la liste dit QUI
           // est en sécurité, la carte dit OÙ. Un aller-retour direct
           // entre les deux évite de repasser par les réglages.
-          IconButton(
-            tooltip: 'Voir sur la carte',
-            icon: Icon(Icons.map_rounded, color: OuroColors.meshBlueBright),
-            onPressed: () => context.push('/map'),
+          Semantics(
+            button: true,
+            label: 'Voir sur la carte',
+            child: IconButton(
+              tooltip: 'Voir sur la carte',
+              icon: Icon(Icons.map_rounded, color: OuroColors.meshBlueBright),
+              onPressed: () => context.push('/map'),
+            ),
           ),
         ],
       ),
@@ -254,6 +294,23 @@ class _SafetyScreenState extends ConsumerState<SafetyScreen> {
         padding: const EdgeInsets.fromLTRB(DesignTokens.screenMargin, 8, DesignTokens.screenMargin, DesignTokens.space8),
         children: [
           _SafetyButton(sending: _sending, onTap: _sendCheckin),
+          const SizedBox(height: 12),
+          // Demande d'aide — bouton secondaire pour signaler
+          // un besoin d'assistance (pas juste « je suis en sécurité »).
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: _sending ? null : _sendHelpRequest,
+              icon: Icon(Icons.priority_high_rounded, color: OuroColors.systemOrange, size: 20),
+              label: Text("J'ai besoin d'aide",
+                  style: TextStyle(color: OuroColors.systemOrange, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: OuroColors.systemOrange.withValues(alpha: 0.4)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusLg)),
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
           Text('Check-in reçus (${_checkins.length})',
               style: TextStyle(color: OuroColors.textSecondary, fontSize: 13, fontWeight: FontWeight.w700)),
@@ -305,7 +362,13 @@ class _SafetyScreenState extends ConsumerState<SafetyScreen> {
                         ],
                       ),
                     ),
-                    Icon(Icons.check_circle_rounded, color: OuroColors.successGreen, size: 20),
+                    Semantics(
+                      label: 'En sécurité',
+                      child: LiquidGlassBox(
+                        padding: EdgeInsets.zero,
+                        child: Icon(Icons.check_circle_rounded, color: OuroColors.successGreen, size: 20),
+                      ),
+                    ),
                   ],
                 ),
               )
@@ -333,6 +396,8 @@ class _SafetyButton extends StatefulWidget {
 
 class _SafetyButtonState extends State<_SafetyButton> with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
+  int _countdown = 0;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
@@ -344,7 +409,25 @@ class _SafetyButtonState extends State<_SafetyButton> with SingleTickerProviderS
   @override
   void dispose() {
     _pulse.dispose();
+    _countdownTimer?.cancel();
     super.dispose();
+  }
+
+  void _startCountdown() {
+    if (_countdown > 0) return;
+    setState(() => _countdown = 3);
+    HapticFeedback.heavyImpact();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      setState(() {
+        _countdown--;
+        if (_countdown > 0) HapticFeedback.mediumImpact();
+      });
+      if (_countdown <= 0) {
+        timer.cancel();
+        widget.onTap();
+      }
+    });
   }
 
   @override
@@ -360,28 +443,35 @@ class _SafetyButtonState extends State<_SafetyButton> with SingleTickerProviderS
           child: child,
         );
       },
-      child: SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: FilledButton.icon(
-          onPressed: widget.sending ? null : widget.onTap,
-          style: FilledButton.styleFrom(
-            backgroundColor: OuroColors.errorRed,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusLg)),
-          ),
-          icon: widget.sending
-              ? const SizedBox(
-                  width: 20, height: 20,
-                  child: OuroSpinner(color: Colors.white, radius: 9),
-                )
-              : AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (context, _) => Transform.scale(
-                    scale: 1.0 + _pulse.value * 0.12,
-                    child: const Icon(Icons.shield_rounded),
+      child: Semantics(
+        button: true,
+        label: 'Diffuser mon statut de sécurité au réseau mesh',
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: FilledButton.icon(
+            onPressed: widget.sending ? null : _startCountdown,
+            style: FilledButton.styleFrom(
+              backgroundColor: OuroColors.errorRed,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusLg)),
+            ),
+            icon: widget.sending
+                ? const SizedBox(
+                    width: 20, height: 20,
+                    child: OuroSpinner(color: Colors.white, radius: 9),
+                  )
+                : AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (context, _) => Transform.scale(
+                      scale: 1.0 + _pulse.value * 0.12,
+                      child: const Icon(Icons.shield_rounded),
+                    ),
                   ),
-                ),
-          label: const Text('Je suis en sécurité', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            label: Text(
+              _countdown > 0 ? '$_countdown…' : 'Je suis en sécurité',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+          ),
         ),
       ),
     );

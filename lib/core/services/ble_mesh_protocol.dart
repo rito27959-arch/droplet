@@ -71,7 +71,19 @@ const String kDownlinkCharUuid = '3c0a1234-5678-4abc-9def-0123456789ae';
 /// Taille max d'une écriture BLE sans négociation MTU.
 /// En pratique, on peut écrire 20 bytes sans MTU, mais certains OS
 /// supportent plus. On reste conservateur pour la compatibilité max.
-const int kMaxBleWriteSize = 20;
+/// Cette valeur est mise à jour quand le MTU est négocié avec le peer.
+int kMaxBleWriteSize = 20;
+
+/// Met à jour la taille maximale d'écriture BLE quand le MTU est négocié.
+/// Appelé après la connexion GATT quand le système signale un MTU plus
+/// grand que le défaut de 23 octets (20 utiles).
+void updateBleMtu(int negotiatedMtu) {
+  // Le payload utile = MTU - 3 octets d'en-tête ATT.
+  final usable = negotiatedMtu - 3;
+  if (usable > kMaxBleWriteSize) {
+    kMaxBleWriteSize = usable;
+  }
+}
 
 /// Type pour le transfert de fichiers dans le forum.
 const int kFileTransferType = 0x30;
@@ -102,6 +114,21 @@ const int kHelloType = 0x09;
 /// Avec elle, chaque appareil apprend « pour atteindre C, passe par B »,
 /// et le message ne suit qu'un chemin.
 const int kRouteAnnounceType = 0x0A;
+
+/// Synchronisation différentielle des statuts — voir
+/// `core/sync/sync_negotiation.dart`.
+///
+/// Deux types plutôt qu'un seul, parce que ce sont deux moments
+/// distincts d'un même échange : « voici ce que j'ai » puis « voici ce
+/// qui me manque ». Ils portent une charge BINAIRE (des identifiants de
+/// 16 octets), et non du JSON : c'est précisément ce qui rend l'offre
+/// assez légère pour tenir dans une trame Bluetooth.
+const int kSyncOfferType = 0x0B;
+const int kSyncRequestType = 0x0C;
+
+/// Événement Nexus : seed partagée + signature couleur pour
+/// synchroniser l'animation de connexion entre deux appareils.
+const int kNexusEventType = 0x0D;
 
 /// Types pour les quiz pair-à-pair.
 const int kQuizChallenge = 0x05;
@@ -165,7 +192,9 @@ class BleMeshProtocol {
   /// Pour simplifier, on traite tout message comme multi-chunk potentiel.
 
   /// Taille de payload par chunk (hors header de chunk).
-  static const int _payloadPerChunk = kMaxBleWriteSize - 1;
+  /// Calculé dynamiquement car kMaxBleWriteSize peut être mis à jour
+  /// après négociation MTU.
+  static int get _payloadPerChunk => kMaxBleWriteSize - 1;
 
   /// Encode un message en chunks BLE.
   /// Retourne une liste de Uint8List, chaque élément fait au plus
@@ -229,12 +258,52 @@ class BleMeshProtocol {
   /// Décode et reassemble un message depuis un flux de chunks.
   /// Retourne null si le reassemblage n'est pas complet.
   ///
-  /// À chaque nouveau petit paquet reçu, cette fonction regarde son
-  /// étiquette : s'il est « complet » à lui seul, on peut tout de suite le
-  /// décoder ; sinon, on le range dans le bon puzzle en cours (identifié
-  /// par le numéro du message) jusqu'à ce que la « dernière carte » arrive
-  /// et permette enfin de reconstituer le message entier.
-  static BleDecodedMessage? decodeChunk(Uint8List chunk, Map<String, ChunkAssembly> assemblies) {
+  /// ⚠️ CORRECTIF — DÉFAUT DE PROTOCOLE, PAS UNE RÉGRESSION.
+  ///
+  /// `encodeMessage` n'écrit le `messageId` (16 octets) QU'UNE SEULE FOIS,
+  /// au tout début de `totalPayload` — donc dans le PREMIER chunk
+  /// seulement. Les chunks « milieu » et « dernier » ne contiennent que la
+  /// SUITE brute du flux (reste de l'en-tête, puis charge utile) : leurs
+  /// 19 octets ne commencent PAS par le `messageId`.
+  ///
+  /// L'ancienne version de cette fonction appelait pourtant
+  /// `_extractMsgId(data)` — donc `data.sublist(0, 16)` — sur CHAQUE
+  /// chunk, y compris milieu/dernier, et cherchait ce résultat dans
+  /// `assemblies`. Pour un chunk milieu/dernier, ces 16 octets ne sont
+  /// jamais le vrai `messageId` (ce sont des octets de charge utile, ou
+  /// pire, un fragment trop court — `data.length < 16` pour beaucoup de
+  /// petits messages, rejeté instantanément). La clé recherchée ne
+  /// correspondait donc (sauf coïncidence astronomique) JAMAIS à celle
+  /// posée par le premier chunk : `assemblies.containsKey(msgId)` était
+  /// fausse, le chunk était jeté, silencieusement, à chaque fois.
+  ///
+  /// Et puisque l'en-tête complet (16+1+1+2 = 20 octets) dépasse à lui
+  /// seul `_payloadPerChunk` (19), AUCUN message — pas un seul, quelle
+  /// que soit sa taille, y compris un texte d'un caractère — ne peut
+  /// tenir dans le chemin « complet en un seul chunk » : chaque message
+  /// nécessite structurellement au moins 2 chunks. Ce bug touchait donc
+  /// TOUT message transmis en BLE, sans exception — statuts, check-in
+  /// d'urgence, fichiers, tout.
+  ///
+  /// Le correctif : on identifie l'assemblage en cours par [linkKey]
+  /// (une liaison — un central, ou un pair déjà résolu côté central)
+  /// plutôt qu'en tentant de relire un `messageId` que les chunks
+  /// milieu/dernier ne contiennent pas. C'est cohérent avec ce que le
+  /// protocole GATT garantit déjà : les écritures sur UNE liaison
+  /// arrivent dans l'ordre, donc il ne peut logiquement y avoir qu'UN
+  /// assemblage en cours par liaison à la fois — à condition que
+  /// l'émetteur ne lance jamais un second message multi-chunks avant
+  /// d'avoir terminé le précédent sur cette même liaison (voir le
+  /// verrou d'envoi par pair ajouté dans `ble_mesh_transport.dart`).
+  ///
+  /// En clair : prend un message (avec son numéro unique, son compteur de
+  /// sauts, son type, et son vrai contenu) et le découpe en une liste de
+  /// petits paquets prêts à partir un par un sur Bluetooth.
+  static BleDecodedMessage? decodeChunk(
+    Uint8List chunk,
+    String linkKey,
+    Map<String, ChunkAssembly> assemblies,
+  ) {
     if (chunk.isEmpty) return null;
 
     final header = chunk[0];
@@ -245,24 +314,23 @@ class BleMeshProtocol {
         return _parseMessageData(data);
 
       case kChunkHeaderFirst:
-        final msgId = _extractMsgId(data);
-        if (msgId == null) return null;
-        assemblies[msgId] = ChunkAssembly(buffer: Uint8List.fromList(data));
+        // Le PREMIER chunk, lui, commence bien par le vrai messageId —
+        // on le garde tel quel comme début de la mémoire tampon, mais on
+        // n'a plus besoin de l'extraire séparément : `_parseMessageData`
+        // le relira correctement une fois le puzzle complet.
+        assemblies[linkKey] = ChunkAssembly(buffer: Uint8List.fromList(data));
         return null;
 
       case kChunkHeaderMiddle:
-        if (data.length < 16) return null;
-        final msgId = _extractMsgId(data);
-        if (msgId == null || !assemblies.containsKey(msgId)) return null;
-        assemblies[msgId]!.buffer = Uint8List.fromList([...assemblies[msgId]!.buffer, ...data]);
+        final assembly = assemblies[linkKey];
+        if (assembly == null) return null; // pas de « premier » en cours sur ce lien
+        assembly.buffer = Uint8List.fromList([...assembly.buffer, ...data]);
         return null;
 
       case kChunkHeaderLast:
-        if (data.length < 16) return null;
-        final msgId = _extractMsgId(data);
-        if (msgId == null || !assemblies.containsKey(msgId)) return null;
-        assemblies[msgId]!.buffer = Uint8List.fromList([...assemblies[msgId]!.buffer, ...data]);
-        final full = assemblies.remove(msgId)!.buffer;
+        final assembly = assemblies.remove(linkKey);
+        if (assembly == null) return null;
+        final full = Uint8List.fromList([...assembly.buffer, ...data]);
         return _parseMessageData(full);
 
       default:
@@ -286,10 +354,10 @@ class BleMeshProtocol {
     );
   }
 
-  static String? _extractMsgId(Uint8List data) {
-    if (data.length < 16) return null;
-    return _bytesToHex(data.sublist(0, 16));
-  }
+  // ⚠️ `_extractMsgId` par-chunk a été retiré : c'était la fonction à
+  // l'origine du défaut corrigé ci-dessus (voir le commentaire sur
+  // `decodeChunk`). `_parseMessageData`, ci-dessus, reste la SEULE
+  // extraction du `messageId`, faite une fois, sur le puzzle complet.
 
   // Petites fonctions de traduction entre octets bruts (des nombres) et
   // texte hexadécimal (des lettres/chiffres lisibles) — un peu comme

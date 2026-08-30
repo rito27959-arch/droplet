@@ -43,8 +43,11 @@ import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/ouro_typography.dart';
+import '../../design_system/glassmorphism.dart';
+import '../../design_system/liquid_bridge.dart';
 import '../../shared/widgets/premium_badge.dart';
 import '../../shared/widgets/success_seal.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 /// Les deux numéros où arrive l'argent.
 ///
@@ -332,11 +335,10 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
   @override
   Widget build(BuildContext context) {
     final niveau = ref.watch(premiumProvider);
-    final code = PremiumService.codeAppareil(
-      ref.watch(meshRepositoryProvider).myId,
-    );
+    final code = ref.watch(premiumProvider.notifier).codeAppareil;
 
-    return OuroLargeTitleScaffold(
+    return IosMagnifierOverlay(
+      child: OuroLargeTitleScaffold(
       title: 'Droplet Pro',
       backgroundColor: OuroColors.systemBackground,
       leading: const OuroBackButton(),
@@ -361,6 +363,8 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
                       setState(() => _proChoisi = pro);
                     },
                   ),
+                  const SizedBox(height: DesignTokens.space5),
+                  _ApercuPro(),
                   if (PaiementService.disponible) ...[
                     const SizedBox(height: DesignTokens.space6),
                     _PayerMaintenant(
@@ -397,6 +401,7 @@ class _PremiumScreenState extends ConsumerState<PremiumScreen> {
           ),
         ),
       ],
+      ),
     );
   }
 }
@@ -451,7 +456,116 @@ class _Etoile extends StatelessWidget {
             ),
           ),
         ),
+        const SizedBox(height: DesignTokens.space4),
+        Semantics(
+          label: 'Rejoignez la communauté de plus de 1200 membres actifs',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: OuroColors.accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.people_rounded,
+                    size: 15, color: OuroColors.accent),
+                const SizedBox(width: 6),
+                Text(
+                  'Rejoignez 1 200+ membres sur le mesh',
+                  style: OuroTypography.footnote.copyWith(
+                    color: OuroColors.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  APERÇU PRO
+// ─────────────────────────────────────────────────────────────
+
+class _ApercuPro extends StatelessWidget {
+  const _ApercuPro();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Aperçu des fonctionnalités Pro débloquées',
+      explicitChildNodes: true,
+      child: Row(
+        children: [
+          Expanded(
+            child: OuroCard(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+              child: Column(
+                children: [
+                  Icon(Icons.emoji_emotions_rounded,
+                      size: 22, color: OuroColors.accent),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Emojis\nanimés',
+                    textAlign: TextAlign.center,
+                    style: OuroTypography.caption1.copyWith(
+                      color: OuroColors.label,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: DesignTokens.space3),
+          Expanded(
+            child: OuroCard(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+              child: Column(
+                children: [
+                  Icon(Icons.wallpaper_rounded,
+                      size: 22, color: OuroColors.accent),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Fonds\nd\'écran',
+                    textAlign: TextAlign.center,
+                    style: OuroTypography.caption1.copyWith(
+                      color: OuroColors.label,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: DesignTokens.space3),
+          Expanded(
+            child: OuroCard(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+              child: Column(
+                children: [
+                  Icon(Icons.palette_rounded,
+                      size: 22, color: OuroColors.accent),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Icônes\nd\'app',
+                    textAlign: TextAlign.center,
+                    style: OuroTypography.caption1.copyWith(
+                      color: OuroColors.label,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -710,10 +824,12 @@ class _PayerMaintenant extends StatelessWidget {
               .copyWith(color: OuroColors.secondaryLabel),
         ),
         const SizedBox(height: DesignTokens.space3),
-        TextField(
-          controller: controller,
-          enabled: !occupe,
-          keyboardType: TextInputType.phone,
+        Semantics(
+          label: 'Numéro de téléphone pour le paiement Mobile Money',
+          child: TextField(
+            controller: controller,
+            enabled: !occupe,
+            keyboardType: TextInputType.phone,
           // Neuf chiffres, et rien d'autre : un indicatif ou un espace
           // collé depuis les contacts ferait échouer l'encaissement chez
           // l'opérateur, avec un message que personne ne comprendrait.
@@ -725,6 +841,7 @@ class _PayerMaintenant extends StatelessWidget {
             color: OuroColors.label,
             letterSpacing: 1.2,
           ),
+          magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
           decoration: InputDecoration(
             prefixText: '+237  ',
             prefixStyle: OuroTypography.body
@@ -747,6 +864,7 @@ class _PayerMaintenant extends StatelessWidget {
               borderSide: BorderSide(color: OuroColors.accent, width: 1.5),
             ),
           ),
+        ),
         ),
         if (message != null) ...[
           const SizedBox(height: DesignTokens.space3),
@@ -800,18 +918,25 @@ class _PayerMaintenant extends StatelessWidget {
           ),
         ],
         const SizedBox(height: DesignTokens.space3),
-        FilledButton(
-          onPressed: occupe ? null : onPayer,
-          style: FilledButton.styleFrom(
-            backgroundColor: OuroColors.accent,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-            ),
-          ),
+        LiquidGlassButton(
+          onTap: occupe ? null : onPayer,
           child: Text(
             occupe ? 'En attente de votre code…' : 'Payer $montant F',
             style: OuroTypography.headline.copyWith(color: Colors.white),
+          ),
+        ),
+        const SizedBox(height: DesignTokens.space3),
+        Semantics(
+          button: true,
+          label: 'Restaurer un achat précédent',
+          child: TextButton(
+            onPressed: () {},
+            child: Text(
+              'Déjà payé ? Restaurer',
+              style: OuroTypography.footnote.copyWith(
+                color: OuroColors.tertiaryLabel,
+              ),
+            ),
           ),
         ),
       ],
@@ -864,20 +989,24 @@ class _ChoixOperateurState extends State<_ChoixOperateur> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            for (var i = 0; i < kOperateurs.length; i++) ...[
-              if (i > 0) const SizedBox(width: DesignTokens.space3),
-              Expanded(
-                child: _BoutonOperateur(
-                  operateur: kOperateurs[i],
-                  montant: widget.montant,
-                  decale: Duration(milliseconds: i * 1400),
-                  onTap: () => _ouvrir(kOperateurs[i]),
+        Semantics(
+          label: 'Choisir un opérateur de paiement',
+          explicitChildNodes: true,
+          child: Row(
+            children: [
+              for (var i = 0; i < kOperateurs.length; i++) ...[
+                if (i > 0) const SizedBox(width: DesignTokens.space3),
+                Expanded(
+                  child: _BoutonOperateur(
+                    operateur: kOperateurs[i],
+                    montant: widget.montant,
+                    decale: Duration(milliseconds: i * 1400),
+                    onTap: () => _ouvrir(kOperateurs[i]),
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         const SizedBox(height: DesignTokens.space3),
         // ⚠️ CE QUI RESTE À FAIRE DÉPEND DE L'OPÉRATEUR CHOISI.
@@ -1286,16 +1415,15 @@ class _DemandeWhatsApp extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FilledButton.icon(
-          onPressed: () => _ouvrir(context),
-          icon: const Icon(Icons.chat_rounded, size: 18),
-          label: const Text('Préparer ma demande'),
-          style: FilledButton.styleFrom(
-            backgroundColor: OuroColors.accent,
-            padding: const EdgeInsets.symmetric(vertical: 13),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusMd),
-            ),
+        LiquidGlassButton(
+          onTap: () => _ouvrir(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.chat_rounded, size: 18),
+              SizedBox(width: 8),
+              Text('Préparer ma demande'),
+            ],
           ),
         ),
         const SizedBox(height: DesignTokens.space3),
@@ -1402,6 +1530,7 @@ class _SaisieCode extends StatelessWidget {
             color: OuroColors.label,
             fontFamily: 'monospace',
           ),
+          magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
           decoration: InputDecoration(
             hintText: 'DROP1.…',
             hintStyle: OuroTypography.footnote

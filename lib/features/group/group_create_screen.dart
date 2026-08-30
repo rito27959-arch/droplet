@@ -24,6 +24,7 @@ import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/scene_animee.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 /// Écran de création d'un groupe : nom + sélection des membres parmi les
 /// pairs connectés ou déjà rencontrés.
@@ -100,7 +101,8 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
         leading: const OuroBackButton(),
         title: const Text('Nouveau groupe', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
-      body: Column(
+      body: IosMagnifierOverlay(
+        child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -108,6 +110,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
               controller: _nameCtrl,
               maxLength: 40,
               style: TextStyle(color: OuroColors.textPrimary, fontSize: 16),
+              magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
               decoration: InputDecoration(
                 labelText: 'Nom du groupe',
                 counterText: '',
@@ -192,6 +195,7 @@ class _GroupCreateScreenState extends ConsumerState<GroupCreateScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

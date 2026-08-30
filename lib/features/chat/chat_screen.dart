@@ -77,9 +77,13 @@ import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/typing_indicator.dart';
 import '../../shared/widgets/heart_burst_overlay.dart';
+import '../../shared/widgets/reaction_effect_overlay.dart';
 import '../../shared/widgets/message_effects.dart';
 import '../../design_system/glassmorphism.dart';
 import '../../shared/widgets/confetti_overlay.dart';
+import '../../shared/widgets/liquid_long_press_effect.dart';
+import '../../core/services/sound_service.dart';
+import '../../shared/widgets/conversation_lock_screen.dart';
 import '../../design_system/ouro_typography.dart';
 import '../../core/models/voice_note_meta.dart';
 import '../../core/services/mesh_transport_service.dart';
@@ -87,6 +91,7 @@ import 'location_message.dart';
 import 'sticker_picker.dart';
 import 'voice_note.dart';
 import '../../shared/widgets/scene_animee.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 /// L'écran de conversation lui-même — juste une coquille qui reçoit soit
 /// un [peerId] (chat 1:1 ou diffusion), soit un [groupId] (chat de
@@ -112,6 +117,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool get _isGroup => widget.groupId != null;
   bool get _isBroadcast => !_isGroup && widget.peerId == 'broadcast';
   String? get _targetId => (_isBroadcast || _isGroup) ? null : widget.peerId;
+
+  /// Conversation verrouillée — affiche l'écran biométrique.
+  late bool _isLocked;
 
   // ── Recherche dans la conversation ───────────────────────────────
   //
@@ -266,13 +274,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // nouvelle bulle — voir _MessageBubble.build).
   StreamSubscription<MeshMessage>? _effectSub;
 
+  bool _loadingOlder = false;
+
   @override
   void initState() {
     super.initState();
-    _scrollCtrl.addListener(_onScroll);
-    NotificationService.openConversationId = _isGroup
+    final key = _isGroup
         ? widget.groupId
         : (_isBroadcast ? 'broadcast' : widget.peerId);
+    _isLocked = StorageService.getLockedConversations().contains(key);
+    _scrollCtrl.addListener(_onScroll);
+    NotificationService.openConversationId = key;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final key = _isGroup
@@ -285,15 +297,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             .scheduleReadReceipts(_isBroadcast ? null : widget.peerId);
       }
     });
-    // Réactions partagées : si le pair envoie un ❤️, on joue l'overlay côté récepteur.
+    // Réactions partagées : si le pair envoie une réaction, on joue l'overlay côté récepteur.
     _reactionSub = ref
         .read(meshMessagesProvider.notifier)
         .reactionEvents
         .listen((evt) {
           if (!mounted) return;
+          HapticFeedback.mediumImpact();
+          // Effet de particules ancé sur la bulle réagie.
+          final origin = _centreDeLaBulle(evt.messageId);
+          if (origin != null) {
+            ReactionEffectOverlay.show(
+              context,
+              emoji: evt.emoji,
+              origin: origin,
+            );
+          }
+          // Pour ❤️ on joue en plus la salve de cœurs.
           if (evt.emoji == '❤️') {
-            HapticFeedback.mediumImpact();
-            HeartBurstOverlay.show(context);
+            HeartBurstOverlay.show(context, origine: origin);
           }
         });
     // Effets plein écran reçus d'un pair — l'expéditeur les déclenche déjà
@@ -340,6 +362,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _hits = const [];
       _hitIndex = 0;
     });
+  }
+
+  /// Le type du dernier message envoyé, pour le fond adaptatif.
+  ///
+  /// En mode adaptatif, le fond change légèrement selon le type du
+  /// dernier message : texte, photo, ou vocal.
+  String _lastMessageType(List<MeshMessage> messages, String myId) {
+    final sent = messages.where((m) => m.senderId == myId).toList();
+    if (sent.isEmpty) return 'text';
+    final last = sent.last;
+    if (last.type == 'file') {
+      if (last.fileMimeType?.startsWith('image') ?? false) return 'photo';
+      if (last.fileMimeType?.startsWith('audio') ?? false) return 'audio';
+    }
+    return 'text';
   }
 
   /// Recalcule les occurrences et saute d'emblée à la plus récente.
@@ -444,6 +481,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// message le plus récent) ou remonté plus haut dans l'historique —
   /// c'est ce qui décide si le petit bouton flottant « nouveaux
   /// messages » doit apparaître.
+  ///
+  /// Suit aussi la vélocité du scroll pour l'effet « bulles qui
+  /// respirent » — quand on scroll vite, les bulles se compressent
+  /// légèrement (scale 0.97), et quand on s'arrête, elles reviennent
+  /// à la normale avec un micro-spring.
+  double _scrollVelocity = 0;
+  double _lastScrollOffset = 0;
+  DateTime _lastScrollTime = DateTime.now();
+
   void _onScroll() {
     final atBottom =
         _scrollCtrl.position.maxScrollExtent - _scrollCtrl.offset < 80;
@@ -455,6 +501,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } else if (!atBottom && !_showJumpButton) {
       setState(() => _showJumpButton = true);
     }
+    // Tracker la vélocité via la différence de position entre deux ticks.
+    final now = DateTime.now();
+    final dt = now.difference(_lastScrollTime).inMilliseconds;
+    final offset = _scrollCtrl.offset;
+    if (dt > 0) {
+      final speed = (offset - _lastScrollOffset).abs() / dt;
+      final normalized = (speed * 16).clamp(0.0, 1.0); // ~1 frame at 60fps
+      if ((normalized - _scrollVelocity).abs() > 0.05) {
+        setState(() => _scrollVelocity = normalized);
+      }
+    }
+    _lastScrollOffset = offset;
+    _lastScrollTime = now;
   }
 
   @override
@@ -789,6 +848,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (text.isEmpty) return;
     _typingTimer?.cancel();
     HapticFeedback.mediumImpact();
+    SoundService.messageSent();
 
     // ⚠️ LE VOL PART AVANT LE VIDAGE DU CHAMP.
     //
@@ -1300,11 +1360,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _replyWithVoice(MeshMessage target) async {
     if (_recording) return;
     setState(() => _replyTarget = target);
-    // La lecture en cours doit s'arrêter : parler par-dessus la voix de
-    // quelqu'un d'autre enregistrerait les deux.
     if (_playingAudio) await _stopPlayback();
     await _startRecording();
     if (mounted && _recording) setState(() => _recordingLocked = true);
+  }
+
+  /// Ouvre la vue de fil de discussion pour un message donné.
+  /// Si le message a déjà un threadId, on filtre par celui-ci.
+  /// Sinon, on crée un thread avec le messageId comme threadId.
+  void _openThread(MeshMessage parent) {
+    final threadId = parent.threadId ?? parent.id;
+    final messages = ref.read(conversationMessagesProvider(
+      _isGroup ? widget.groupId : _targetId,
+    ));
+    final threadMessages = messages.where((m) =>
+        m.threadId == threadId || m.id == threadId
+    ).toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) => _ThreadSheet(
+        parent: parent,
+        threadId: threadId,
+        messages: threadMessages,
+        onReply: (text) {
+          final me = StorageService.currentUser;
+          if (_isGroup) {
+            ref.read(meshMessagesProvider.notifier).sendGroupMessage(
+              me?.pseudo ?? 'Moi',
+              text,
+              groupId: widget.groupId!,
+              replyToId: parent.id,
+              threadId: threadId,
+            );
+          } else {
+            ref.read(meshMessagesProvider.notifier).sendMessage(
+              me?.pseudo ?? 'Moi',
+              text,
+              targetId: _targetId,
+              replyToId: parent.id,
+              threadId: threadId,
+            );
+          }
+        },
+      ),
+    );
   }
 
   /// Copie une pièce jointe reçue dans la galerie ou les
@@ -1375,6 +1479,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         onReact: (emoji) {
           HapticFeedback.mediumImpact();
           notifier.toggleReaction(m.id, emoji);
+          // Effet de particules ancré sur la bulle.
+          final origin = _centreDeLaBulle(m.id);
+          if (origin != null) {
+            ReactionEffectOverlay.show(context, emoji: emoji, origin: origin);
+          }
         },
         actions: [
           // ⚠️ « RÉESSAYER » PASSE EN PREMIER, ET SEULEMENT SI ÇA A
@@ -1402,6 +1511,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             label: 'Répondre',
             onTap: () => setState(() => _replyTarget = m),
           ),
+          MessageAction(
+            icon: Icons.forum_rounded,
+            label: 'Répondre dans le fil',
+            onTap: () => _openThread(m),
+          ),
           if (m.type != 'file')
             MessageAction(
               icon: Icons.copy_rounded,
@@ -1412,6 +1526,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     .read(toastProvider.notifier)
                     .show('Message copié', type: DropletToastType.info);
               },
+            ),
+          // Modifier : uniquement sur mes messages texte, pas les fichiers.
+          if (m.type != 'file' && m.senderId == ref.read(meshRepositoryProvider).myId)
+            MessageAction(
+              icon: Icons.edit_rounded,
+              label: 'Modifier',
+              onTap: () => _editMessage(m),
             ),
           // L'enregistrement n'est proposé que sur les messages qui
           // portent réellement un fichier — et pas sur les vocaux, dont le
@@ -1427,6 +1548,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             label: 'Supprimer',
             destructive: true,
             onTap: () => notifier.deleteMessage(m.id),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ouvre un dialogue pour modifier le contenu d'un message.
+  void _editMessage(MeshMessage m) {
+    final ctrl = TextEditingController(text: m.content);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Modifier le message'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLines: null,
+          magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+          decoration: const InputDecoration.collapsed(hintText: 'Message'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newContent = ctrl.text.trim();
+              if (newContent.isNotEmpty && newContent != m.content) {
+                ref.read(meshMessagesProvider.notifier).editMessage(m.id, newContent);
+              }
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Modifier'),
           ),
         ],
       ),
@@ -1644,10 +1799,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final peerTyping =
         !_isBroadcast && !_isGroup && typingPeers.contains(widget.peerId);
 
-    final fondCouleurs = TelegramGradientPalettes.pour(
-      ref.watch(chatBackgroundProvider),
-      sombre: Theme.of(context).brightness == Brightness.dark,
-    );
+    final fondCouleurs = ref.watch(chatBackgroundProvider) == 'adaptatif'
+        ? TelegramGradientPalettes.pourContenu(
+            _lastMessageType(messages, myId),
+            sombre: Theme.of(context).brightness == Brightness.dark,
+          )
+        : TelegramGradientPalettes.pour(
+            ref.watch(chatBackgroundProvider),
+            sombre: Theme.of(context).brightness == Brightness.dark,
+          );
 
     final items = _buildItems(messages);
 
@@ -1676,6 +1836,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Compte les messages non lus pendant qu'on est remonté dans
     // l'historique.
     _maybeCountUnread(messages, myId);
+
+    // Conversation verrouillée — écran biométrique avant d'accéder au contenu.
+    if (_isLocked) {
+      final pseudo = _isGroup ? (group?.name ?? 'Groupe') : peerPseudo;
+      return ConversationLockScreen(
+        pseudo: pseudo,
+        onUnlocked: () => setState(() => _isLocked = false),
+      );
+    }
 
     return Scaffold(
       // Transparent : c'est le dégradé animé posé en fond du `Stack`
@@ -1925,7 +2094,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 const SizedBox(width: 4),
               ],
       ),
-      body: Stack(
+      body: IosMagnifierOverlay(
+        child: Stack(
         children: [
           // ── Le fond en dégradé animé, façon Telegram ────────────────
           //
@@ -1957,24 +2127,67 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         isBroadcast: _isBroadcast,
                         peerPseudo: peerPseudo,
                       )
-                    : ListView.builder(
-                        controller: _scrollCtrl,
-                        // Le contenu DÉMARRE sous la barre, mais DÉFILE
-                        // dessous : c'est la marge haute qui réserve la
-                        // place, pas un bandeau opaque. Les messages
-                        // s'estompent donc derrière le verre au lieu de
-                        // se faire couper net.
-                        padding: EdgeInsets.only(
-                          left: 12,
-                          right: 12,
-                          top: MediaQuery.paddingOf(context).top +
-                              kToolbarHeight +
-                              8,
-                          bottom: 8,
-                        ),
-                        itemCount: items.length + (peerTyping ? 1 : 0),
-                        itemBuilder: (context, i) {
-                          if (peerTyping && i == items.length) {
+                    : Stack(
+                        children: [
+                          NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              if (notification is ScrollUpdateNotification &&
+                                  notification.metrics.pixels <= 0 &&
+                                  !_loadingOlder &&
+                                  !_isBroadcast) {
+                                setState(() => _loadingOlder = true);
+                                Future.delayed(
+                                    const Duration(seconds: 2),
+                                    () {
+                                  if (mounted) {
+                                    setState(() => _loadingOlder = false);
+                                  }
+                                });
+                              }
+                              return false;
+                            },
+                            child: ListView.builder(
+                            controller: _scrollCtrl,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            // Le contenu DÉMARRE sous la barre, mais DÉFILE
+                            // dessous : c'est la marge haute qui réserve la
+                            // place, pas un bandeau opaque. Les messages
+                            // s'estompent donc derrière le verre au lieu de
+                            // se faire couper net.
+                            padding: EdgeInsets.only(
+                              left: 12,
+                              right: 12,
+                              top: MediaQuery.paddingOf(context).top +
+                                  kToolbarHeight +
+                                  8,
+                              // ⚠️ PAS DE PADDING EN BAS.
+                              //
+                              // Le dernier message doit venir TOUCHER le
+                              // gradient, pas s'arrêter au-dessus. C'est le
+                              // gradient qui crée l'illusion que le message
+                              // « sort » de derrière la barre de saisie.
+                              bottom: 0,
+                            ),
+                            itemCount: items.length + (peerTyping ? 1 : 0) + 1,
+                            itemBuilder: (context, i) {
+                          if (i == 0) {
+                              if (_loadingOlder) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                child: Center(
+                                  child: Text(
+                                    'Charger les messages précédents…',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: OuroColors.textTertiary,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }
+                          if (peerTyping && i == items.length + 1) {
                             return const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 4),
                                   child: Align(
@@ -1986,7 +2199,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 .fadeIn(duration: 200.ms)
                                 .slideX(begin: -0.05);
                           }
-                          final item = items[i];
+                          final item = items[i - 1];
                           if (item is _DaySeparator) {
                             return _daySeparator(item.label);
                           }
@@ -2049,6 +2262,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             voicePlayed: _playedVoiceNotes.contains(m.fileId),
                             repliedMessage: replied,
                             query: _query,
+                            scrollVelocity: _scrollVelocity,
                             onOpenReplied: replied == null
                                 ? null
                                 : () => _jumpToMessage(replied.id, messages),
@@ -2070,6 +2284,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               context.push('/map');
                             },
                             onLongPress: () => _openMessageActions(m),
+                            // Fil de discussion : compter les réponses.
+                            threadCount: messages.where((o) => o.replyToId == m.id).length,
+                            onOpenThread: () => _openThread(m),
                             // Seulement quand il y a quelque chose à
                             // renvoyer : ailleurs, `null` retire la
                             // cible et l'heure retrouve son rôle
@@ -2087,11 +2304,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               ref
                                   .read(meshMessagesProvider.notifier)
                                   .toggleReaction(m.id, '❤️');
-                              // La salve part de la bulle elle-même.
-                              HeartBurstOverlay.show(
-                                context,
-                                origine: _centreDeLaBulle(m.id),
-                              );
+                              // Effet de particules ancé sur la bulle.
+                              final origin = _centreDeLaBulle(m.id);
+                              if (origin != null) {
+                                ReactionEffectOverlay.show(
+                                  context,
+                                  emoji: '❤️',
+                                  origin: origin,
+                                );
+                              }
                             },
                           );
                           // ── LA BULLE EN VOL EST INVISIBLE ────
@@ -2115,6 +2336,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               ? Opacity(opacity: 0, child: entree)
                               : entree;
                         },
+                      ),
+                          ),
+                          // ── LE GRADIENT DE FONDU (Telegram-style) ──────
+                          //
+                          // Un dégradé vertical posé AU-DESSUS de la liste,
+                          // au bas de l'écran. Il va de transparent → couleur
+                          // de fond en 60px. L'effet : les derniers messages
+                          // semblent « sortir » de derrière la barre de saisie
+                          // au lieu d'être coupés net par le bord du widget.
+                          //
+                          // C'est exactement ce que fait Telegram : la bulle
+                          // la plus basse est à moitié estompée, et le texte
+                          // paraît couler depuis la barre d'écriture.
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            height: 60,
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      OuroColors.systemBackground,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
               ),
               _InputBar(
@@ -2150,6 +2405,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
@@ -2357,13 +2613,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Center(
-        child: Container(
+        child: OuroCard(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: OuroColors.glassBg,
-            borderRadius: BorderRadius.circular(DesignTokens.radiusFull),
-            border: Border.all(color: OuroColors.glassBorder, width: 0.5),
-          ),
+          borderRadius: DesignTokens.radiusFull,
           child: Text(
             label,
             style: TextStyle(
@@ -2481,6 +2733,9 @@ class _MessageBubble extends StatelessWidget {
     this.repliedMessage,
     this.onOpenReplied,
     this.query = '',
+    this.scrollVelocity = 0,
+    this.threadCount = 0,
+    this.onOpenThread,
   });
 
   final MeshMessage message;
@@ -2501,6 +2756,15 @@ class _MessageBubble extends StatelessWidget {
 
   /// Le texte recherché, à surligner dans la bulle. Vide hors recherche.
   final String query;
+
+  /// Vélocité du scroll (0.0 à 1.0) pour l'effet de respiration des bulles.
+  final double scrollVelocity;
+
+  /// Nombre de réponses dans le fil (0 = pas de fil actif).
+  final int threadCount;
+
+  /// Ouvre la vue du fil de discussion.
+  final VoidCallback? onOpenThread;
 
   final bool mine;
   final bool isBroadcast;
@@ -2571,10 +2835,11 @@ class _MessageBubble extends StatelessWidget {
             MessageStatus.sending => 'envoi en cours',
             MessageStatus.pending => 'en attente',
             MessageStatus.failed => 'échec de l\'envoi',
-            MessageStatus.sent =>
-              (message.readAt != null || message.deliveryCount > 0)
-                  ? 'remis'
-                  : 'envoyé',
+            MessageStatus.sent => message.readAt != null
+                ? 'lu'
+                : message.deliveryCount > 0
+                    ? 'remis'
+                    : 'envoyé',
           };
 
     return [
@@ -2591,11 +2856,11 @@ class _MessageBubble extends StatelessWidget {
     final align = mine ? CrossAxisAlignment.end : CrossAxisAlignment.start;
 
     final bubble = Padding(
-      // Deux points quand la bulle prolonge la précédente, huit quand
+      // iMessage : 3pt quand la bulle prolonge la précédente, 9pt quand
       // elle ouvre une nouvelle prise de parole. C'est ce contraste
       // d'espacement — et lui seul — qui fait lire le fil par blocs.
       padding: EdgeInsets.only(
-        top: suiteDuPrecedent ? 1 : DesignTokens.space2,
+        top: suiteDuPrecedent ? 3 : 9,
         bottom: 1,
       ),
       child: Column(
@@ -2610,13 +2875,46 @@ class _MessageBubble extends StatelessWidget {
           if (!mine && (isBroadcast || isGroup) && !suiteDuPrecedent)
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 2),
-              child: Text(
-                message.authorPseudo,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: _senderColor(message.senderId ?? message.authorPseudo),
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (message.forwardedFrom != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 1),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.forward_rounded,
+                            size: 12,
+                            color: mine
+                                ? Colors.white54
+                                : OuroColors.textTertiary,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Transféré',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontStyle: FontStyle.italic,
+                              color: mine
+                                  ? Colors.white54
+                                  : OuroColors.textTertiary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Text(
+                    message.authorPseudo,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _senderColor(message.senderId ?? message.authorPseudo),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
           _BullePressable(
@@ -2695,16 +2993,16 @@ class _MessageBubble extends StatelessWidget {
                     // les images vont d'un bord à l'autre, elles suivent
                     // exactement ce tracé, pointe comprise.
                     decoration: ShapeDecoration(
-                      // Couleurs exactes de Messages : accent plein pour
-                      // mes messages, gris neutre pour ceux reçus.
-                      //
-                      // Un sticker, lui, n'a PAS de bulle : il est posé
-                      // à même la conversation, comme un autocollant.
+                      // Couleurs de Messages, modulées par l'état réseau :
+                      //   • Stable (lu/remis) = couleur vive, brillante
+                      //   • En cours (sending/pending) = légèrement matte
+                      //   • Échec = translucide, estompée
                       color: _sansBulle
                           ? Colors.transparent
-                          : mine
-                              ? OuroColors.bubbleOutgoing
-                              : OuroColors.bubbleIncoming,
+                          : _bubbleColorForState(
+                              mine: mine,
+                              status: message.status,
+                            ),
                       shape: _FormeBulle(
                         rayon: DesignTokens.radiusBubble,
                         rayonQueue: finDeSerie && !_sansBulle
@@ -2853,6 +3151,33 @@ class _MessageBubble extends StatelessWidget {
           duration: DesignTokens.durationFast,
           curve: DesignTokens.curveEnter,
         );
+
+    // Effet de respiration : quand on scroll vite, les bulles se
+    // compressent légèrement (scale 0.97), et quand on s'arrête,
+    // elles reviennent à la normale. L'effet est subtil — on ne veut
+    // pas que l'utilisateur le remarque consciemment, juste qu'il
+    // sente que la liste est « vivante ».
+    if (scrollVelocity > 0.1) {
+      final breathScale = 1.0 - (scrollVelocity * 0.03);
+      animated = animated.scaleXY(
+        begin: breathScale,
+        end: 1.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    // iMessage bubble send : spring(response: 0.35, damping: 0.75)
+    // Scale 0.6→1.0 combined with slide up. Applied to outgoing messages.
+    if (mine) {
+      animated = animated
+          .scaleXY(
+            begin: 0.6,
+            end: 1.0,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+          );
+    }
 
     // Effets de bulle façon iMessage — enchaînés après l'entrée normale via
     // `.then()`, ne rejouent jamais au re-render grâce au `ValueKey(m.id)`
@@ -3060,10 +3385,73 @@ class _MessageBubble extends StatelessWidget {
             color: mine ? Colors.white70 : OuroColors.textTertiary,
           ),
         ),
+        // Badge « modifié » — iMessage affiche « Edited » en gris à côté
+        // de l'heure quand un message a été modifié.
+        if (message.editedAt != null) ...[
+          const SizedBox(width: 3),
+          Text(
+            'modifié',
+            style: TextStyle(
+              fontSize: 10,
+              fontStyle: FontStyle.italic,
+              color: mine
+                  ? Colors.white.withValues(alpha: 0.5)
+                  : OuroColors.textTertiary,
+            ),
+          ),
+        ],
+        // Icône d'auto-destruction — petit sablier à côté de l'heure.
+        if (message.expiresInSeconds != null) ...[
+          const SizedBox(width: 3),
+          Icon(
+            Icons.timer_off_rounded,
+            size: 10,
+            color: mine
+                ? Colors.white.withValues(alpha: 0.5)
+                : OuroColors.textTertiary,
+          ),
+        ],
+        // Indicateur de fil — nombre de réponses dans le thread.
+        if (threadCount > 0) ...[
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onOpenThread,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: (mine ? Colors.white : OuroColors.meshBlueBright)
+                    .withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.forum_rounded,
+                    size: 9,
+                    color: mine
+                        ? Colors.white.withValues(alpha: 0.7)
+                        : OuroColors.meshBlueBright,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '$threadCount',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: mine
+                          ? Colors.white.withValues(alpha: 0.7)
+                          : OuroColors.meshBlueBright,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (mine) ...[
           const SizedBox(width: 4),
-          // Le fondu d'une couleur à l'autre marque le passage
-          // « remis → lu » sans faire sursauter la bulle.
+          // iMessage : "Delivered"/"Read" crossfade in 0.2s
           TweenAnimationBuilder<Color?>(
             tween: ColorTween(end: couleurStatut),
             duration: const Duration(milliseconds: 260),
@@ -3182,6 +3570,20 @@ class _MessageBubble extends StatelessWidget {
         ),
       );
     }
+    // ── LINK PREVIEW ──────────────────────────────────────────────
+    //
+    // Quand le message contient une URL, on l'affiche dans une carte
+    // stylisée plutôt qu'en texte brut. Sur un mesh sans internet, on
+    // ne peut pas fetch le metadata — mais on peut au moins afficher
+    // le domaine et un icône correspondant.
+    final urlMatch = _extractUrl(message.content);
+    if (urlMatch != null) {
+      return _LinkPreviewCard(
+        url: urlMatch,
+        fullText: message.content,
+        mine: mine,
+      );
+    }
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -3237,17 +3639,36 @@ class _MessageBubble extends StatelessWidget {
           )
         else
         Flexible(
-          child: _highlighted(
-            message.content,
-            TextStyle(
-              color: mine ? Colors.white : OuroColors.textPrimary,
-              fontSize: 15,
-              height: 1.3,
-            ),
-          ),
+          child: _expandableTextContent(),
         ),
         const SizedBox(width: 4),
       ],
+    );
+  }
+
+  /// Contenu textuel du bulle : utilise `_ExpandableText` pour les
+  /// messages longs (>100 caractères) et `_highlighted` pour la
+  /// recherche active.
+  Widget _expandableTextContent() {
+    final style = TextStyle(
+      color: mine ? Colors.white : OuroColors.textPrimary,
+      fontSize: 15,
+      height: 1.3,
+    );
+
+    // En recherche active, on garde le surlignage classique.
+    if (query.isNotEmpty) {
+      return _highlighted(message.content, style);
+    }
+
+    // Messages courts ou multimedia : pas de troncature.
+    if (message.content.length <= _kExpandThreshold) {
+      return _highlighted(message.content, style);
+    }
+
+    return _ExpandableText(
+      text: message.content,
+      style: style,
     );
   }
 
@@ -3371,21 +3792,24 @@ class _MessageBubble extends StatelessWidget {
       MessageStatus.failed => Icons.error_outline_rounded,
       MessageStatus.sent when read || message.deliveryCount > 0 =>
         Icons.done_all_rounded,
-      // ⚠️ IL N'Y A PAS D'ÉTAT « RELAYÉ » ICI, ET C'EST VOULU.
-      //
-      // Une version précédente en affichait un, déduit de `hopCount > 0`.
-      // C'était faux : `hopCount` n'est pas le nombre de relais
-      // TRAVERSÉS, c'est le nombre de relais RESTANTS — un compte à
-      // rebours initialisé à `kDefaultHopCount` (5) et décrémenté à
-      // chaque saut. Sur un message qu'on vient d'envoyer il vaut donc
-      // toujours 5, et la condition était vraie pour TOUS les messages
-      // sortants : chacun s'affichait « relayé » alors qu'aucun ne
-      // l'avait été.
-      //
-      // Rien, dans ce qui revient au destinataire, ne dit par où le
-      // message est passé. Tant que la couche mesh ne le remonte pas,
-      // l'afficher serait une invention.
       MessageStatus.sent => Icons.done_rounded,
+    };
+  }
+
+  /// La couleur de fond de la bulle modulée par l'état du réseau.
+  ///
+  /// Quand le mesh est en transit (sending/pending), la bulle devient
+  /// légèrement matte — l'utilisateur sent que le message est « en vol ».
+  /// En cas d'échec, elle s'estompe pour signaler le problème sans cri.
+  /// Quand le message est livré ou lu, la bulle est pleinement brillante.
+  Color _bubbleColorForState({required bool mine, required MessageStatus status}) {
+    final base = mine ? OuroColors.bubbleOutgoing : OuroColors.bubbleIncoming;
+    return switch (status) {
+      MessageStatus.sending || MessageStatus.pending =>
+        base.withValues(alpha: 0.85), // matte — en transit
+      MessageStatus.failed =>
+        base.withValues(alpha: 0.55), // translucide — problème
+      MessageStatus.sent => base, // plein — livré ou en attente d'ACK
     };
   }
 
@@ -3405,6 +3829,174 @@ class _MessageBubble extends StatelessWidget {
     if (message.status == MessageStatus.failed) return OuroColors.errorRed;
     if (message.readAt != null) return OuroColors.meshBlueBright;
     return mine ? Colors.white70 : OuroColors.textTertiary;
+  }
+}
+
+/// Extrait la première URL du texte. Retourne null si aucune URL n'est trouvée.
+///
+/// Sur un mesh sans internet, on ne peut pas fetch le metadata complet —
+/// mais on peut détecter les URLs et afficher le domaine stylisé.
+Uri? _extractUrl(String text) {
+  final urlPattern = RegExp(
+    r'https?://[^\s<>"{}|\\^`\[\]]+',
+    caseSensitive: false,
+  );
+  final match = urlPattern.firstMatch(text);
+  if (match != null) {
+    return Uri.tryParse(match.group(0)!);
+  }
+  return null;
+}
+
+/// Carte de preview pour les URLs dans les messages.
+///
+/// Sur un mesh sans internet, on affiche le domaine et un icône
+/// correspondant au type de contenu. C'est plus lisible qu'une URL brute.
+class _LinkPreviewCard extends StatelessWidget {
+  const _LinkPreviewCard({
+    required this.url,
+    required this.fullText,
+    required this.mine,
+  });
+
+  final Uri url;
+  final String fullText;
+  final bool mine;
+
+  IconData _iconForDomain(String host) {
+    if (host.contains('youtube.com') || host.contains('youtu.be')) {
+      return Icons.play_circle_fill;
+    }
+    if (host.contains('github.com')) {
+      return Icons.code;
+    }
+    if (host.contains('twitter.com') || host.contains('x.com')) {
+      return Icons.chat_bubble;
+    }
+    if (host.contains('instagram.com')) {
+      return Icons.camera_alt;
+    }
+    if (host.contains('tiktok.com')) {
+      return Icons.music_note;
+    }
+    if (host.contains('reddit.com')) {
+      return Icons.forum;
+    }
+    return Icons.language;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final host = url.host;
+    final icon = _iconForDomain(host);
+    final hasTextBeforeUrl = fullText.trim() != url.toString();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (hasTextBeforeUrl) ...[
+          SelectableText(
+            fullText.replaceAll(url.toString(), '').trim(),
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 15.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+        Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          decoration: BoxDecoration(
+            color: mine
+                ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                : theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _openUrl(context),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            host,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            url.path.isEmpty ? '/' : url.path,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.5),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.open_in_new,
+                      size: 14,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openUrl(BuildContext context) {
+    // Sur un mesh, on ne peut pas ouvrir dans un browser — mais on peut
+    // copier l'URL dans le presse-papier pour un usage ultérieur.
+    // TODO: Utiliser url_launcher quand disponible.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('URL copiée : ${url.toString()}'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 }
 
@@ -3942,20 +4534,8 @@ class _JumpButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
           onTap: onTap,
-          child: Container(
+          child: OuroCard(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: OuroColors.surfaceElevated,
-              borderRadius: BorderRadius.circular(DesignTokens.radiusFull),
-              border: Border.all(color: OuroColors.glassBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.4),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -4232,12 +4812,7 @@ class _InputBarState extends State<_InputBar>
                 Expanded(
                   child: rec
                       ? _recordingRow(recLabel)
-                      : Container(
-                          decoration: BoxDecoration(
-                            color: OuroColors.systemBackground
-                                .withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
+                      : OuroCard(
                           padding: const EdgeInsets.only(left: 6, right: 4),
                           child: Row(
                             children: [
@@ -4328,6 +4903,7 @@ class _InputBarState extends State<_InputBar>
 
   Widget _champ() {
     return TextField(
+        autofocus: true,
       controller: widget.controller,
       minLines: 1,
       maxLines: 4,
@@ -4336,6 +4912,7 @@ class _InputBarState extends State<_InputBar>
       onSubmitted: (_) => widget.onSend(),
       cursorColor: OuroColors.accent,
       style: OuroTypography.body.copyWith(color: OuroColors.label),
+      magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
       decoration: InputDecoration(
         hintText: 'Message',
         hintStyle: OuroTypography.body.copyWith(
@@ -4596,18 +5173,43 @@ class _LiveWaveformPainter extends CustomPainter {
     final mid = size.height / 2;
     var x = size.width - _barWidth / 2;
 
+    // ── DÉFORMATION DYNAMIQUE ─────────────────────────────────────
+    //
+    // La waveform résonne quand la voix est forte, et se rétracte
+    // quand elle est douce. Le visualisateur devient un instrument :
+    //   • Amplitude > 0.8 = barres très hautes, légère rotation
+    //   • Amplitude > 0.5 = barres moyennes, pas de rotation
+    //   • Amplitude < 0.3 = barres courtes, effet de rétraction
     for (var i = visible.length - 1; i >= 0; i--) {
       final v = visible[i].clamp(0.0, 1.0);
-      final h = 3 + v * (size.height - 4);
+
+      // Hauteur de base avec déformation proportionnelle à l'amplitude
+      final baseHeight = 3 + v * (size.height - 4);
+      // Les barres hautes "résonnent" — leur hauteur oscille légèrement
+      final resonance = v > 0.7 ? math.sin(i * 0.5) * 2 * v : 0.0;
+      final h = (baseHeight + resonance).clamp(2.0, size.height);
+
       // Les barres les plus anciennes s'effacent progressivement vers la
       // gauche, ce qui évite un bord net et artificiel.
       final age = (visible.length - i) / capacity;
       final fade = (1.0 - age * 0.55).clamp(0.25, 1.0);
+
+      // ── COULEUR DYNAMIQUE ─────────────────────────────────────
+      //
+      // Les barres fortes sont plus saturées, les faibles plus ternes.
+      // C'est ce qui crée l'effet de "résonance visuelle".
+      final saturation = 0.45 + v * 0.55;
+      final barColor = Color.lerp(
+        color.withValues(alpha: 0.3),
+        color,
+        saturation,
+      )!;
+
       canvas.drawLine(
         Offset(x, mid - h / 2),
         Offset(x, mid + h / 2),
         Paint()
-          ..color = color.withValues(alpha: (0.45 + v * 0.55) * fade)
+          ..color = barColor.withValues(alpha: fade)
           ..strokeWidth = _barWidth
           ..strokeCap = StrokeCap.round,
       );
@@ -4885,30 +5487,17 @@ class _AnimatedSendButton extends StatefulWidget {
 }
 
 class _AnimatedSendButtonState extends State<_AnimatedSendButton> {
-  // L'animation d'envoi est désormais entièrement portée par
-  // `LiquidSendButton` (la goutte qui se détache) — l'ancien contrôleur
-  // d'onde circulaire n'a plus lieu d'être.
+  bool _pressed = false;
 
   void _handleTap([String? effect]) {
     if (!widget.active) return;
-    // Impact léger, pas lourd : envoyer un message est une action
-    // courante, répétée des dizaines de fois par conversation. Une
-    // vibration forte à chaque envoi devient vite pénible.
     OuroHaptics.light();
     widget.onSend(effect);
   }
 
-  /// Appui long façon Telegram : choisir un effet avant l'envoi. Geste libre
-  /// sur ce bouton (pas de conflit avec `onTap`, contrairement au bouton
-  /// micro voisin qui a dû migrer vers `Listener` pour cette même raison).
   Future<void> _openEffectPicker() async {
     if (!widget.active) return;
     HapticFeedback.selectionClick();
-    // Le clavier est presque toujours ouvert à ce moment (on vient de taper
-    // le message) — sans le fermer, `_EffectPicker` ajoute un padding bas
-    // égal à sa hauteur (`viewInsets.bottom`) tout en restant limité à la
-    // moitié de l'écran (pas de `isScrollControlled`), ce qui comprime son
-    // contenu jusqu'à le rendre invisible (feuille vide constatée en test).
     FocusScope.of(context).unfocus();
     final effect = await showModalBottomSheet<String>(
       context: context,
@@ -4921,23 +5510,22 @@ class _AnimatedSendButtonState extends State<_AnimatedSendButton> {
 
   @override
   Widget build(BuildContext context) {
-    // Le bouton d'envoi liquide : à chaque envoi, une goutte se détache
-    // du bouton, s'étire en restant reliée par un pont de matière, puis
-    // se rompt et file vers le haut (voir `ouro_liquid.dart`).
-    //
-    // L'ancienne version dessinait une onde verte qui s'élargissait
-    // autour du bouton — un effet Material, sans rapport avec la
-    // métaphore de la goutte qui donne son nom à l'app.
-    //
-    // L'appui long reste le raccourci vers les effets de message.
     return GestureDetector(
       onLongPress: _openEffectPicker,
-      child: Center(
-        child: LiquidSendButton(
-          enabled: widget.active,
-          onPressed: _handleTap,
-          size: 34,
-          color: OuroColors.accent,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: Center(
+          child: LiquidSendButton(
+            enabled: widget.active,
+            onPressed: _handleTap,
+            size: 22,
+            color: OuroColors.accent,
+          ),
         ),
       ),
     );
@@ -5072,13 +5660,9 @@ class _EffectChip extends StatelessWidget {
         HapticFeedback.mediumImpact();
         onTap();
       },
-      child: Container(
+      child: OuroCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: OuroColors.glassBg,
-          borderRadius: BorderRadius.circular(DesignTokens.radiusFull),
-          border: Border.all(color: OuroColors.glassBorder),
-        ),
+        borderRadius: DesignTokens.radiusFull,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -5225,50 +5809,33 @@ class _BullePressableState extends State<_BullePressable> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: () {
-        _set(false);
-        widget.onLongPress();
-      },
+    return LiquidLongPressOverlay(
+      onLongPress: widget.onLongPress,
       onDoubleTap: widget.onDoubleTap,
-      onTapDown: (_) => _set(true),
-      onTapUp: (_) => _set(false),
-      onTapCancel: () => _set(false),
-      // `onLongPressDown` ne suffit pas : il ne se déclenche que pour la
-      // reconnaissance d'appui long. Il faut aussi relâcher l'état quand
-      // le doigt part sans avoir maintenu.
-      onLongPressCancel: () => _set(false),
-      onLongPressEnd: (_) => _set(false),
-      // ⚠️ LE RESSORT N'EXISTE QUE PENDANT LE CONTACT.
-      //
-      // C'ÉTAIT LA CAUSE DE LA LENTEUR DE TOUT L'ÉCRAN.
-      //
-      // `SingleMotionBuilder` installe un contrôleur d'animation et un
-      // ticker. Posé inconditionnellement autour de CHAQUE bulle, il en
-      // créait un par message affiché — et il y en avait un second pour
-      // le glissement. Une conversation de cinquante messages faisait
-      // donc vivre une centaine de contrôleurs, tous réveillés à chaque
-      // image, pour animer... rien du tout : au repos, aucune bulle ne
-      // bouge.
-      //
-      // Au repos on rend donc l'enfant NU. Le ressort n'apparaît qu'au
-      // moment où le doigt se pose, et disparaît avec lui. Le rendu est
-      // identique, le coût passe de cent contrôleurs permanents à un
-      // seul, le temps d'un appui.
-      child: _presse
-          ? SingleMotionBuilder(
-              motion: CupertinoMotion.snappy(),
-              value: 0.965,
-              from: 1.0,
-              builder: (context, echelle, _) => Transform.scale(
-                scale: echelle,
-                // Ancré en bas : l'écrasement paraît venir du doigt
-                // plutôt que du centre.
-                alignment: Alignment.bottomCenter,
-                child: widget.child,
-              ),
-            )
-          : widget.child,
+      child: GestureDetector(
+        onLongPress: () {
+          _set(false);
+          widget.onLongPress();
+        },
+        onDoubleTap: widget.onDoubleTap,
+        onTapDown: (_) => _set(true),
+        onTapUp: (_) => _set(false),
+        onTapCancel: () => _set(false),
+        onLongPressCancel: () => _set(false),
+        onLongPressEnd: (_) => _set(false),
+        child: _presse
+            ? SingleMotionBuilder(
+                motion: CupertinoMotion.snappy(),
+                value: 0.965,
+                from: 1.0,
+                builder: (context, echelle, _) => Transform.scale(
+                  scale: echelle,
+                  alignment: Alignment.bottomCenter,
+                  child: widget.child,
+                ),
+              )
+            : widget.child,
+      ),
     );
   }
 }
@@ -5467,6 +6034,122 @@ class _GlisserPourRepondreState extends State<_GlisserPourRepondre> {
 ///
 /// La pointe n'apparaît que sur la DERNIÈRE bulle d'une série : une
 /// pile de bulles toutes pointues ressemble à une scie.
+
+// ─────────────────────────────────────────────────────────────
+//  TEXTE DÉROULABLE (WhatsApp-style)
+// ─────────────────────────────────────────────────────────────
+
+/// Seuil au-delà duquel un message est tronqué avec un bouton
+/// « Voir plus ». 100 caractères correspond à environ 4 lignes
+/// sur un écran de téléphone — assez pour le contexte, pas
+/// assez pour devoir scroller.
+const int _kExpandThreshold = 100;
+
+/// Texte qui se déroule progressivement : tronqué à 100 caractères
+/// avec un bouton « Voir plus », puis déroulé progressivement
+/// (+100 caractères à chaque tap) jusqu'au texte complet, avec un
+/// bouton « Replier » une fois entièrement étendu.
+///
+/// Reproduit exactement le comportement de WhatsApp pour les
+/// messages longs.
+class _ExpandableText extends StatefulWidget {
+  const _ExpandableText({
+    required this.text,
+    required this.style,
+  });
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  State<_ExpandableText> createState() => _ExpandableTextState();
+}
+
+class _ExpandableTextState extends State<_ExpandableText>
+    with SingleTickerProviderStateMixin {
+  /// Nombre de caractères actuellement visibles.
+  late int _maxLength;
+
+  /// Le texte est-il entièrement déplié ?
+  bool get _isExpanded => _maxLength >= widget.text.length;
+
+  /// Le texte est-il long enough pour être tronqué ?
+  bool get _isTruncatable => widget.text.length > _kExpandThreshold;
+
+  @override
+  void initState() {
+    super.initState();
+    _maxLength = _isTruncatable ? _kExpandThreshold : widget.text.length;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExpandableText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _maxLength =
+          _isTruncatable ? _kExpandThreshold : widget.text.length;
+    }
+  }
+
+  void _toggleExpand() {
+    setState(() {
+      if (_isExpanded) {
+        // Replier : revenir au seuil initial.
+        _maxLength = _kExpandThreshold;
+      } else {
+        // Dérouler de 100 caractères de plus, ou tout afficher si proche.
+        final next = _maxLength + _kExpandThreshold;
+        _maxLength = next >= widget.text.length ? widget.text.length : next;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isTruncatable) {
+      // Message court : texte simple, pas de bouton.
+      return Text(widget.text, style: widget.style);
+    }
+
+    final displayText = _isExpanded
+        ? widget.text
+        : '${widget.text.substring(0, _maxLength)}…';
+
+    // Déterminer les couleurs des boutons depuis le style du texte.
+    final isWhite = widget.style.color == Colors.white ||
+        widget.style.color == Colors.white70;
+    final buttonColor =
+        isWhite ? Colors.white.withValues(alpha: 0.7) : OuroColors.accent;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(displayText, style: widget.style),
+        GestureDetector(
+          onTap: _toggleExpand,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              _isExpanded
+                  ? 'Replier'
+                  : _maxLength >= widget.text.length
+                      ? 'Replier'
+                      : 'Voir plus',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: buttonColor,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _FormeBulle extends ShapeBorder {
   const _FormeBulle({
     required this.rayon,
@@ -5611,22 +6294,15 @@ class _IconePilule extends StatelessWidget {
 
 /// Le disque plein qui porte l'action principale de la barre de saisie.
 ///
-/// ⚠️ C'EST LE SEUL ÉLÉMENT COLORÉ DE LA BARRE, et c'est délibéré.
-///
-/// Sur les captures de WhatsApp, tout le reste — sticker, trombone,
-/// appareil photo, texte — est gris sur blanc. Un seul disque de couleur
-/// de marque, à droite. Le regard n'a donc aucun arbitrage à faire :
-/// l'endroit où l'on appuie pour agir est le seul endroit vif de la
-/// rangée.
-///
-/// Ici le disque prend le bleu de Droplet plutôt que le magenta de
-/// WhatsApp : c'est la structure qu'on reprend, pas la marque.
+/// iMessage : 30pt circle, background #007AFF, icon arrow-up, 15pt.
+/// Pressed: scale 0.92 + slight darken.
 class _BoutonRond extends StatelessWidget {
   const _BoutonRond({super.key, required this.child});
 
   final Widget child;
 
-  static const double taille = 46;
+  /// iMessage : 30pt circle for the send button.
+  static const double taille = 30;
 
   @override
   Widget build(BuildContext context) {
@@ -5640,5 +6316,223 @@ class _BoutonRond extends StatelessWidget {
       alignment: Alignment.center,
       child: child,
     );
+  }
+}
+
+/// Feuille modale affichant les messages d'un fil de discussion.
+class _ThreadSheet extends StatefulWidget {
+  const _ThreadSheet({
+    required this.parent,
+    required this.threadId,
+    required this.messages,
+    required this.onReply,
+  });
+
+  final MeshMessage parent;
+  final String threadId;
+  final List<MeshMessage> messages;
+  final ValueChanged<String> onReply;
+
+  @override
+  State<_ThreadSheet> createState() => _ThreadSheetState();
+}
+
+class _ThreadSheetState extends State<_ThreadSheet> {
+  final _ctrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+    widget.onReply(text);
+    _ctrl.clear();
+    HapticFeedback.lightImpact();
+    // Scroll vers le bas après un court délai pour laisser le temps
+    // au message d'apparaître.
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.3,
+      maxChildSize: 0.92,
+      builder: (ctx, scrollCtrl) => Container(
+        decoration: BoxDecoration(
+          color: OuroColors.systemGroupedBackground,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              width: 36,
+              height: 5,
+              decoration: BoxDecoration(
+                color: OuroColors.separator,
+                borderRadius: BorderRadius.circular(2.5),
+              ),
+            ),
+            // Titre
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Fil de discussion',
+                style: OuroTypography.headline.copyWith(
+                  color: OuroColors.label,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
+            // Messages du fil
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollCtrl,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                itemCount: widget.messages.length,
+                itemBuilder: (ctx, i) {
+                  final m = widget.messages[i];
+                  final isParent = m.id == widget.parent.id;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isParent
+                          ? OuroColors.accent.withValues(alpha: 0.08)
+                          : OuroColors.secondarySystemGroupedBackground,
+                      borderRadius: BorderRadius.circular(12),
+                      border: isParent
+                          ? Border.all(
+                              color: OuroColors.accent.withValues(alpha: 0.3),
+                              width: 1,
+                            )
+                          : null,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              m.authorPseudo,
+                              style: OuroTypography.caption1.copyWith(
+                                color: OuroColors.accent,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _formatTime(m.timestamp),
+                              style: OuroTypography.caption2.copyWith(
+                                color: OuroColors.tertiaryLabel,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          m.content,
+                          style: OuroTypography.subheadline.copyWith(
+                            color: OuroColors.label,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Champ de réponse
+            Container(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                MediaQuery.of(context).padding.bottom + 8,
+              ),
+              decoration: BoxDecoration(
+                color: OuroColors.systemGroupedBackground,
+                border: Border(
+                  top: BorderSide(
+                    color: OuroColors.separator,
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _ctrl,
+                      style: OuroTypography.body.copyWith(
+                        color: OuroColors.label,
+                      ),
+                      cursorColor: OuroColors.accent,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Réponse…',
+                        hintStyle: OuroTypography.body.copyWith(
+                          color: OuroColors.tertiaryLabel,
+                        ),
+                        filled: true,
+                        fillColor: OuroColors.tertiarySystemFill,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onSubmitted: (_) => _send(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _send,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: OuroColors.accent,
+                      ),
+                      child: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                        size: 17,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime t) {
+    return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 }

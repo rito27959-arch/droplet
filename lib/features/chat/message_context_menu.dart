@@ -37,6 +37,7 @@ import '../../design_system/design_tokens.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_typography.dart';
+import '../../design_system/glassmorphism.dart';
 
 /// Une action proposée sous le message.
 class MessageAction {
@@ -127,7 +128,8 @@ class _ContextMenuOverlay extends StatelessWidget {
   final ValueChanged<String> onReact;
   final List<MessageAction> actions;
 
-  static const List<String> _emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+  /// iMessage tapback : ❤️ 👍 👎 😂 ‼️ ❓
+  static const List<String> _emojis = ['❤️', '👍', '👎', '😂', '‼️', '❓'];
 
   static const double _barHeight = 56;
   static const double _gap = 10;
@@ -259,7 +261,7 @@ class _ContextMenuOverlay extends StatelessWidget {
   }
 }
 
-/// La capsule d'émojis. Chaque émoji entre à son tour, sur un ressort.
+/// La capsule d'émojis iMessage : capsule avec shadow, 24pt radius.
 class _ReactionBar extends StatelessWidget {
   const _ReactionBar({
     required this.emojis,
@@ -275,36 +277,49 @@ class _ReactionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // iMessage tapback strip : capsule with shadow.
     return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: OuroColors.secondarySystemGroupedBackground,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: OuroColors.glassBorder, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        color: OuroColors.isDark
+            ? const Color(0xFF2C2C2E)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        // iMessage : shadow in light, border in dark.
+        boxShadow: OuroColors.isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+        border: OuroColors.isDark
+            ? Border.all(
+                color: OuroColors.separator,
+                width: 0.5,
+              )
+            : null,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < emojis.length; i++)
-            _Emoji(
-              emoji: emojis[i],
-              selected: current.contains(emojis[i]),
-              // ⚠️ LA CASCADE. Chaque émoji démarre un peu après le
-              // précédent : la barre se déploie de gauche à droite au
-              // lieu d'apparaître d'un bloc. C'est ce décalage — 7 %
-              // d'avance par cran — qui donne l'impression de vie.
-              progress: ((progress - i * 0.07) / 0.6).clamp(0.0, 1.0),
-              onTap: () => onSelect(emojis[i]),
-            ),
-        ],
+      child: SizedBox(
+        height: 44,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < emojis.length; i++)
+              Semantics(
+                button: true,
+                label: 'Réagir avec ${emojis[i]}',
+                child: _Emoji(
+                  emoji: emojis[i],
+                  selected: current.contains(emojis[i]),
+                  progress: ((progress - i * 0.07) / 0.6).clamp(0.0, 1.0),
+                  onTap: () => onSelect(emojis[i]),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -332,6 +347,11 @@ class _EmojiState extends State<_Emoji> {
 
   @override
   Widget build(BuildContext context) {
+    // iMessage : 28pt glyph, 44pt hit target.
+    // Quand l'émojis est déjà sélectionné, appuyer fait rétrécir (0.85)
+    // pour signaler « tap pour retirer ». Sinon, grossir (1.25) pour
+    // signaler « tap pour ajouter ».
+    final pressScale = widget.selected ? 0.85 : 1.25;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => setState(() => _pressed = true),
@@ -341,24 +361,29 @@ class _EmojiState extends State<_Emoji> {
         widget.onTap();
       },
       child: SingleMotionBuilder(
-        // Un ressort avec rebond : l'émoji dépasse sa taille finale puis
-        // revient. Sans ce dépassement, l'entrée paraît mécanique.
-        motion: const CupertinoMotion.bouncy(),
-        value: _pressed ? 1.25 : 1.0,
-        builder: (context, pressScale, child) => Transform.scale(
-          scale: widget.progress * pressScale,
+        motion: const CupertinoMotion.snappy(),
+        value: _pressed ? pressScale : 1.0,
+        builder: (context, scale, child) => Transform.scale(
+          scale: widget.progress * scale,
           child: child,
         ),
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: widget.selected
-                ? OuroColors.accent.withValues(alpha: 0.22)
-                : Colors.transparent,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.selected
+                    ? OuroColors.accent.withValues(alpha: 0.22)
+                    : Colors.transparent,
+              ),
+              alignment: Alignment.center,
+              child: Text(widget.emoji, style: const TextStyle(fontSize: 28)),
+            ),
           ),
-          child: Text(widget.emoji, style: const TextStyle(fontSize: 28)),
         ),
       ),
     );
@@ -381,34 +406,27 @@ class _ActionMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: OuroColors.secondarySystemGroupedBackground,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: OuroColors.glassBorder, width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < actions.length; i++) ...[
-            if (i > 0)
-              Divider(
-                height: 0.5,
-                thickness: 0.5,
-                color: OuroColors.separator,
+    return OuroCard(
+      child: SizedBox(
+        width: width,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < actions.length; i++) ...[
+              if (i > 0)
+                Divider(
+                  height: 0.5,
+                  thickness: 0.5,
+                  color: OuroColors.separator,
+                ),
+              Semantics(
+                button: true,
+                label: actions[i].label,
+                child: _ActionRow(action: actions[i], height: rowHeight),
               ),
-            _ActionRow(action: actions[i], height: rowHeight),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

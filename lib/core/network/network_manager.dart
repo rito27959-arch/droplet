@@ -14,11 +14,20 @@ import '../protocol/droplet_mesh_protocol.dart';
 /// - Failover automatique entre transports (BLE → WiFi → NativeP2P)
 /// - Monitoring de la qualité de service (QoS)
 class NetworkManager {
-  NetworkManager({required this.myId, this.onPeerUpdate, this.onMessageFailed});
+  NetworkManager({
+    required this.myId,
+    this.onPeerUpdate,
+    this.onMessageFailed,
+    this.onReconnectRequest,
+  });
 
   final String myId;
   final ValueChanged<NetworkEvent>? onPeerUpdate;
   final void Function(String messageId, String reason)? onMessageFailed;
+
+  /// Appelé quand le NetworkManager veut relancer un scan de transports.
+  /// MeshTransportService branche ici pour redémarrer le scan WiFi/BLE.
+  final VoidCallback? onReconnectRequest;
 
   // === PROTOCOL ===
   late final DropletMeshProtocol _protocol;
@@ -176,7 +185,8 @@ class NetworkManager {
     _reconnectTimer = Timer(delay, () {
       if (!_running) return;
       onPeerUpdate?.call(NetworkEvent.reconnecting(_reconnectAttempts));
-      // Le transport layer va relancer le scan.
+      // Demander au transport layer de relancer le scan WiFi/BLE.
+      onReconnectRequest?.call();
     });
   }
 

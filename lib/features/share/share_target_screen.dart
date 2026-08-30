@@ -15,6 +15,7 @@ import '../../design_system/glassmorphism.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/scene_animee.dart';
+import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 /// Écran affiché quand Droplet est choisi comme cible de partage depuis une
 /// autre app Android (« Partager vers… ») — sélection de la conversation
@@ -96,8 +97,9 @@ class _ShareTargetScreenState extends ConsumerState<ShareTargetScreen> {
         ),
         title: Text('Partager vers…', style: TextStyle(color: OuroColors.textPrimary, fontWeight: FontWeight.w700)),
       ),
-      body: Column(
-        children: [
+      body: IosMagnifierOverlay(
+        child: Column(
+          children: [
           if (_items.isNotEmpty) _SharedPreview(items: _items),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -105,6 +107,7 @@ class _ShareTargetScreenState extends ConsumerState<ShareTargetScreen> {
               controller: _searchCtrl,
               onChanged: (v) => setState(() => _query = v),
               style: TextStyle(color: OuroColors.textPrimary),
+              magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
               decoration: InputDecoration(
                 hintText: 'Rechercher une conversation',
                 hintStyle: TextStyle(color: OuroColors.textTertiary),
@@ -145,6 +148,7 @@ class _ShareTargetScreenState extends ConsumerState<ShareTargetScreen> {
               child: SizedBox(height: 2, child: LinearProgressIndicator()),
             ),
         ],
+        ),
       ),
     );
   }

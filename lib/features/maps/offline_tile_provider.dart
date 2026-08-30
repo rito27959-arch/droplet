@@ -64,28 +64,27 @@ import 'offline_tile_store.dart';
 
 /// Va chercher les tuiles sur l'appareil, puis sur le réseau.
 class OfflineFirstTileProvider extends TileProvider {
-  OfflineFirstTileProvider({this.allowNetwork = true});
+  OfflineFirstTileProvider({
+    this.allowNetwork = true,
+    this.satellite = false,
+  });
 
   /// Faux pour rester strictement hors connexion, même si du réseau est
   /// disponible — utile en itinérance ou pour économiser des données.
   final bool allowNetwork;
 
-  /// Le fond de carte sombre de CARTO.
-  ///
-  /// « dark_all » est choisi plutôt que le fond clair parce qu'il est
-  /// DÉJÀ sombre : l'assombrir après coup avec un filtre de couleur,
-  /// comme le faisait la version précédente, délave les routes et rend
-  /// les noms de rues illisibles.
-  static const String _urlTemplate =
-      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+  /// Faux = fond coloré Voyager, vrai = vue satellite MapTiler.
+  final bool satellite;
 
-  /// Les quatre sous-domaines du CDN.
-  ///
-  /// Un navigateur — et Flutter — limite le nombre de connexions
-  /// simultanées vers un même hôte. Répartir les tuiles sur quatre noms
-  /// multiplie d'autant le nombre de téléchargements en parallèle, ce
-  /// qui change tout quand vingt cases doivent arriver d'un coup.
-  static const List<String> _subdomains = ['a', 'b', 'c', 'd'];
+  /// Tuiles raster (PNG) — CARTO sert les données OpenStreetMap via un CDN
+  /// commercial, sans compte ni clé. Usage raisonnable respecté.
+  /// Le fond « voyager » est le style clair par défaut.
+  static const String _urlVoyager =
+      'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+
+  /// Tuiles satellite — fond sombre CartoDB.
+  static const String _urlSatellite =
+      'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
 
   /// Identifie l'application auprès du serveur, comme le veut l'usage.
   static const String _userAgent = 'Droplet/1.0 (offline mesh messenger)';
@@ -100,6 +99,7 @@ class OfflineFirstTileProvider extends TileProvider {
       y: coordinates.y,
       client: _client,
       allowNetwork: allowNetwork,
+      satellite: satellite,
     );
   }
 
@@ -109,14 +109,13 @@ class OfflineFirstTileProvider extends TileProvider {
     super.dispose();
   }
 
-  static String urlFor(int z, int x, int y) => _urlTemplate
-      // Le sous-domaine est choisi d'après les coordonnées, et non au
-      // hasard : la même tuile garde ainsi toujours la même adresse, et
-      // reste donc mise en cache par le système.
-      .replaceFirst('{s}', _subdomains[(x + y) % _subdomains.length])
-      .replaceFirst('{z}', '$z')
-      .replaceFirst('{x}', '$x')
-      .replaceFirst('{y}', '$y');
+  static String urlFor(int z, int x, int y, {bool satellite = false}) {
+    final template = satellite ? _urlSatellite : _urlVoyager;
+    return template
+        .replaceFirst('{z}', '$z')
+        .replaceFirst('{x}', '$x')
+        .replaceFirst('{y}', '$y');
+  }
 
   /// L'en-tête exigé par OpenStreetMap.
   ///
@@ -136,6 +135,7 @@ class _OfflineTileImage extends ImageProvider<_OfflineTileImage> {
     required this.y,
     required this.client,
     required this.allowNetwork,
+    this.satellite = false,
   });
 
   final int z;
@@ -143,6 +143,7 @@ class _OfflineTileImage extends ImageProvider<_OfflineTileImage> {
   final int y;
   final http.Client client;
   final bool allowNetwork;
+  final bool satellite;
 
   @override
   Future<_OfflineTileImage> obtainKey(ImageConfiguration configuration) =>
@@ -169,14 +170,20 @@ class _OfflineTileImage extends ImageProvider<_OfflineTileImage> {
     // — et surtout, la tuile abîmée restant en base, elle rejouait
     // l'erreur à chaque affichage de cette zone, indéfiniment. En la
     // jetant, on laisse la case se retélécharger proprement.
-    try {
-      final local = OfflineTileStore.instance.read(z, x, y);
-      if (local != null && local.isNotEmpty) {
-        return await decode(await ui.ImmutableBuffer.fromUint8List(local));
+    //
+    // En mode satellite, on saute le cache local : le cache ne
+    // distingue pas les styles, et un basculement Voyager ↔ Satellite
+    // retournerait les anciennes tuiles du fond.
+    if (!satellite) {
+      try {
+        final local = OfflineTileStore.instance.read(z, x, y);
+        if (local != null && local.isNotEmpty) {
+          return await decode(await ui.ImmutableBuffer.fromUint8List(local));
+        }
+      } catch (e) {
+        debugPrint('[Cartes] tuile $z/$x/$y illisible en cache, rejetée: $e');
+        OfflineTileStore.instance.evict(z, x, y);
       }
-    } catch (e) {
-      debugPrint('[Cartes] tuile $z/$x/$y illisible en cache, rejetée: $e');
-      OfflineTileStore.instance.evict(z, x, y);
     }
 
     // 2. Sur le réseau ?
@@ -184,7 +191,7 @@ class _OfflineTileImage extends ImageProvider<_OfflineTileImage> {
       try {
         final response = await client
             .get(
-              Uri.parse(OfflineFirstTileProvider.urlFor(z, x, y)),
+              Uri.parse(OfflineFirstTileProvider.urlFor(z, x, y, satellite: satellite)),
               headers: OfflineFirstTileProvider.requestHeaders,
             )
             .timeout(const Duration(seconds: 12));
@@ -198,7 +205,12 @@ class _OfflineTileImage extends ImageProvider<_OfflineTileImage> {
           final codec =
               await decode(await ui.ImmutableBuffer.fromUint8List(
                   response.bodyBytes));
-          OfflineTileStore.instance.write(z, x, y, response.bodyBytes);
+          // Les tuiles satellite ne sont pas mises en cache : le cache
+          // ne distingue pas les styles, et un basculement
+          // Voyager ↔ Satellite retournerait les anciennes tuiles.
+          if (!satellite) {
+            OfflineTileStore.instance.write(z, x, y, response.bodyBytes);
+          }
           return codec;
         }
       } catch (_) {
@@ -233,8 +245,9 @@ class _OfflineTileImage extends ImageProvider<_OfflineTileImage> {
       other.z == z &&
       other.x == x &&
       other.y == y &&
-      other.allowNetwork == allowNetwork;
+      other.allowNetwork == allowNetwork &&
+      other.satellite == satellite;
 
   @override
-  int get hashCode => Object.hash(z, x, y, allowNetwork);
+  int get hashCode => Object.hash(z, x, y, allowNetwork, satellite);
 }

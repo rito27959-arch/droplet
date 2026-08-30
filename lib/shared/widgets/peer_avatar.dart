@@ -22,10 +22,15 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import '../../design_system/ouro_colors.dart';
-import '../../design_system/ouro_typography.dart';
 
 /// Avatar circulaire à initiale, en aplat de couleur système.
-class PeerAvatar extends StatelessWidget {
+///
+/// L'avatar réagit à l'état du réseau :
+/// - **En ligne** : pastille verte avec un léger pulse lumineux.
+/// - **Reconnexion** : pastille orange (pas de pulse, statut transitoire).
+/// - **Hors ligne** : pastille grise (désaturée), sans pastille d'état.
+/// - **Pulse** : un anneau lumineux se propage quand le peer est en ligne.
+class PeerAvatar extends StatefulWidget {
   const PeerAvatar({
     super.key,
     required this.pseudo,
@@ -41,48 +46,70 @@ class PeerAvatar extends StatelessWidget {
   final double radius;
 
   /// Le chemin ABSOLU d'une photo de profil, s'il y en a une.
-  ///
-  /// ⚠️ NE JAMAIS Y METTRE LA VALEUR BRUTE DE `avatarUrl` : la base ne
-  /// contient qu'un NOM de fichier, et le dossier de données d'une
-  /// application Android n'est pas garanti stable d'une installation à
-  /// l'autre. Le chemin se résout par `AvatarService.chemin(...)`, qui
-  /// vérifie au passage que le fichier existe encore — après une
-  /// restauration de sauvegarde sur un autre téléphone, il aura disparu.
-  ///
-  /// Quand il est nul, ou que la photo est illisible, on retombe sur
-  /// l'initiale colorée. Une case vide serait pire qu'une initiale.
   final String? imagePath;
 
   /// Affiche la pastille verte « en ligne » en bas à droite.
   final bool online;
 
   /// Le pair a perdu ses liens mais on lui laisse sa chance.
-  ///
-  /// ⚠️ CET ÉTAT MÉRITE SA PROPRE COULEUR, et pas seulement pour faire
-  /// joli. Dans Droplet, une liaison qui hoquette est le cas ORDINAIRE :
-  /// le Bluetooth se coupe et se rétablit sans arrêt sans que personne
-  /// ne bouge (voir `ConnectedPeer.reconnecting`). Peindre ces
-  /// secondes-là en gris « hors ligne » ferait clignoter la pastille en
-  /// permanence, et l'utilisateur apprendrait très vite à ne plus la
-  /// regarder — ce qui la rendrait inutile le jour où elle dit quelque
-  /// chose.
-  ///
-  /// L'ambre dit la vérité : « ça n'est pas coupé, ça se rétablit ».
   final bool reconnecting;
 
-  /// Conservé pour compatibilité avec les écrans pas encore migrés —
-  /// ignoré, les avatars sont désormais en aplat.
+  /// Conservé pour compatibilité avec les écrans pas encore migrés.
   final Gradient? gradient;
 
   /// Force une couleur précise, sinon elle est dérivée du pseudo.
   final Color? color;
 
+  @override
+  State<PeerAvatar> createState() => _PeerAvatarState();
+}
+
+class _PeerAvatarState extends State<PeerAvatar>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.online) _startPulse();
+  }
+
+  @override
+  void didUpdateWidget(PeerAvatar old) {
+    super.didUpdateWidget(old);
+    if (widget.online && !old.online) {
+      _startPulse();
+    } else if (!widget.online && old.online) {
+      _stopPulse();
+    }
+  }
+
+  void _startPulse() {
+    _pulseController?.dispose();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    // Pulse subtil : l'opacité de l'anneau varie, pas la taille
+    _pulseController!.repeat(reverse: true);
+  }
+
+  void _stopPulse() {
+    _pulseController?.stop();
+    _pulseController?.dispose();
+    _pulseController = null;
+  }
+
+  @override
+  void dispose() {
+    _stopPulse();
+    super.dispose();
+  }
+
   Widget _initiale(String initial) => Text(
         initial,
-        style: OuroTypography.headline.copyWith(
-          // L'initiale occupe un peu moins de la moitié du cercle : la
-          // proportion qu'utilise iOS dans Contacts.
-          fontSize: radius * 0.82,
+        style: TextStyle(
+          fontSize: widget.radius * 0.82,
           fontWeight: FontWeight.w500,
           color: Colors.white,
           letterSpacing: 0,
@@ -91,70 +118,85 @@ class PeerAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial = pseudo.trim().isEmpty
+    final initial = widget.pseudo.trim().isEmpty
         ? '?'
-        : pseudo.trim()[0].toUpperCase();
+        : widget.pseudo.trim()[0].toUpperCase();
 
-    // Le pseudo est transformé en nombre stable, qui désigne une couleur
-    // de la palette — même pseudo, même couleur, toujours, sans stockage.
     final palette = OuroColors.avatarPalette;
-    final resolved = color ?? palette[pseudo.hashCode.abs() % palette.length];
+    final resolved =
+        widget.color ?? palette[widget.pseudo.hashCode.abs() % palette.length];
+
+    // Désactivation des couleurs si hors ligne
+    final avatarColor =
+        widget.online ? resolved : Color.lerp(resolved, Colors.grey, 0.55)!;
 
     return SizedBox(
-      // ─────────────────────────────────────────────────────────────
-      width: radius * 2,
-      height: radius * 2,
+      width: widget.radius * 2,
+      height: widget.radius * 2,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            width: radius * 2,
-            height: radius * 2,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: resolved),
+          // Anneau pulse quand en ligne
+          if (widget.online && _pulseController != null)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _pulseController!,
+                builder: (context, child) {
+                  final t = _pulseController!.value;
+                  return Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: OuroColors.systemGreen.withValues(alpha: t * 0.3),
+                        width: 2 + t * 2,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          // Avatar principal
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOut,
+            width: widget.radius * 2,
+            height: widget.radius * 2,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: avatarColor,
+            ),
             alignment: Alignment.center,
             clipBehavior: Clip.antiAlias,
-            child: imagePath != null
+            child: widget.imagePath != null
                 ? Image.file(
-                    File(imagePath!),
-                    width: radius * 2,
-                    height: radius * 2,
+                    File(widget.imagePath!),
+                    width: widget.radius * 2,
+                    height: widget.radius * 2,
                     fit: BoxFit.cover,
-                    // ⚠️ BORNES DE DÉCODAGE OBLIGATOIRES. Sans elles,
-                    // Flutter décode l'image à la résolution de l'écran
-                    // et la garde ainsi en cache : on paierait une image
-                    // pleine page pour dessiner une pastille de
-                    // quarante-huit points. L'avatar est carré, donc une
-                    // seule borne suffit.
-                    cacheWidth: (radius * 2 * 3).round(),
-                    // Un fichier effacé entre deux images ne doit pas
-                    // faire un carré rouge : on retombe sur l'initiale.
+                    cacheWidth: (widget.radius * 2 * 3).round(),
                     errorBuilder: (_, _, _) => _initiale(initial),
                     gaplessPlayback: true,
                   )
                 : _initiale(initial),
           ),
-          if (online || reconnecting)
+          // Pastille d'état
+          if (widget.online || widget.reconnecting)
             Positioned(
               right: 0,
               bottom: 0,
-              // Le changement d'état se fond au lieu de sauter : une
-              // pastille qui clignote attire l'œil bien plus que
-              // l'information ne le mérite.
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOut,
-                width: radius * 0.5,
-                height: radius * 0.5,
+                width: widget.radius * 0.5,
+                height: widget.radius * 0.5,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: online
+                  color: widget.online
                       ? OuroColors.systemGreen
                       : OuroColors.systemOrange,
-                  // Le liseré sombre détache la pastille de l'avatar,
-                  // exactement comme le fait iOS.
                   border: Border.all(
                     color: OuroColors.systemBackground,
-                    width: radius * 0.09,
+                    width: widget.radius * 0.09,
                   ),
                 ),
               ),

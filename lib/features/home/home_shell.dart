@@ -28,6 +28,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:native_liquid_glass/native_liquid_glass.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_tab_bar.dart';
 import '../chats/chats_screen.dart';
@@ -128,14 +129,21 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
 
+    // Sur iOS 26+ : utiliser le vrai UITabBarController natif Liquid Glass
+    if (NativeLiquidGlassUtils.supportsLiquidGlass) {
+      return _buildNativeGlassShell(mq);
+    }
+
+    // Fallback : OuroTabBar Dart avec shader Liquid Glass
+    return _buildDartGlassShell(mq);
+  }
+
+  /// Shell avec le VRAI tab bar natif iOS 26 Liquid Glass.
+  Widget _buildNativeGlassShell(MediaQueryData mq) {
     return Scaffold(
       backgroundColor: OuroColors.systemBackground,
       body: Stack(
         children: [
-          // Point n°2 de l'en-tête : on annonce aux écrans une zone de
-          // sécurité plus haute qu'elle ne l'est réellement, de la
-          // hauteur de la barre. Chacun laisse alors la place nécessaire
-          // tout seul.
           MediaQuery(
             data: mq.copyWith(
               padding: mq.padding.copyWith(
@@ -150,7 +158,72 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               ),
             ),
           ),
-          // Point n°1 : la barre flotte au-dessus du contenu.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: LiquidGlassTabBar(
+              items: const [
+                LiquidGlassTabItem(
+                  label: 'Discussions',
+                  icon: NativeLiquidGlassIcon.sfSymbol('bubble.left.and.bubble.right'),
+                  selectedIcon: NativeLiquidGlassIcon.sfSymbol('bubble.left.and.bubble.right.fill'),
+                  selectedItemColor: Color(0xFF007AFF),
+                ),
+                LiquidGlassTabItem(
+                  label: 'Actus',
+                  icon: NativeLiquidGlassIcon.sfSymbol('antenna.radiowaves.left.and.right'),
+                  selectedIcon: NativeLiquidGlassIcon.sfSymbol('antenna.radiowaves.left.and.right'),
+                  selectedItemColor: Color(0xFF007AFF),
+                ),
+                LiquidGlassTabItem(
+                  label: 'Appels',
+                  icon: NativeLiquidGlassIcon.sfSymbol('phone'),
+                  selectedIcon: NativeLiquidGlassIcon.sfSymbol('phone.fill'),
+                  selectedItemColor: Color(0xFF007AFF),
+                ),
+                LiquidGlassTabItem(
+                  label: 'Pairs',
+                  icon: NativeLiquidGlassIcon.sfSymbol('person.2'),
+                  selectedIcon: NativeLiquidGlassIcon.sfSymbol('person.2.fill'),
+                  selectedItemColor: Color(0xFF007AFF),
+                ),
+              ],
+              currentIndex: _currentIndex,
+              onTabSelected: (index) => setState(() {
+                _currentIndex = index;
+                _tabBarMinimized = false;
+                _scrollRun = 0;
+              }),
+              height: 72,
+              selectedItemColor: const Color(0xFF007AFF),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shell avec le OuroTabBar Dart (shader Liquid Glass) — fallback.
+  Widget _buildDartGlassShell(MediaQueryData mq) {
+    return Scaffold(
+      backgroundColor: OuroColors.systemBackground,
+      body: Stack(
+        children: [
+          MediaQuery(
+            data: mq.copyWith(
+              padding: mq.padding.copyWith(
+                bottom: OuroTabBar.reservedHeight(mq.padding.bottom),
+              ),
+            ),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScroll,
+              child: IndexedStack(
+                index: _currentIndex,
+                children: _pages,
+              ),
+            ),
+          ),
           Positioned(
             left: 0,
             right: 0,
@@ -159,9 +232,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               items: _items,
               currentIndex: _currentIndex,
               minimized: _tabBarMinimized,
-              // Changer d'onglet remet la barre en place : on ne laisse
-              // jamais l'utilisateur arriver sur un écran dont le
-              // châssis est caché.
               onTap: (i) => setState(() {
                 _currentIndex = i;
                 _tabBarMinimized = false;

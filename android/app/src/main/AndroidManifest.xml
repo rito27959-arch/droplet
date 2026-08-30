@@ -331,5 +331,25 @@
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!--
+          ══════════════════════════════════════════════════════════
+          LE WIDGET D'ÉCRAN D'ACCUEIL
+          ══════════════════════════════════════════════════════════
+          `exported="false"` : seul le système a besoin de le
+          déclencher. L'exporter permettrait à n'importe quelle
+          application installée de lui envoyer des intentions.
+        -->
+        <receiver
+            android:name=".WidgetDroplet"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_droplet_info"/>
+        </receiver>
+
     </application>
 </manifest>

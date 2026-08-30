@@ -18,6 +18,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:local_auth/local_auth.dart';
 import '../../core/models/mesh_message.dart';
 import '../../core/providers/mesh_provider.dart';
 import '../../core/services/mesh_transport_service.dart';
@@ -26,20 +27,80 @@ import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_spinner.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/ouro_typography.dart';
+import '../../design_system/glassmorphism.dart';
 import '../../core/models/voice_note_meta.dart';
 import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/scene_animee.dart';
 
 /// Page « Infos et médias » d'une conversation.
-class ChatInfoScreen extends ConsumerWidget {
+class ChatInfoScreen extends ConsumerStatefulWidget {
   const ChatInfoScreen({super.key, required this.peerId});
 
   /// ID du pair, ou 'broadcast' pour le canal diffusion.
   final String peerId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ChatInfoScreen> createState() => _ChatInfoScreenState();
+}
+
+class _ChatInfoScreenState extends ConsumerState<ChatInfoScreen> {
+  late bool _isLocked;
+  late int _ephemeralTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLocked = StorageService.getLockedConversations().contains(widget.peerId);
+    _ephemeralTimer = StorageService.getEphemeralTimer(widget.peerId);
+  }
+
+  Future<void> _toggleLock() async {
+    final auth = LocalAuthentication();
+    final newState = !_isLocked;
+
+    if (newState) {
+      // Verrouiller : vérifier que la biométrie est disponible.
+      try {
+        final available = await auth.canCheckBiometrics;
+        if (!available) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                'Configurez un empreinte digitale ou Face ID dans les réglages de votre appareil.',
+                style: OuroTypography.subheadline.copyWith(color: OuroColors.label),
+              ),
+              backgroundColor: OuroColors.tertiarySystemBackground,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+              ),
+            ));
+          }
+          return;
+        }
+        // Demander une authentification pour confirmer l'activation.
+        final didAuth = await auth.authenticate(
+          localizedReason: 'Activer le verrouillage pour cette conversation',
+          options: const AuthenticationOptions(stickyAuth: true, biometricOnly: true),
+        );
+        if (!didAuth) return;
+        HapticFeedback.mediumImpact();
+      } catch (_) {
+        return;
+      }
+    } else {
+      // Déverrouiller : petit feedback.
+      HapticFeedback.lightImpact();
+    }
+
+    await StorageService.setConversationLocked(widget.peerId, newState);
+    if (mounted) setState(() => _isLocked = newState);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final peerId = widget.peerId;
     final isBroadcast = peerId == 'broadcast';
     final messages = ref.watch(conversationMessagesProvider(isBroadcast ? null : peerId));
     final peers = ref.watch(meshPeerListProvider);
@@ -140,6 +201,22 @@ class ChatInfoScreen extends ConsumerWidget {
           const SizedBox(height: 20),
 
           if (!isBroadcast) _SecurityCodeRow(peerId: peerId, pseudo: pseudo),
+
+          if (!isBroadcast) ...[
+            const SizedBox(height: 12),
+            _LockToggleRow(locked: _isLocked, onTap: _toggleLock),
+          ],
+
+          if (!isBroadcast) ...[
+            const SizedBox(height: 12),
+            _EphemeralTimerRow(
+              currentSeconds: _ephemeralTimer,
+              onChanged: (seconds) async {
+                await StorageService.setEphemeralTimer(widget.peerId, seconds);
+                if (mounted) setState(() => _ephemeralTimer = seconds);
+              },
+            ),
+          ],
 
           const SizedBox(height: 24),
 
@@ -622,6 +699,197 @@ class _FileTile extends StatelessWidget {
     if (bytes < 1024) return '$bytes o';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} Ko';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} Mo';
+  }
+}
+
+/// Ligne de verrouillage de conversation — verrouille/déverrouille
+/// l'accès biométrique à cette conversation.
+class _LockToggleRow extends StatelessWidget {
+  const _LockToggleRow({required this.locked, required this.onTap});
+  final bool locked;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: OuroColors.secondarySystemGroupedBackground,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+          border: Border.all(color: OuroColors.glassBorder, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              locked ? Icons.lock_rounded : Icons.lock_open_rounded,
+              color: locked ? OuroColors.accent : OuroColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Verrouillage de conversation',
+                    style: TextStyle(
+                      color: OuroColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    locked
+                        ? 'Activé — empreinte requise pour ouvrir'
+                        : 'Désactivé',
+                    style: TextStyle(
+                      color: locked
+                          ? OuroColors.accent
+                          : OuroColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              locked ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
+              color: locked ? OuroColors.systemGreen : OuroColors.textTertiary,
+              size: 32,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sélecteur de timer pour les messages éphémères — affiche un menu
+/// déroulant avec des durées prédéfinies (30s, 5min, 1h, 24h, off).
+class _EphemeralTimerRow extends StatelessWidget {
+  const _EphemeralTimerRow({required this.currentSeconds, required this.onChanged});
+  final int currentSeconds;
+  final ValueChanged<int> onChanged;
+
+  static const _options = <MapEntry<String, int>>[
+    MapEntry('Désactivé', 0),
+    MapEntry('30 secondes', 30),
+    MapEntry('5 minutes', 300),
+    MapEntry('1 heure', 3600),
+    MapEntry('24 heures', 86400),
+  ];
+
+  String _label() {
+    for (final o in _options) {
+      if (o.value == currentSeconds) return o.key;
+    }
+    return 'Désactivé';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = currentSeconds > 0;
+    return GestureDetector(
+      onTap: () => _showPicker(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: OuroColors.secondarySystemGroupedBackground,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+          border: Border.all(color: OuroColors.glassBorder, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.timer_off_rounded,
+              color: active ? OuroColors.warningAmber : OuroColors.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Messages éphémères',
+                    style: TextStyle(
+                      color: OuroColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _label(),
+                    style: TextStyle(
+                      color: active
+                          ? OuroColors.warningAmber
+                          : OuroColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: OuroColors.textTertiary,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPicker(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => FrostedSheet(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'Durée avant disparition',
+                style: OuroTypography.headline.copyWith(color: OuroColors.label),
+              ),
+            ),
+            for (final o in _options) ...[
+              Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
+              ListTile(
+                title: Text(
+                  o.key,
+                  style: TextStyle(
+                    color: currentSeconds == o.value
+                        ? OuroColors.accent
+                        : OuroColors.label,
+                    fontWeight: currentSeconds == o.value
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                  ),
+                ),
+                trailing: currentSeconds == o.value
+                    ? Icon(Icons.check_rounded, color: OuroColors.accent, size: 20)
+                    : null,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onChanged(o.value);
+                },
+              ),
+            ],
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 }
 

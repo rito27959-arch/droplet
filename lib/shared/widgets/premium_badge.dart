@@ -27,6 +27,7 @@
 // ============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
 
 import '../../design_system/ouro_colors.dart';
 
@@ -146,6 +147,26 @@ class VoileVerrouille extends StatelessWidget {
           child: const EtiquettePremium(compacte: true),
         ),
       ],
+    );
+  }
+}
+
+/// Badge Premium utilisant Liquid Glass — plus visible que l'étiquette
+/// classique, pour les contextes où le verrouillage doit être immédiatement
+/// repérable (grille d'icônes, etc.).
+class LiquidBadgePremium extends StatelessWidget {
+  const LiquidBadgePremium({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return LiquidBadge(
+      text: 'PREMIUM',
+      color: OuroColors.accent.withValues(alpha: 0.25),
+      child: Icon(
+        Icons.auto_awesome_rounded,
+        size: 14,
+        color: OuroColors.accent,
+      ),
     );
   }
 }

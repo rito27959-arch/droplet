@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LE WIDGET, EN DISPOSITION ANDROID.
+
+  ⚠️ UN WIDGET N'EST PAS UNE VUE FLUTTER. Il est dessiné par le
+  lanceur, dans un autre processus, avec `RemoteViews` : seuls quelques
+  types de vues y sont autorisés (LinearLayout, TextView, ImageView…).
+  Ni Compose, ni ConstraintLayout, ni la moindre vue personnalisée.
+
+  D'où cette disposition volontairement pauvre : deux textes empilés et
+  une ligne en dessous. Ce n'est pas un manque de soin, c'est la limite
+  du support.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_racine"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:padding="14dp"
+    android:background="@drawable/widget_fond">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom">
+
+        <TextView
+            android:id="@+id/widget_nombre"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:textColor="#0A84FF"
+            android:includeFontPadding="false"/>
+
+        <TextView
+            android:id="@+id/widget_libelle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_marginBottom="4dp"
+            android:text="messages"
+            android:textSize="13sp"
+            android:textColor="#8C9FB6"/>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_pairs"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Personne à portée"
+        android:textSize="12sp"
+        android:textColor="#8C9FB6"/>
+</LinearLayout>

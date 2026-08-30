@@ -10,6 +10,7 @@ import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_spinner.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
+import '../../design_system/liquid_bridge.dart';
 import '../../shared/widgets/success_seal.dart';
 import '../../shared/widgets/scene_animee.dart';
 
@@ -208,16 +209,9 @@ class _BackupExportScreenState extends ConsumerState<BackupExportScreen> {
                 style: TextStyle(color: OuroColors.textTertiary, fontSize: 12)),
           ),
           const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton(
-              onPressed: _busy ? null : _export,
-              style: FilledButton.styleFrom(
-                backgroundColor: OuroColors.meshBlue,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusLg)),
-              ),
-              child: AnimatedSwitcher(
+          LiquidGlassButton(
+            onTap: _busy ? null : _export,
+            child: AnimatedSwitcher(
                 duration: DesignTokens.durationFast,
                 child: _busy
                     ? const SizedBox(
@@ -230,7 +224,6 @@ class _BackupExportScreenState extends ConsumerState<BackupExportScreen> {
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               ),
             ),
-          ),
         ],
       ),
     );

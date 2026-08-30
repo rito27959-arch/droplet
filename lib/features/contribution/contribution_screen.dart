@@ -6,6 +6,7 @@ import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
 import '../../design_system/glassmorphism.dart';
+import '../../design_system/liquid_bridge.dart';
 
 Color rankColor(ContributionRank rank) {
   return switch (rank) {
@@ -57,15 +58,18 @@ class ContributionScreen extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                Container(
-                  width: 84,
-                  height: 84,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color.withValues(alpha: 0.16),
-                    border: Border.all(color: color, width: 2),
+                LiquidGlassBox(
+                  padding: EdgeInsets.zero,
+                  child: Container(
+                    width: 84,
+                    height: 84,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color.withValues(alpha: 0.16),
+                      border: Border.all(color: color, width: 2),
+                    ),
+                    child: Icon(rankIcon(rank), color: color, size: 40),
                   ),
-                  child: Icon(rankIcon(rank), color: color, size: 40),
                 )
                     .animate()
                     .fadeIn(duration: DesignTokens.durationSlow)
@@ -145,9 +149,8 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GlassContainer(
+    return OuroCard(
       padding: const EdgeInsets.all(14),
-      borderRadius: DesignTokens.radiusLg,
       child: Row(
         children: [
           Icon(icon, color: OuroColors.meshBlueBright, size: 20),
