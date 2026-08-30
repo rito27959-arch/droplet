@@ -24,12 +24,59 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Utilisée pour scanner le code de sécurité d'un contact (vérification hors-bande des clés de chiffrement).</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Utilisée uniquement si tu choisis d'inclure ta position approximative dans un check-in "Je suis en sécurité" — jamais suivie en arrière-plan.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+
+	<!-- ═══════════════════════════════════════════════════════════════
+	     PERMISSIONS RÉSEAU MESH — BLE + Wi-Fi Local
+	     ═══════════════════════════════════════════════════════════════ -->
+
+	<!-- BLE :.DESCRIPTION POUR LA DEMANDE D'AUTORISATION -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Droplet utilise le Bluetooth pour découvrir et communiquer avec vos amis proches sur le réseau mesh, même quand l'app est en arrière-plan.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Droplet utilise le Bluetooth pour communiquer avec les appareils proches sur le mesh.</string>
+
+	<!-- RÉSEAU LOCAL : ACCÈS AUX APAREILS PROCHES (Wi-Fi Direct / mDNS) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Droplet utilise le réseau local pour découvrir et échanger des données avec les appareils proches sur le mesh, sans connexion Internet.</string>
+
+	<!-- BONJOUR : SERVICE TYPE UTILISÉ POUR LA DÉCOUVERTE mDNS -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ouroprep._tcp</string>
+	</array>
+
+	<!-- LOCALISATION : REQUISE POUR LE BLE SUR iOS (scanning BLE) -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Droplet utilise la localisation pour le scanning Bluetooth et la découverte de pairs proches.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Droplet utilise la localisation en arrière-plan pour maintenir la connexion mesh avec vos amis.</string>
+
+	<!-- MICROPHONE : POUR LES APPELS MESH -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Droplet utilise le microphone pour les appels audio et vocaux sur le mesh.</string>
+
+	<!-- CAMÉRA : POUR LES APPELS VIDÉO ET QR CODE -->
+	<key>NSCameraUsageDescription</key>
+	<string>Droplet utilise la caméra pour les appels vidéo et le scan de QR codes d'amis.</string>
+
+	<!-- PHOTOthèque : ENVOI D'IMAGES DANS LES MESSAGES -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Droplet accède à vos photos pour les envoyer dans les conversations mesh.</string>
+
+	<!-- TÂCHES D'ARRIÈRE-PLAN : BLE CONTINU + SYNC MESH -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+
+	<!-- ═══════════════════════════════════════════════════════════════
+	     FIN PERMISSIONS MESH
+	     ═══════════════════════════════════════════════════════════════ -->
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

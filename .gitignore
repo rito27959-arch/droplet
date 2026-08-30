@@ -70,6 +70,10 @@ worker-secrets.txt
 serveur/.dev.vars
 .wrangler/
 
+# Variables d'environnement locales
+.env
+.env.local
+
 # Sortie de construction du site — régénérée par site/construire.py
 /site/public/
 

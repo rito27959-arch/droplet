@@ -1,0 +1,224 @@
+# ============================================================================
+# BUILD iOS IPA — macOS runner gratuit (GitHub Actions)
+# ============================================================================
+#
+# Construit une IPA iOS release signée, prête à installer via AltStore.
+#
+# ── PRÉREQUIS ──────────────────────────────────────────────────────────
+#
+# Tu DOIS avoir un compte Apple Developer (99 $/an) pour obtenir :
+#   - Un certificat iOS Distribution (.p12)
+#   - Un provisioning profile (.mobileprovision)
+#
+# Sans ces fichiers, l'IPA ne pourra PAS être installée sur ton iPhone.
+#
+# ── CONFIGURATION (GitHub Secrets) ────────────────────────────────────
+#
+# Aller dans : Settings → Secrets and variables → Actions → New repository secret
+#
+# Secret                    | Description
+# ─────────────────────────┼─────────────────────────────────────────────
+# APPLE_CERTIFICATE_P12     | base64 du fichier .p12
+# APPLE_CERTIFICATE_PASSWORD| Mot de passe du .p12
+# APPLE_TEAM_ID             | Apple Team ID (ex: ABCDEF1234)
+# APPLE_PROVISION_PROFILE   | base64 du .mobileprovision
+#
+# ── LANCEMENT ─────────────────────────────────────────────────────────
+#
+# git push → build automatique release
+# Actions → Run workflow → build IPA release
+# ============================================================================
+
+name: Build iOS IPA Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+  workflow_dispatch:
+    inputs:
+      export_method:
+        description: "Mode d'export IPA"
+        required: true
+        default: "ad-hoc"
+        type: choice
+        options:
+          - ad-hoc
+          - app-store
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.41.6'
+  BUNDLE_ID: com.droplet.droplet
+  APP_NAME: Droplet
+
+jobs:
+  build-ios:
+    name: Build IPA Release (macOS)
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Dépendances Flutter
+        run: flutter pub get
+
+      - name: Analyse statique
+        run: flutter analyze --fatal-infos
+
+      # ──────────────────────────────────────────────────────────────
+      # CERTIFICATS iOS
+      # ──────────────────────────────────────────────────────────────
+      - name: Vérifier les secrets Apple
+        run: |
+          if [ -z "${{ secrets.APPLE_CERTIFICATE_P12 }}" ]; then
+            echo "⚠️  APPLE_CERTIFICATE_P12 non configuré"
+            echo "Va dans Settings → Secrets → Actions et ajoute les secrets Apple"
+            echo "Voir README.md pour les instructions"
+            exit 1
+          fi
+
+      - name: Importer le certificat Apple
+        env:
+          CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-keychain
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          echo -n "$CERTIFICATE_P12" | base64 --decode > "$CERTIFICATE_PATH"
+
+          security import "$CERTIFICATE_PATH" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          echo "✅ Certificat importé avec succès"
+
+      # ──────────────────────────────────────────────────────────────
+      # PROVISIONING PROFILE
+      # ──────────────────────────────────────────────────────────────
+      - name: Installer le provisioning profile
+        env:
+          PROVISION_PROFILE: ${{ secrets.APPLE_PROVISION_PROFILE }}
+        run: |
+          PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
+          echo -n "$PROVISION_PROFILE" | base64 --decode > "$PROFILE_PATH"
+
+          UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin \
+            <<< security cms -D -i "$PROFILE_PATH")
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
+
+          echo "✅ Provisioning profile installé (UUID: $UUID)"
+
+      # ──────────────────────────────────────────────────────────────
+      # EXPORT OPTIONS
+      # ──────────────────────────────────────────────────────────────
+      - name: Créer ExportOptions.plist
+        run: |
+          EXPORT_METHOD="${{ github.event.inputs.export_method || 'ad-hoc' }}"
+          TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
+
+          cat > $RUNNER_TEMP/ExportOptions.plist << XMLEOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${EXPORT_METHOD}</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          XMLEOF
+
+          echo "✅ ExportOptions.plist créé (méthode: $EXPORT_METHOD)"
+
+      # ──────────────────────────────────────────────────────────────
+      # BUILD FLUTTER + XCODEBUILD
+      # ──────────────────────────────────────────────────────────────
+      - name: Build iOS Release
+        run: |
+          flutter build ios --release
+
+      - name: Archive Xcode
+        run: |
+          cd ios
+          xcodebuild archive \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/build/${{ env.APP_NAME }}.xcarchive \
+            -destination 'generic/platform=iOS' \
+            -quiet
+
+      - name: Export IPA
+        run: |
+          cd ios
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/build/${{ env.APP_NAME }}.xcarchive \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/ipa_output \
+            -quiet
+
+      # ──────────────────────────────────────────────────────────────
+      # RENOMMER L'IPA
+      # ──────────────────────────────────────────────────────────────
+      - name: Renommer l'IPA
+        run: |
+          cd $RUNNER_TEMP/ipa_output
+          IPA_FILE=$(ls *.ipa 2>/dev/null | head -1)
+          if [ -n "$IPA_FILE" ]; then
+            mv "$IPA_FILE" "Droplet-v${{ github.run_number }}.ipa"
+            echo "✅ IPA renommée : Droplet-v${{ github.run_number }}.ipa"
+          fi
+
+      # ──────────────────────────────────────────────────────────────
+      # ARTIFACTS
+      # ──────────────────────────────────────────────────────────────
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droplet-iOS-Release-${{ github.run_number }}
+          path: ${{ runner.temp }}/ipa_output/*.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Nettoyage keychain
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true
