@@ -1,109 +1,33 @@
 // ============================================================================
-// OURO TAB BAR — 15/10 iOS-LIKE NAVIGATION
-// ============================================================================
-//
-// La barre d'onglets la plus avancée jamais construite en Flutter.
-// 10+ dépendances avancées combinées pour surpasser iOS :
-//
-// 1. LIQUID GLASS RENDERER  — shader de réfraction réelle
-// 2. MOTOR                 — ressorts Apple identiques (spring physics)
-// 3. FLUTTER_SHADERS       — fragment shaders GLSL custom
-// 4. FLUTTER_ANIMATE       — animations déclaratives
-// 5. CUSTOM PAINTER        — indicateur morphing liquide
-// 6. SPRING SIMULATION     — physique de ressort avec interruption
-// 7. GESTURE DETECTION     — balayage horizontal entre onglets
-// 8. HAPTIC FEEDBACK       — vibrations différentes par action
-// 9. DYNAMIC BLUR          — flou qui suit l'indicateur
-// 10. PARTICLE SYSTEM      — particules au moment du changement
-// 11. MOMENTUM PHYSICS     — vitesse influence la trajectoire
-// 12. SQUASH & STRETCH     — déformation continue basée sur la vitesse
+// OURO TAB BAR — 10/10 LIQUID GLASS iOS
 // ============================================================================
 
-import 'dart:math';
-import 'dart:ui' as ui;
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../design_system/ouro_colors.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
+import 'package:motor/motor.dart';
+
+import 'ouro_colors.dart';
+import 'ouro_glass.dart';
 
 // ============================================================================
-// MODÈLE DE DONNÉES
+// JELLY TRANSFORM — SQUASH & STRETCH
 // ============================================================================
 
-class OuroTabItem {
-  const OuroTabItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    this.badge,
-  });
-
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final int? badge;
+Matrix4 _buildJellyTransform(double velocity) {
+  final speed = velocity.abs().clamp(0.0, 1.0);
+  if (speed == 0) return Matrix4.identity();
+  final distortion = speed * 0.8;
+  final squashX = 1.0 - distortion * 0.5;
+  final stretchY = 1.0 + distortion * 0.3;
+  return Matrix4.identity()..scaleByDouble(squashX, stretchY, 1, 1);
 }
 
 // ============================================================================
-// SPRING PHYSICS — IDENTIQUE À APPLE
-// ============================================================================
-
-/// Simulation de ressort identique à `UISpringTimingParameters` d'Apple.
-///
-/// Utilise l'équation de ressort amorti :
-///   x(t) = A * e^(-ζωt) * cos(ωd*t + φ)
-///
-/// où ζ = damping ratio, ω = fréquence naturelle.
-class _SpringSimulation {
-  _SpringSimulation({
-    required this.stiffness,
-    required this.damping,
-    required this.mass,
-  });
-
-  final double stiffness;
-  final double damping;
-  final double mass;
-
-  /// Position du ressort à un temps donné (0..1 → 0..1).
-  double solve(double t, {double from = 0, double to = 1}) {
-    final omega = sqrt(stiffness / mass);
-    final zeta = damping / (2 * sqrt(stiffness * mass));
-
-    if (zeta < 1) {
-      // Sous-amorti : oscillations
-      final omegaD = omega * sqrt(1 - zeta * zeta);
-      final value = 1 - exp(-zeta * omega * t) *
-          (cos(omegaD * t) + (zeta / sqrt(1 - zeta * zeta)) * sin(omegaD * t));
-      return from + (to - from) * value.clamp(0.0, 1.0);
-    } else {
-      // Critique ou sur-amorti : pas d'oscillation
-      final value = 1 - exp(-omega * t) * (1 + omega * t);
-      return from + (to - from) * value.clamp(0.0, 1.0);
-    }
-  }
-
-  /// Vitesse à un instant donné.
-  double velocity(double t, {double from = 0, double to = 1}) {
-    final omega = sqrt(stiffness / mass);
-    final zeta = damping / (2 * sqrt(stiffness * mass));
-    final range = to - from;
-
-    if (zeta < 1) {
-      final omegaD = omega * sqrt(1 - zeta * zeta);
-      return range * exp(-zeta * omega * t) * omegaD *
-          sin(omegaD * t + atan(zeta / sqrt(1 - zeta * zeta)));
-    } else {
-      return range * exp(-omega * t) * (-omega * t);
-    }
-  }
-
-  // Presets Apple identiques
-  static final bouncy = _SpringSimulation(stiffness: 200, damping: 15, mass: 1);
-  static final fluid = _SpringSimulation(stiffness: 180, damping: 18, mass: 1);
-}
-
-// ============================================================================
-// PARTICULES — EFFET DE MATIÈRE LORS DU CHANGEMENT
+// PARTICULES
 // ============================================================================
 
 class _Particle {
@@ -114,192 +38,96 @@ class _Particle {
     required this.vy,
     required this.life,
     required this.size,
-    required this.color,
   });
 
-  double x, y;
-  double vx, vy;
-  double life;
-  double size;
-  Color color;
+  double x, y, vx, vy, life, size;
 
   bool get isDead => life <= 0;
 
   void update(double dt) {
     x += vx * dt;
     y += vy * dt;
-    vy += 200 * dt; // gravité
+    vy += 300 * dt;
     life -= dt;
-    size *= 0.98;
+    size *= 0.97;
   }
 }
 
 // ============================================================================
-// INDICATEUR MORPHING — FORME LIQUIDE CONTINUE
+// INDICATEUR MORPHING
 // ============================================================================
 
-/// Indicateur qui change de forme comme du mercure :
-/// - Au repos : capsule arrondie
-/// - En mouvement : s'étire dans le sens du déplacement
-/// - Au contact de l'icône : fusionne avec elle
-class _MorphingIndicator extends CustomPainter {
-  _MorphingIndicator({
-    required this.position,
+class _MorphingIndicator extends StatelessWidget {
+  const _MorphingIndicator({
+    required this.child,
+    required this.alignment,
     required this.velocity,
-    required this.tabWidth,
+    required this.thickness,
     required this.tabCount,
-    required this.progress,
-    required this.isPressed,
   });
 
-  final double position;
+  final Widget child;
+  final Alignment alignment;
   final double velocity;
-  final double tabWidth;
+  final double thickness;
   final int tabCount;
-  final double progress;
-  final bool isPressed;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(
-      tabWidth * (position + 0.5),
-      size.height / 2,
-    );
+  Widget build(BuildContext context) {
+    final rect = RelativeRect.lerp(
+      RelativeRect.fill,
+      const RelativeRect.fromLTRB(-14, -14, -14, -14),
+      thickness,
+    )!;
 
-    // Largeur de base de l'indicateur
-    final baseWidth = tabWidth * 0.65;
-    final baseHeight = size.height * 0.6;
-
-    // Déformation basée sur la vélocité
-    final speed = velocity.abs().clamp(0.0, 1.0);
-    final stretchX = 1.0 + speed * 0.3; // étirement horizontal
-    final squashY = 1.0 - speed * 0.15; // aplatissement vertical
-
-    // Rayon de courbure — change avec la vitesse
-    final radius = Radius.elliptical(
-      baseWidth * stretchX / 2,
-      baseHeight * squashY / 2,
-    );
-
-    // Couleur avec effet de profondeur
-    final paint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(center.dx - baseWidth / 2, 0),
-        Offset(center.dx + baseWidth / 2, size.height),
-        [
-          OuroColors.accent.withValues(alpha: 0.25),
-          OuroColors.accent.withValues(alpha: 0.15),
-          OuroColors.accent.withValues(alpha: 0.25),
-        ],
-        [0.0, 0.5, 1.0],
-      )
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-
-    final rect = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: center,
-        width: baseWidth * stretchX,
-        height: baseHeight * squashY,
-      ),
-      radius,
-    );
-
-    // Ombre portée
-    canvas.drawRRect(
-      rect.shift(const Offset(0, 2)),
-      Paint()
-        ..color = OuroColors.accent.withValues(alpha: 0.2)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
-    );
-
-    // Indicateur principal
-    canvas.drawRRect(rect, paint);
-
-    // Reflet spéculaire en haut
-    final highlightPaint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(center.dx, center.dy - baseHeight / 2),
-        Offset(center.dx, center.dy),
-        [
-          Colors.white.withValues(alpha: 0.4 * (1 - speed)),
-          Colors.white.withValues(alpha: 0.0),
-        ],
-      );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromCenter(
-          center: Offset(center.dx, center.dy - baseHeight * 0.15),
-          width: baseWidth * 0.7,
-          height: baseHeight * 0.2,
+    return Positioned.fill(
+      left: 4,
+      right: 4,
+      top: 4,
+      bottom: 4,
+      child: FractionallySizedBox(
+        widthFactor: 1 / tabCount,
+        alignment: alignment,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fromRelativeRect(
+              rect: rect,
+              child: SingleMotionBuilder(
+                motion: Motion.bouncySpring(
+                  duration: const Duration(milliseconds: 600),
+                ),
+                value: velocity,
+                builder: (context, v, child) => Transform(
+                  alignment: Alignment.center,
+                  transform: _buildJellyTransform(v),
+                  child: child,
+                ),
+                child: child,
+              ),
+            ),
+          ],
         ),
-        Radius.circular(baseHeight * 0.1),
       ),
-      highlightPaint,
-    );
-
-    // Bordure lumineuse
-    canvas.drawRRect(
-      rect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.5
-        ..color = Colors.white.withValues(alpha: 0.3),
     );
   }
-
-  @override
-  bool shouldRepaint(covariant _MorphingIndicator old) => true;
 }
 
 // ============================================================================
-// FLUID BACKGROUND — FLUO QUI SUIT L'INDICATEUR
+// OURO TAB BAR
 // ============================================================================
 
-class _FluidBackground extends CustomPainter {
-  _FluidBackground({
-    required this.position,
-    required this.tabWidth,
-    required this.tabCount,
-    required this.progress,
+class OuroTabItem {
+  const OuroTabItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
   });
 
-  final double position;
-  final double tabWidth;
-  final int tabCount;
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (progress <= 0) return;
-
-    final center = Offset(
-      tabWidth * (position + 0.5),
-      size.height / 2,
-    );
-
-    final paint = Paint()
-      ..shader = ui.Gradient.radial(
-        center,
-        tabWidth * 0.8,
-        [
-          OuroColors.accent.withValues(alpha: 0.08 * progress),
-          OuroColors.accent.withValues(alpha: 0.0),
-        ],
-      );
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _FluidBackground old) => true;
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
 }
-
-// ============================================================================
-// OURO TAB BAR — LA BARRE ULTIME
-// ============================================================================
 
 class OuroTabBar extends StatefulWidget {
   const OuroTabBar({
@@ -326,70 +154,50 @@ class OuroTabBar extends StatefulWidget {
 }
 
 class _OuroTabBarState extends State<OuroTabBar>
-    with TickerProviderStateMixin {
-  // ── Controllers ──────────────────────────────────────────────────
+    with SingleTickerProviderStateMixin {
   late final AnimationController _hideController;
-  late final AnimationController _mainController;
   late final AnimationController _glowController;
   late final AnimationController _particleController;
 
-  // ── État ─────────────────────────────────────────────────────────
-  double _currentPosition = 0;
-  double _velocity = 0;
+  double _xAlign = 0;
+  bool _isDown = false;
   bool _isDragging = false;
-  double _dragStartX = 0;
   int _lastCrossedTab = 0;
 
-  // ── Particules ───────────────────────────────────────────────────
   final List<_Particle> _particles = [];
-  final Random _random = Random();
+  final math.Random _random = math.Random();
 
-  // ── Ressorts ─────────────────────────────────────────────────────
-  late _SpringSimulation _spring;
-  double _springFrom = 0;
-  double _springTo = 0;
-  DateTime _springStart = DateTime.now();
-
-  // ── Taille des onglets ───────────────────────────────────────────
   double get _tabWidth {
     final box = context.findRenderObject() as RenderBox?;
     if (box == null || widget.items.isEmpty) return 80;
     return box.size.width / widget.items.length;
   }
 
+  double _computeXAlignment(int index) {
+    if (widget.items.length < 2) return 0;
+    return (index / (widget.items.length - 1)).clamp(0.0, 1.0) * 2 - 1;
+  }
+
   @override
   void initState() {
     super.initState();
+    _xAlign = _computeXAlignment(widget.currentIndex);
 
-    // Ressort par défaut
-    _spring = _SpringSimulation.fluid;
-
-    // Masquage au scroll
     _hideController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
       value: 0,
     );
 
-    // Animation principal — 60fps continu pour le Liquid Glass
-    _mainController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat();
-
-    // Glow au moment du changement
     _glowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
 
-    // Système de particules
     _particleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..addListener(_updateParticles);
-
-    _currentPosition = widget.currentIndex.toDouble();
   }
 
   @override
@@ -401,16 +209,9 @@ class _OuroTabBarState extends State<OuroTabBar>
     }
 
     if (widget.currentIndex != old.currentIndex) {
-      _springFrom = _currentPosition;
-      _springTo = widget.currentIndex.toDouble();
-      _springStart = DateTime.now();
-      _spring = _SpringSimulation.fluid;
-
-      // Lancer les particules
+      _xAlign = _computeXAlignment(widget.currentIndex);
       _spawnParticles(widget.currentIndex);
       _particleController.forward(from: 0);
-
-      // Glow
       _glowController.forward(from: 0);
     }
   }
@@ -418,33 +219,29 @@ class _OuroTabBarState extends State<OuroTabBar>
   @override
   void dispose() {
     _hideController.dispose();
-    _mainController.dispose();
     _glowController.dispose();
     _particleController.dispose();
     super.dispose();
   }
 
-  // ── PARTICULES ──────────────────────────────────────────────────
-
   void _spawnParticles(int tabIndex) {
     final center = _tabWidth * (tabIndex + 0.5);
-    for (var i = 0; i < 12; i++) {
-      final angle = _random.nextDouble() * 2 * pi;
-      final speed = 50.0 + _random.nextDouble() * 100;
+    for (var i = 0; i < 14; i++) {
+      final angle = _random.nextDouble() * 2 * math.pi;
+      final speed = 60.0 + _random.nextDouble() * 120;
       _particles.add(_Particle(
         x: center,
         y: OuroTabBar.height / 2,
-        vx: cos(angle) * speed,
-        vy: sin(angle) * speed - 50,
-        life: 0.4 + _random.nextDouble() * 0.4,
-        size: 2.0 + _random.nextDouble() * 3.0,
-        color: OuroColors.accent.withValues(alpha: 0.6),
+        vx: math.cos(angle) * speed,
+        vy: math.sin(angle) * speed - 60,
+        life: 0.3 + _random.nextDouble() * 0.5,
+        size: 2.0 + _random.nextDouble() * 3.5,
       ));
     }
   }
 
   void _updateParticles() {
-    final dt = 0.016; // 60fps
+    const dt = 0.016;
     setState(() {
       _particles.removeWhere((p) {
         p.update(dt);
@@ -453,112 +250,115 @@ class _OuroTabBarState extends State<OuroTabBar>
     });
   }
 
-  // ── GESTES ──────────────────────────────────────────────────────
-
-  void _onTapDown(TapDownDetails details) {
-    _isDragging = false;
-    _dragStartX = details.localPosition.dx;
-  }
-
-  void _onTapUp(TapUpDetails details) {
-    if (!_isDragging) {
-      final tabIndex = (details.localPosition.dx / _tabWidth).floor();
-      if (tabIndex >= 0 && tabIndex < widget.items.length) {
-        if (tabIndex != widget.currentIndex) {
-          HapticFeedback.mediumImpact();
-          widget.onTap(tabIndex);
-        }
-      }
+  double _applyRubberBand(double value) {
+    const resistance = 0.4;
+    const maxOverdrag = 0.3;
+    if (value < 0) {
+      return -(value.abs() * resistance).clamp(0.0, maxOverdrag);
     }
-  }
-
-  void _onHorizontalDragStart(DragStartDetails details) {
-    _isDragging = true;
-    _dragStartX = details.localPosition.dx;
-    _lastCrossedTab = widget.currentIndex;
-    HapticFeedback.selectionClick();
-  }
-
-  void _onHorizontalDragUpdate(DragUpdateDetails details) {
-    final dx = details.localPosition.dx - _dragStartX;
-    final tabDelta = dx / _tabWidth;
-    final newPos = (_currentPosition - tabDelta).clamp(
-      0.0,
-      (widget.items.length - 1).toDouble(),
-    );
-
-    // Vérifier si on a franchi un onglet
-    final crossed = newPos.round();
-    if (crossed != _lastCrossedTab && crossed >= 0 && crossed < widget.items.length) {
-      _lastCrossedTab = crossed;
-      HapticFeedback.lightImpact();
+    if (value > 1) {
+      return 1 + ((value - 1) * resistance).clamp(0.0, maxOverdrag);
     }
+    return value;
+  }
 
+  double _alignmentFromGlobal(Offset globalPosition) {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || box.size.width == 0) return _xAlign;
+    final local = box.globalToLocal(globalPosition);
+    final indicatorWidth = 1.0 / widget.items.length;
+    final draggableRange = 1.0 - indicatorWidth;
+    final padding = indicatorWidth / 2;
+    final raw = (local.dx / box.size.width).clamp(0.0, 1.0);
+    final normalized = (raw - padding) / draggableRange;
+    return (_applyRubberBand(normalized) * 2) - 1;
+  }
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    final x = _alignmentFromGlobal(d.globalPosition);
+    final currentTab = ((x + 1) / 2 * (widget.items.length - 1)).round();
+    if (currentTab != _lastCrossedTab &&
+        currentTab >= 0 &&
+        currentTab < widget.items.length) {
+      _lastCrossedTab = currentTab;
+      HapticFeedback.selectionClick();
+    }
     setState(() {
-      _currentPosition = newPos;
-      _velocity = -details.primaryDelta! / _tabWidth;
+      _isDragging = true;
+      _xAlign = x;
     });
   }
 
-  void _onHorizontalDragEnd(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    final projected = _currentPosition - (velocity / _tabWidth) * 0.3;
-    final target = projected.round().clamp(0, widget.items.length - 1);
+  void _onDragEnd(DragEndDetails d) {
+    final box = context.findRenderObject() as RenderBox?;
+    final width = box?.size.width ?? 1;
+    final currentRelative = (_xAlign + 1) / 2;
+    final indicatorWidth = 1.0 / widget.items.length;
+    final draggableRange = 1.0 - indicatorWidth;
+    final velocityX =
+        (d.velocity.pixelsPerSecond.dx / width) / draggableRange;
 
-    _springFrom = _currentPosition;
-    _springTo = target.toDouble();
-    _springStart = DateTime.now();
-    _spring = _SpringSimulation.bouncy;
-
-    if (target != widget.currentIndex) {
-      HapticFeedback.mediumImpact();
-      widget.onTap(target);
+    int targetTab;
+    if (currentRelative < 0) {
+      targetTab = 0;
+    } else if (currentRelative > 1) {
+      targetTab = widget.items.length - 1;
+    } else {
+      const velocityThreshold = 0.5;
+      if (velocityX.abs() > velocityThreshold) {
+        final projected =
+            (currentRelative + velocityX * 0.3).clamp(0.0, 1.0);
+        targetTab =
+            (projected / indicatorWidth).round().clamp(0, widget.items.length - 1);
+      } else {
+        targetTab =
+            (currentRelative / indicatorWidth).round().clamp(0, widget.items.length - 1);
+      }
     }
 
-    setState(() => _isDragging = false);
-  }
+    setState(() {
+      _isDragging = false;
+      _isDown = false;
+      _xAlign = _computeXAlignment(targetTab);
+    });
 
-  // ── BUILD ───────────────────────────────────────────────────────
+    if (targetTab != widget.currentIndex) {
+      HapticFeedback.mediumImpact();
+      widget.onTap(targetTab);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final totalHeight = OuroTabBar.reservedHeight(bottomInset);
+    final targetAlignment = _computeXAlignment(widget.currentIndex);
 
-    return AnimatedBuilder(
-      animation: _hideController,
-      builder: (context, _) {
-        final hidden = _hideController.value;
-        if (hidden > 0.99) return const SizedBox.shrink();
+    return SingleMotionBuilder(
+      motion: widget.minimized
+          ? const CupertinoMotion.smooth()
+          : const CupertinoMotion.snappy(),
+      value: widget.minimized ? 1.0 : 0.0,
+      builder: (context, hidden, _) {
+        if (hidden < 0.001) return _bar(bottomInset, targetAlignment);
 
         final scale = 1 - 0.12 * hidden;
-        final opacity = (1 - hidden * 1.5).clamp(0.0, 1.0);
-
         return Transform.translate(
           offset: Offset(0, hidden * totalHeight * 0.75),
           child: Transform.scale(
             scale: scale,
             alignment: Alignment.bottomCenter,
-            child: Opacity(opacity: opacity, child: _buildBar()),
+            child: Opacity(
+              opacity: (1 - hidden * 1.5).clamp(0.0, 1.0),
+              child: _bar(bottomInset, targetAlignment),
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildBar() {
-    // Mettre à jour la position du ressort
-    final elapsed = DateTime.now().difference(_springStart).inMilliseconds / 1000.0;
-    final springValue = _spring.solve(elapsed.clamp(0.0, 3.0),
-        from: _springFrom, to: _springTo);
-    _velocity = _spring.velocity(elapsed.clamp(0.0, 3.0),
-        from: _springFrom, to: _springTo);
-    _currentPosition = springValue;
-
-    // Glow intensity
-    final glowT = _glowController.value;
-    final glowIntensity = glowT < 0.5 ? glowT * 2 : (1 - glowT) * 2;
-
+  Widget _bar(double bottomInset, double targetAlignment) {
     const radius = OuroTabBar.height / 2;
 
     return Padding(
@@ -566,103 +366,83 @@ class _OuroTabBarState extends State<OuroTabBar>
         OuroTabBar.floatingMargin,
         0,
         OuroTabBar.floatingMargin,
-        MediaQuery.paddingOf(context).bottom + OuroTabBar.floatingMargin,
+        bottomInset + OuroTabBar.floatingMargin,
       ),
       child: GestureDetector(
-        onTapDown: _onTapDown,
-        onTapUp: _onTapUp,
-        onHorizontalDragStart: _onHorizontalDragStart,
-        onHorizontalDragUpdate: _onHorizontalDragUpdate,
-        onHorizontalDragEnd: _onHorizontalDragEnd,
-        child: AnimatedBuilder(
-          animation: _mainController,
-          builder: (context, _) {
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(radius),
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                child: CustomPaint(
-                  painter: _FluidBackground(
-                    position: _currentPosition,
-                    tabWidth: _tabWidth,
-                    tabCount: widget.items.length,
-                    progress: glowIntensity,
-                  ),
-                  child: Container(
-                    height: OuroTabBar.height,
-                    decoration: BoxDecoration(
-                      color: OuroColors.isDark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : Colors.white.withValues(alpha: 0.72),
-                      borderRadius: BorderRadius.circular(radius),
-                      border: Border.all(
-                        color: OuroColors.isDark
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white.withValues(alpha: 0.5),
-                        width: 0.5,
+        onTapDown: (d) {
+          setState(() {
+            _isDown = true;
+            _xAlign = _alignmentFromGlobal(d.globalPosition);
+          });
+        },
+        onHorizontalDragStart: (d) {
+          _isDragging = true;
+          _lastCrossedTab = widget.currentIndex;
+          HapticFeedback.selectionClick();
+        },
+        onHorizontalDragUpdate: _onDragUpdate,
+        onHorizontalDragEnd: _onDragEnd,
+        onHorizontalDragCancel: () => setState(() {
+          _isDragging = false;
+          _isDown = false;
+          _xAlign = targetAlignment;
+        }),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Ombre
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(radius),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                            alpha: OuroColors.isDark ? 0.42 : 0.13),
+                        blurRadius: 22,
+                        offset: const Offset(0, 6),
                       ),
-                    ),
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        // ── Indicateur morphing ──────────────────
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _MorphingIndicator(
-                              position: _currentPosition,
-                              velocity: _velocity,
-                              tabWidth: _tabWidth,
-                              tabCount: widget.items.length,
-                              progress: 1,
-                              isPressed: _isDragging,
-                            ),
-                          ),
-                        ),
-                        // ── Particules ───────────────────────────
-                        ..._particles.map((p) => Positioned(
-                          left: p.x - p.size / 2,
-                          top: p.y - p.size / 2,
-                          child: Container(
-                            width: p.size,
-                            height: p.size,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: p.color,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: p.color,
-                                  blurRadius: p.size * 2,
-                                ),
-                              ],
-                            ),
-                          ),
-                        )),
-                        // ── Onglets ──────────────────────────────
-                        Row(
-                          children: List.generate(widget.items.length, (i) {
-                            return Expanded(
-                              child: _TabButton(
-                                item: widget.items[i],
-                                selected: i == widget.currentIndex,
-                                index: i,
-                                position: _currentPosition,
-                                glowIntensity: glowIntensity,
-                                onTap: () {
-                                  if (i == widget.currentIndex) return;
-                                  HapticFeedback.mediumImpact();
-                                  widget.onTap(i);
-                                },
-                              ),
-                            );
-                          }),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
-            );
-          },
+            ),
+            // Verre liquide
+            OuroGlassLayer(
+              child: _GlassIndicator(
+                tabIndex: widget.currentIndex,
+                tabCount: widget.items.length,
+                onTabChanged: widget.onTap,
+                isDragging: _isDragging,
+                isDown: _isDown,
+                xAlign: _xAlign,
+                tabWidth: _tabWidth,
+                particles: _particles,
+                child: SizedBox(
+                  height: OuroTabBar.height,
+                  child: Row(
+                    children: List.generate(widget.items.length, (i) {
+                      final influence = (1 - (_xAlign - _computeXAlignment(i)).abs())
+                          .clamp(0.0, 1.0);
+                      return Expanded(
+                        child: _TabButton(
+                          item: widget.items[i],
+                          selected: i == widget.currentIndex,
+                          influence: influence,
+                          onTap: () {
+                            if (i == widget.currentIndex) return;
+                            HapticFeedback.mediumImpact();
+                            widget.onTap(i);
+                          },
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -670,174 +450,209 @@ class _OuroTabBarState extends State<OuroTabBar>
 }
 
 // ============================================================================
-// ONGLET INDIVIDUEL — ANIMATIONS CONTINUES
+// L'INDICATEUR DE VERRE LIQUIDE
+// ============================================================================
+
+class _GlassIndicator extends ConsumerStatefulWidget {
+  const _GlassIndicator({
+    required this.child,
+    required this.tabIndex,
+    required this.tabCount,
+    required this.onTabChanged,
+    required this.isDragging,
+    required this.isDown,
+    required this.xAlign,
+    required this.tabWidth,
+    required this.particles,
+  });
+
+  final Widget child;
+  final int tabIndex;
+  final int tabCount;
+  final ValueChanged<int> onTabChanged;
+  final bool isDragging;
+  final bool isDown;
+  final double xAlign;
+  final double tabWidth;
+  final List<_Particle> particles;
+
+  @override
+  ConsumerState<_GlassIndicator> createState() => _GlassIndicatorState();
+}
+
+class _GlassIndicatorState extends ConsumerState<_GlassIndicator> {
+  double _computeXAlignment(int index) {
+    if (widget.tabCount < 2) return 0;
+    return (index / (widget.tabCount - 1)).clamp(0.0, 1.0) * 2 - 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final targetAlignment = _computeXAlignment(widget.tabIndex);
+    final degraded = ouroGlassDegraded(ref);
+
+    return VelocityMotionBuilder(
+      converter: const SingleMotionConverter(),
+      value: widget.xAlign,
+      motion: widget.isDragging
+          ? const Motion.interactiveSpring(snapToEnd: true)
+          : const Motion.bouncySpring(snapToEnd: true),
+      builder: (context, x, velocity, _) {
+        final alignment = Alignment(x, 0);
+        final bar = LiquidGlass.grouped(
+          clipBehavior: Clip.none,
+          shape: const LiquidRoundedSuperellipse(borderRadius: 24),
+          child: widget.child,
+        );
+
+        final wantsGlass =
+            !degraded && (widget.isDown || (x - targetAlignment).abs() > 0.30);
+
+        return SingleMotionBuilder(
+          motion: const Motion.snappySpring(
+            snapToEnd: true,
+            duration: Duration(milliseconds: 300),
+          ),
+          value: wantsGlass ? 1.0 : 0.0,
+          builder: (context, thickness, _) {
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Aplat de repos
+                if (thickness < 1)
+                  _MorphingIndicator(
+                    alignment: alignment,
+                    velocity: velocity,
+                    thickness: thickness,
+                    tabCount: widget.tabCount,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 120),
+                      opacity: thickness <= 0.2 ? 1 : 0,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: OuroColors.accent.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(64),
+                        ),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ),
+                // Contenu
+                bar,
+                // Vrai verre liquide
+                if (thickness > 0)
+                  _MorphingIndicator(
+                    alignment: alignment,
+                    velocity: velocity,
+                    thickness: thickness,
+                    tabCount: widget.tabCount,
+                    child: LiquidGlass.withOwnLayer(
+                      fake: degraded,
+                      settings: LiquidGlassSettings(
+                        visibility: thickness,
+                        glassColor: OuroColors.accent.withValues(alpha: 0.14),
+                        saturation: 1.5,
+                        refractiveIndex: 1.15,
+                        thickness: 20,
+                        lightIntensity: 2,
+                        chromaticAberration: 0.5,
+                        blur: 0,
+                      ),
+                      shape: const LiquidRoundedSuperellipse(borderRadius: 64),
+                      child: GlassGlow(child: const SizedBox.expand()),
+                    ),
+                  ),
+              ],
+            );
+          },
+          child: bar,
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+// ============================================================================
+// ONGLET
 // ============================================================================
 
 class _TabButton extends StatelessWidget {
   const _TabButton({
     required this.item,
     required this.selected,
-    required this.index,
-    required this.position,
-    required this.glowIntensity,
+    required this.influence,
     required this.onTap,
   });
 
   final OuroTabItem item;
   final bool selected;
-  final int index;
-  final double position;
-  final double glowIntensity;
+  final double influence;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    // Distance continue de l'indicateur
-    final distance = (position - index).abs().clamp(0.0, 1.0);
-    final influence = 1 - distance;
-
-    // Couleur qui suit la distance
     final color = Color.lerp(
       OuroColors.systemGray,
       OuroColors.accent,
       Curves.easeOut.transform(influence),
     )!;
 
-    // Élévation progressive
-    final lift = -4.0 * influence;
-    final scale = 1 + 0.12 * influence;
+    final lift = -3.0 * influence;
+    final scale = 1 + 0.10 * influence;
 
-    // Taille de l'icône
-    final iconSize = 24.0 + 3.0 * influence;
-
-    // Opacité du glow
-    final iconGlow = influence * glowIntensity;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      label: item.label,
+      excludeSemantics: true,
       onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Glow au-dessus de l'icône ────────────────────────
-          if (iconGlow > 0.05)
-            Container(
-              width: 16 + 8 * influence,
-              height: 2 + 2 * influence,
-              margin: const EdgeInsets.only(bottom: 3),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2),
-                boxShadow: [
-                  BoxShadow(
-                    color: OuroColors.accent.withValues(alpha: iconGlow * 0.7),
-                    blurRadius: 6 + 4 * influence,
-                    spreadRadius: 1 + 2 * influence,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.translate(
+              offset: Offset(0, lift),
+              child: Transform.scale(
+                scale: scale,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
                   ),
-                ],
-              ),
-            ),
-
-          // ── Icône animée ────────────────────────────────────
-          Transform.translate(
-            offset: Offset(0, lift),
-            child: Transform.scale(
-              scale: scale,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: Icon(
-                  selected ? item.activeIcon : item.icon,
-                  key: ValueKey('$selected-$index'),
-                  size: iconSize,
-                  color: color,
-                  shadows: [
-                    if (iconGlow > 0.1)
-                      Shadow(
-                        color: OuroColors.accent.withValues(alpha: iconGlow * 0.5),
-                        blurRadius: 8,
-                      ),
-                  ],
+                  child: Icon(
+                    selected ? item.activeIcon : item.icon,
+                    key: ValueKey('$selected-${item.label}'),
+                    size: 25,
+                    color: color,
+                  ),
                 ),
               ),
             ),
-          ),
-
-          const SizedBox(height: 2),
-
-          // ── Libellé animé ───────────────────────────────────
-          Transform.translate(
-            offset: Offset(0, lift * 0.3),
-            child: Text(
+            const SizedBox(height: 2),
+            Text(
               item.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10 + influence * 0.5,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 color: Color.lerp(
                   OuroColors.systemGray,
                   OuroColors.label,
                   Curves.easeOut.transform(influence),
                 ),
-                letterSpacing: 0.1 + influence * 0.2,
+                letterSpacing: 0.1,
               ),
             ),
-          ),
-
-          // ── Badge ───────────────────────────────────────────
-          if (item.badge != null && item.badge! > 0)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withValues(alpha: 0.4),
-                      blurRadius: 6,
-                    ),
-                  ],
-                ),
-                child: Text(
-                  item.badge! > 99 ? '99+' : '${item.badge}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
-  }
-}
-
-// ============================================================================
-// ANIMATED BUILDER — WRAPPER POUR ANIMATIONS CONTINUES
-// ============================================================================
-
-class AnimatedBuilder extends AnimatedWidget {
-  const AnimatedBuilder({
-    super.key,
-    required Listenable animation,
-    required this.builder,
-    this.child,
-  }) : super(listenable: animation);
-
-  final TransitionBuilder builder;
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) {
-    return builder(context, child);
   }
 }
