@@ -243,6 +243,11 @@ class MeshRepository {
   final _nexusEventCtrl = StreamController<NexusEvent>.broadcast();
   Stream<NexusEvent> get nexusEvents => _nexusEventCtrl.stream;
 
+  /// Émet les modifications de message reçues d'un pair distant.
+  /// Payload: (messageId, newContent).
+  final _editCtrl = StreamController<({String messageId, String newContent})>.broadcast();
+  Stream<({String messageId, String newContent})> get editEvents => _editCtrl.stream;
+
   /// Émet chaque message affichable déchiffré et persisté (1:1, diffusion,
   /// groupe, fichier) — source unique pour l'UI (`MeshNotifier`), qui ne
   /// décode plus le flux brut elle-même. Évite qu'un déchiffrement ou un
@@ -959,6 +964,28 @@ class MeshRepository {
         return;
       }
 
+      // Modification de message : `m` porte l'ID du message, `c` le
+      // nouveau contenu. Relayé pour le multi-hop.
+      if (kind == 'edit') {
+        final editMsgId = appMsgId ?? '';
+        if (senderId != null && editMsgId.isNotEmpty &&
+            (targetId == null || targetId == _myId)) {
+          String newContent = content;
+          // Les messages de groupe sont chiffrés avec la sender-key du groupe.
+          if (groupId != null && nonce != null && groupCounter != null) {
+            final group = StorageService.getGroup(groupId);
+            if (group != null && group.isActiveMember(_myId)) {
+              newContent = await _decryptGroupContent(
+                  groupId, senderId, content, nonce, groupCounter);
+            }
+          }
+          _editCtrl.add((messageId: editMsgId, newContent: newContent));
+          debugPrint('[MeshRepo] édit reçu: $editMsgId');
+        }
+        _relayOrDefer(data.messageId, data.data, hopCount, excludePeerId: data.peerId, targetId: targetId);
+        return;
+      }
+
       // Accusé de vue d'un statut : `c` porte {statusId, ts}, ciblé vers
       // l'auteur du statut (comme une réaction), jamais diffusé largement.
       if (kind == 'status_feedback') {
@@ -1499,6 +1526,63 @@ class MeshRepository {
       'm': emoji,
       'k': 'reaction',
       't': targetId,
+    };
+    final payloadBytes = utf8.encode(json.encode(jsonMap));
+    final data = Uint8List(2 + payloadBytes.length);
+    data[0] = kDefaultHopCount;
+    data[1] = kTextMessageType;
+    data.setRange(2, data.length, payloadBytes);
+    await _transport.broadcastToConnectedPeers(data);
+  }
+
+  /// Diffuse une modification de message vers tous les pairs connectés.
+  /// Le champ `c` porte le nouveau contenu, `m` l'ID du message modifié.
+  /// Relayé pour le multi-hop comme un message normal.
+  Future<void> sendEditMessage({
+    required String messageId,
+    required String newContent,
+    String? targetId,
+  }) async {
+    final (wireContent, nonce, encrypted) = targetId != null
+        ? await _encryptForPeer(targetId, newContent)
+        : (newContent, null, false);
+    final jsonMap = <String, dynamic>{
+      'c': wireContent,
+      's': _myId,
+      'm': messageId,
+      'k': 'edit',
+    };
+    if (encrypted) {
+      jsonMap['e'] = true;
+      jsonMap['n'] = nonce;
+    }
+    if (targetId != null) jsonMap['t'] = targetId;
+    final payloadBytes = utf8.encode(json.encode(jsonMap));
+    final data = Uint8List(2 + payloadBytes.length);
+    data[0] = kDefaultHopCount;
+    data[1] = kTextMessageType;
+    data.setRange(2, data.length, payloadBytes);
+    await _transport.broadcastToConnectedPeers(data);
+  }
+
+  /// Diffuse une modification de message de groupe. Le contenu est chiffré
+  /// avec la sender-key du groupe, comme un message de groupe ordinaire.
+  Future<void> sendGroupEditMessage({
+    required String groupId,
+    required String messageId,
+    required String newContent,
+  }) async {
+    final (messageKey, newCounter) = await _advanceMySenderKey(groupId);
+    final (cipherText, nonce) = await CryptoService.encrypt(messageKey, newContent);
+    final jsonMap = <String, dynamic>{
+      'c': cipherText,
+      's': _myId,
+      'g': groupId,
+      'm': messageId,
+      'k': 'edit',
+      'n': nonce,
+      'ctr': newCounter,
+      'e': true,
     };
     final payloadBytes = utf8.encode(json.encode(jsonMap));
     final data = Uint8List(2 + payloadBytes.length);

@@ -169,6 +169,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
   StreamSubscription<String>? _ackSub;
   StreamSubscription<String>? _readSub;
   StreamSubscription<({String messageId, String emoji})>? _reactionSub;
+  StreamSubscription<({String messageId, String newContent})>? _editSub;
   StreamSubscription<MeshMessage>? _newMessageSub;
   StreamSubscription<String>? _repairedSub;
   Timer? _readDelayTimer;
@@ -217,6 +218,9 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     });
     _reactionSub = _repo.reactionEvents.listen((evt) {
       _reactionEventCtrl.add(evt);
+    });
+    _editSub = _repo.editEvents.listen((evt) {
+      applyRemoteEdit(evt.messageId, evt.newContent);
     });
     _newMessageSub = _repo.newMessageEvents.listen((msg) {
       if (state.any((m) => m.id == msg.id)) return;
@@ -354,6 +358,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
 
   /// Modifie le contenu d'un message. Seul l'auteur peut le faire.
   /// Le badge « modifié » est affiché dans la bulle.
+  /// La modification est envoyée à tous les pairs connectés via le mesh.
   void editMessage(String messageId, String newContent) {
     state = state.map((m) {
       if (m.id != messageId) return m;
@@ -364,6 +369,36 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
       );
     }).toList();
     // Persister en base.
+    final msg = state.where((m) => m.id == messageId).firstOrNull;
+    if (msg != null) {
+      unawaited(StorageService.saveMessage(msg));
+    }
+    // Envoyer la modification aux pairs via le mesh.
+    if (msg?.groupId != null) {
+      unawaited(_repo.sendGroupEditMessage(
+        groupId: msg!.groupId!,
+        messageId: messageId,
+        newContent: newContent,
+      ).catchError((e) => debugPrint('[MeshNotifier] échec envoi édit groupe: $e')));
+    } else {
+      final targetId = msg?.targetId;
+      unawaited(_repo.sendEditMessage(
+        messageId: messageId,
+        newContent: newContent,
+        targetId: targetId,
+      ).catchError((e) => debugPrint('[MeshNotifier] échec envoi édit: $e')));
+    }
+  }
+
+  /// Applique une modification reçue d'un pair distant.
+  void applyRemoteEdit(String messageId, String newContent) {
+    state = state.map((m) {
+      if (m.id != messageId) return m;
+      return m.copyWith(
+        content: newContent,
+        editedAt: DateTime.now(),
+      );
+    }).toList();
     final msg = state.where((m) => m.id == messageId).firstOrNull;
     if (msg != null) {
       unawaited(StorageService.saveMessage(msg));
@@ -776,6 +811,7 @@ class MeshNotifier extends StateNotifier<List<MeshMessage>> {
     _ackSub?.cancel();
     _readSub?.cancel();
     _reactionSub?.cancel();
+    _editSub?.cancel();
     _newMessageSub?.cancel();
     _repairedSub?.cancel();
     _readDelayTimer?.cancel();

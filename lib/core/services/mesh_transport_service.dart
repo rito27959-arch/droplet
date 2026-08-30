@@ -267,8 +267,8 @@ class MeshScaleConfig {
     this.bleScanDuration = 10,
     this.bleScanPause = 30,
     this.bleScanPauseLowBattery = 60,
-    this.peerTimeout = 30,
-    this.reconnectGrace = 45,
+    this.peerTimeout = 90,
+    this.reconnectGrace = 60,
     this.defaultMessageTtl = 3600,
     this.discoveryPort = 42069,
     this.dataPort = 42070,
@@ -820,12 +820,15 @@ class MeshTransportService {
     // porte de derrière. On garde de quoi manquer trois annonces, avec un
     // plancher à la valeur configurée.
     final graceMini = _currentWifiBeaconInterval * 3;
+    final bleCycle = config.bleScanDuration + config.bleScanPause;
+    final bleGrace = bleCycle * 2;
+    final minGrace = graceMini > bleGrace ? graceMini : bleGrace;
     _graceEffective =
-        graceMini > config.reconnectGrace ? graceMini : config.reconnectGrace;
+        minGrace > config.reconnectGrace ? minGrace : config.reconnectGrace;
 
     debugPrint('[MeshService] adapt beacon: ${_currentWifiBeaconInterval}s '
         'grâce=${_graceEffective}s peers=$peerCount '
-        'bg=${!_isInForeground} bat=${(_batteryLevel * 100).round()}%');
+        'bg=${!_isInForeground} bat=${(_batteryLevel * 100).round()}');
   }
 
   /// Le délai de grâce réellement appliqué — voir `_adjustScanRate`.

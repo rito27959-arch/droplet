@@ -840,6 +840,7 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
   bool _incomingWasConnected = false;
   // Empêche de lancer plusieurs animations Nexus simultanément.
   bool _nexusAffiche = false;
+  Timer? _nexusSafetyTimer;
 
   /// Envoie une réponse écrite depuis une notification.
   ///
@@ -989,6 +990,7 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
       if (_nexusAffiche) return;
       if (!mounted) return;
       _nexusAffiche = true;
+      _startNexusSafetyTimer();
 
       final event = NexusEvent(
         seed: NexusEvent.generateSeed(),
@@ -1005,7 +1007,10 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
         seed: event.seed,
         colorSignature: event.colorSignature,
         peerName: peer.pseudo,
-        onComplete: () => _nexusAffiche = false,
+        onComplete: () {
+          _nexusAffiche = false;
+          _nexusSafetyTimer?.cancel();
+        },
       );
     });
     // Quand on REÇOIT un NexusEvent d'un pair (l'autre appareil a détecté
@@ -1014,11 +1019,15 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
       if (_nexusAffiche) return;
       if (!mounted) return;
       _nexusAffiche = true;
+      _startNexusSafetyTimer();
       NexusOverlay.show(
         context,
         seed: event.seed,
         colorSignature: event.colorSignature,
-        onComplete: () => _nexusAffiche = false,
+        onComplete: () {
+          _nexusAffiche = false;
+          _nexusSafetyTimer?.cancel();
+        },
       );
     });
     // Surveille l'état des appels pour détecter deux moments précis :
@@ -1069,11 +1078,9 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
 
   @override
   void dispose() {
-    // Range bien tout derrière soi quand ce widget disparaît (ce qui
-    // n'arrive en pratique jamais, puisqu'il enveloppe toute l'app) —
-    // bonne pratique pour éviter les fuites de mémoire.
     WidgetsBinding.instance.removeObserver(this);
     _retryTimer?.cancel();
+    _nexusSafetyTimer?.cancel();
     _msgSub?.cancel();
     _statusSub?.cancel();
     _checkinSub?.cancel();
@@ -1081,6 +1088,18 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
     _nexusEventSub?.cancel();
     _callSub?.close();
     super.dispose();
+  }
+
+  /// Sécurité : si l'animation Nexus ne se ferme pas toute seule (shader
+  /// indisponible, contexte mort, etc.), on débloque le flag après 12s.
+  void _startNexusSafetyTimer() {
+    _nexusSafetyTimer?.cancel();
+    _nexusSafetyTimer = Timer(const Duration(seconds: 12), () {
+      if (_nexusAffiche) {
+        debugPrint('[Droplet] nexus safety: flag débloqué');
+        _nexusAffiche = false;
+      }
+    });
   }
 
   @override
