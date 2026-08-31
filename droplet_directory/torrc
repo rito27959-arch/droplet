@@ -1,0 +1,23 @@
+# ── Configuration Tor pour DropletDirectory ──────────────────────────
+# Ce fichier configure Tor pour exécuter le serveur annuaire
+# comme un service caché (.onion).
+
+# Écouter sur le port SOCKS local (pour les autres services).
+SocksPort 9050
+
+# Écouter sur le port Trans pour le DNS.
+TransPort 9040
+
+# NamedControlPort pour le contrôle.
+ControlPort 9051
+
+# ── Service caché ───────────────────────────────────────────────────
+# Le répertoire du service caché.
+HiddenServiceDir /var/lib/tor/droplet_directory/
+
+# Service vers le serveur Dart local.
+HiddenServicePort 80 127.0.0.1:8080
+
+# ── Logs ────────────────────────────────────────────────────────────
+# Logs au niveau notice (pas trop verbeux).
+Log notice stdout

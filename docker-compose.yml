@@ -1,0 +1,55 @@
+# ── Docker Compose pour les serveurs .onion de Droplet ───────────────
+#
+# Ce fichier lance les deux serveurs (.onion) sur un VPS avec Tor.
+#
+# Usage:
+#   docker compose up -d
+#
+# Les adresses .onion seront affichées dans les logs :
+#   docker compose logs -f directory
+#   docker compose logs -f mailbox
+#
+# Le fichier hostname contient l'adresse .onion :
+#   docker compose exec directory cat /var/lib/tor/droplet_directory/hostname
+#   docker compose exec mailbox cat /var/lib/tor/droplet_mailbox/hostname
+
+version: '3.8'
+
+services:
+  directory:
+    build: ./droplet_directory
+    container_name: droplet_directory
+    restart: unless-stopped
+    ports: []  # Pas de ports exposés — accès uniquement via .onion
+    volumes:
+      - directory_data:/var/lib/tor/droplet_directory
+    networks:
+      - droplet
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mailbox:
+    build: ./droplet_mailbox
+    container_name: droplet_mailbox
+    restart: unless-stopped
+    ports: []
+    volumes:
+      - mailbox_data:/var/lib/tor/droplet_mailbox
+    networks:
+      - droplet
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  directory_data:
+  mailbox_data:
+
+networks:
+  droplet:
+    driver: bridge

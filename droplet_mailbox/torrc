@@ -1,0 +1,14 @@
+# ── Configuration Tor pour DropletMailbox ────────────────────────────
+# Ce fichier configure Tor pour exécuter le serveur mailbox
+# comme un service caché (.onion).
+
+SocksPort 9050
+TransPort 9040
+ControlPort 9051
+
+# ── Service caché ───────────────────────────────────────────────────
+HiddenServiceDir /var/lib/tor/droplet_mailbox/
+HiddenServicePort 80 127.0.0.1:8081
+
+# ── Logs ────────────────────────────────────────────────────────────
+Log notice stdout

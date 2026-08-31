@@ -14,7 +14,6 @@
 // ============================================================================
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
@@ -226,7 +225,7 @@ Response _handleHealth(Request request) {
 
 // ── Main ───────────────────────────────────────────────────────────
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   final parser = ArgParser()
     ..addOption('port', abbr: 'p', defaultsTo: '8081', help: 'Port d\'écoute')
     ..addOption('host', abbr: 'h', defaultsTo: '127.0.0.1', help: 'Adresse d\'écoute');
@@ -242,8 +241,8 @@ void main(List<String> args) {
       .addMiddleware(logRequests())
       .addHandler(_router.call);
 
-  final server = io.serve(handler, host, port);
-  print('[Mailbox] Serveur mailbox démarré sur http://$host:$port');
+  final server = await io.serve(handler, host, port);
+  print('[Mailbox] Serveur mailbox démarré sur http://${server.address.host}:${server.port}');
   print('[Mailbox] Endpoints:');
   print('  POST /messages          — Déposer un message');
   print('  GET /messages/:peerId   — Récupérer les messages');

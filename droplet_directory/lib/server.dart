@@ -13,14 +13,13 @@
 //   GET /health      — Health check
 // ============================================================================
 
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:args/args.dart';
-import 'package:crypto/crypto.dart';
 
 // ── Modèle de données ──────────────────────────────────────────────
 
@@ -185,7 +184,7 @@ Response _handleHealth(Request request) {
 
 // ── Main ───────────────────────────────────────────────────────────
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   final parser = ArgParser()
     ..addOption('port', abbr: 'p', defaultsTo: '8080', help: 'Port d\'écoute')
     ..addOption('host', abbr: 'h', defaultsTo: '127.0.0.1', help: 'Adresse d\'écoute');
@@ -204,26 +203,11 @@ void main(List<String> args) {
       .addMiddleware(logRequests())
       .addHandler(_router.call);
 
-  final server = io.serve(handler, host, port);
-  print('[Directory] Serveur annuaire démarré sur http://$host:$port');
+  final server = await io.serve(handler, host, port);
+  print('[Directory] Serveur annuaire démarré sur http://${server.address.host}:${server.port}');
   print('[Directory] Endpoints:');
   print('  POST /register   — Enregistrer un appareil');
   print('  DELETE /register — Se désinscrire');
   print('  GET /search?q=   — Chercher un contact');
   print('  GET /health      — Health check');
-}
-
-// ── Timer helper (since dart:async not imported) ───────────────────
-class Timer {
-  final Duration duration;
-  final void Function(Timer) callback;
-  Timer(this.duration, this.callback) {
-    _start();
-  }
-  void _start() async {
-    while (true) {
-      await Future.delayed(duration);
-      callback(this);
-    }
-  }
 }
