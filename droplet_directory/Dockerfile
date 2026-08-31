@@ -12,7 +12,7 @@ RUN dart pub get
 
 COPY . .
 
-RUN dart compile exe lib/server.dart -o bin/server
+RUN mkdir -p bin && dart compile exe lib/server.dart -o bin/server
 
 # ── Image finale avec Tor ───────────────────────────────────────────
 FROM debian:bookworm-slim

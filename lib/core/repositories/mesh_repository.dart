@@ -266,7 +266,23 @@ class MeshRepository {
   final _firstPeerCtrl = StreamController<ConnectedPeer>.broadcast();
   Stream<ConnectedPeer> get firstPeerConnection => _firstPeerCtrl.stream;
   final Set<String> _connectedThisSession = {};
+
+  /// Pair premier né de la session, en attente que le dashboard s'abonne.
+  /// Le broadcast stream perd les événements émis avant le premier
+  /// auditeur — si le mesh trouve un pair pendant que le dashboard
+  /// n'a pas encore initialisé son écoute, `_firstPeerCtrl.add()` tombe
+  /// dans le vide. On le sauvegarde ici pour le rejouer dès l'abonnement.
+  ConnectedPeer? _pendingFirstPeer;
   MeshTransportService get transport => _transport;
+
+  /// Récupère et consomme le premier pair connecté s'il a été détecté
+  /// avant l'abonnement du dashboard au stream broadcast.
+  /// Retourne null s'il n'y en a pas (le dashboard s'est abonné à temps).
+  ConnectedPeer? consumePendingFirstPeer() {
+    final p = _pendingFirstPeer;
+    _pendingFirstPeer = null;
+    return p;
+  }
 
   String get myId => _myId;
   String get myPseudo => _myPseudo;
@@ -418,6 +434,12 @@ class MeshRepository {
     // premier « hello » venu peut alors les réparer immédiatement.
     _loadPendingDecryptions();
 
+    // Configurer les serveurs Tor (directory + mailbox) AVANT startMesh.
+    _transport.configureTorServers(
+      directoryUrl: 'http://127.0.0.1:8080',
+      mailboxUrl: 'http://127.0.0.1:8081',
+    );
+
     await _transport.startMesh(
       myId,
       myPseudo,
@@ -438,6 +460,7 @@ class MeshRepository {
         // Première connexion dans cette session → signal Nexus.
         if (_connectedThisSession.add(peer.peerId)) {
           _firstPeerCtrl.add(peer);
+          _pendingFirstPeer = peer;
         }
         if (peer.publicKey == null) {
           // Fire-and-forget : un pair qui se déconnecte pendant l'envoi ne
@@ -525,7 +548,7 @@ class MeshRepository {
   void _sendAck(String targetPeerId, String originalMessageId) {
     (_ackBatches[targetPeerId] ??= []).add(originalMessageId);
     _ackBatchTimers[targetPeerId] ??= Timer(
-      const Duration(seconds: 2),
+      const Duration(milliseconds: 200),
       () => _flushAckBatch(targetPeerId),
     );
   }
@@ -559,7 +582,7 @@ class MeshRepository {
   /// Résout la clé publique connue d'un pair (connecté ou persistée). Si
   /// elle est absente, relance une annonce de clé et attend brièvement
   /// [timeout] qu'elle arrive avant d'abandonner.
-  Future<String?> _resolvePeerPublicKey(String peerId, {Duration timeout = const Duration(seconds: 2)}) async {
+  Future<String?> _resolvePeerPublicKey(String peerId, {Duration timeout = const Duration(milliseconds: 500)}) async {
     String? key = _peerPublicKeyFromCaches(peerId);
     if (key != null) return key;
 
@@ -1342,6 +1365,13 @@ class MeshRepository {
   /// Annonce ma clé publique X25519 à [targetId] (ou à tout le voisinage
   /// direct si null), pour permettre au destinataire de dériver le secret
   /// partagé du chiffrement de bout en bout.
+  ///
+  /// ⚠️ ENVOI DIRECT : le hello contourne la file fiable (`_enqueueReliable`)
+  /// pour minimiser la latence d'échange de clés. La clé est le verrou du
+  /// chiffrement — chaque milliseconde de retard est un message en attente
+  /// de déchiffrement. On envoie via `broadcastToConnectedPeers` (ou
+  /// `sendViaRoute` si ciblé) sans retry ni backoff : si ça rate, le
+  /// prochain `_resolvePeerPublicKey` relancera un hello.
   Future<void> sendHello({String? targetId}) async {
     final publicKey = _myPublicKey;
     if (publicKey == null) return;
@@ -1356,12 +1386,20 @@ class MeshRepository {
     data[0] = kDefaultHopCount;
     data[1] = kTextMessageType;
     data.setRange(2, data.length, payloadBytes);
-    await _enqueueReliable(
-      messageId: 'hello-${targetId ?? 'all'}-${DateTime.now().microsecondsSinceEpoch}',
-      targetId: targetId ?? 'broadcast',
-      data: data,
-      priority: MessagePriority.low,
-    );
+
+    try {
+      if (targetId != null) {
+        final ok = await _transport.sendViaRoute(targetId, data, type: kTextMessageType, priority: 0);
+        if (!ok) {
+          // Fallback : diffusion si le routage direct échoue
+          await _transport.broadcastToConnectedPeers(data, type: kTextMessageType);
+        }
+      } else {
+        await _transport.broadcastToConnectedPeers(data, type: kTextMessageType);
+      }
+    } catch (e) {
+      debugPrint('[MeshRepo] échec hello direct: $e');
+    }
   }
 
   /// Enregistre la clé publique X25519 d'un pair et fait le nécessaire pour

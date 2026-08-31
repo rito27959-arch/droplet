@@ -15,7 +15,7 @@ RUN dart pub get
 COPY . .
 
 # Compiler en mode release.
-RUN dart compile exe lib/server.dart -o bin/server
+RUN mkdir -p bin && dart compile exe lib/server.dart -o bin/server
 
 # ── Image finale ────────────────────────────────────────────────────
 FROM scratch
