@@ -1,0 +1,16 @@
+name: droplet_directory
+description: Serveur annuaire .onion pour Droplet — recherche de contacts
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  args: ^2.4.2
+  crypto: ^3.0.6
+
+dev_dependencies:
+  test: ^1.24.0
+  http: ^1.1.0

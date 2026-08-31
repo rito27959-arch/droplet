@@ -32,6 +32,9 @@ import 'mesh_state_machine.dart';
 import 'ble_mesh_transport.dart';
 import 'local_wifi_transport.dart';
 import 'native_p2p_transport.dart';
+import 'tor_transport.dart';
+import 'tor_service.dart';
+import 'directory_client.dart';
 import '../network/network_manager.dart' as nm;
 import '../protocol/droplet_mesh_protocol.dart';
 import '../models/mesh_message.dart';
@@ -39,7 +42,7 @@ import 'storage_service.dart';
 
 /// Type de transport utilisé pour joindre un pair — par quel « chemin » on
 /// peut lui parler.
-enum TransportKind { ble, localWifi, nativeP2P, both }
+enum TransportKind { ble, localWifi, nativeP2P, tor, both }
 
 /// Rôle d'un pair dans le mesh hiérarchique.
 enum PeerRole {
@@ -188,6 +191,7 @@ class MeshHealth {
   final Map<String, TransportHealth> bleHealth;
   final Map<String, TransportHealth> wifiHealth;
   final Map<String, TransportHealth> nativeHealth;
+  final Map<String, TransportHealth> torHealth;
 
   const MeshHealth({
     this.totalPeers = 0,
@@ -203,6 +207,7 @@ class MeshHealth {
     this.bleHealth = const {},
     this.wifiHealth = const {},
     this.nativeHealth = const {},
+    this.torHealth = const {},
   });
 }
 
@@ -318,13 +323,18 @@ class MeshTransportService {
     MeshTransport? bleTransport,
     MeshTransport? wifiTransport,
     MeshTransport? nativeTransport,
+    TorService? torService,
   })  : _bleTransport = bleTransport ?? BleMeshTransport(),
         _wifiTransport = wifiTransport ?? LocalWifiTransport(),
-        _nativeTransport = nativeTransport ?? NativeP2PTransport();
+        _nativeTransport = nativeTransport ?? NativeP2PTransport(),
+        _torService = torService,
+        _torTransport = torService != null ? TorTransport(torService) : null;
 
   final MeshTransport _bleTransport;
   final MeshTransport _wifiTransport;
   final MeshTransport _nativeTransport;
+  final TorService? _torService;
+  final TorTransport? _torTransport;
 
   /// Le « cerveau réseau » v2 : heartbeats, health checks, reconnexion et
   /// failover globaux. C'est lui qui détient le [DropletMeshProtocol]
@@ -541,7 +551,7 @@ class MeshTransportService {
 
     await _requestCorePermissions();
 
-    // On s'abonne à ce que racontent les trois transports AVANT de les
+    // On s'abonne à ce que racontent les transports AVANT de les
     // démarrer, pour ne rater aucun de leurs premiers événements.
     _transportSubs.addAll([
       _bleTransport.peerEvents.listen(_onBlePeerEvent, onError: (e) => debugPrint('[MeshService] BLE peer event error: $e')),
@@ -552,15 +562,32 @@ class MeshTransportService {
       _nativeTransport.incomingData.listen(_onIncomingData, onError: (e) => debugPrint('[MeshService] Native incoming error: $e')),
     ]);
 
-    // Les trois transports démarrent EN MÊME TEMPS (pas l'un après
+    // Tor : abonnement conditionnel — seulement si le service est disponible.
+    if (_torTransport != null) {
+      _transportSubs.addAll([
+        _torTransport!.peerEvents.listen(_onTorPeerEvent, onError: (e) => debugPrint('[MeshService] Tor peer event error: $e')),
+        _torTransport!.incomingData.listen(_onIncomingData, onError: (e) => debugPrint('[MeshService] Tor incoming error: $e')),
+      ]);
+    }
+
+    // Les transports radio démarrent EN MÊME TEMPS (pas l'un après
     // l'autre) pour gagner du temps — chacun a droit à 8 secondes max ;
-    // si l'un est lent ou plante, ça n'empêche pas les deux autres de
+    // si l'un est lent ou plante, ça n'empêche pas les autres de
     // fonctionner quand même.
-    await Future.wait([
+    final transportFutures = [
       _startTransport('BLE', () => _bleTransport.start(myId, myPseudo)),
       _startTransport('WiFi', () => _wifiTransport.start(myId, myPseudo)),
       _startTransport('NativeP2P', () => _nativeTransport.start(myId, myPseudo)),
-    ]);
+    ];
+
+    // Tor démarre aussi — mais ne bloque pas le mesh si Tor est lent.
+    if (_torTransport != null) {
+      transportFutures.add(
+        _startTransport('Tor', () => _torTransport!.start(myId, myPseudo)),
+      );
+    }
+
+    await Future.wait(transportFutures);
 
     _startAdaptiveBeaconing();
     _startStalePeerCleanup();
@@ -670,6 +697,7 @@ class MeshTransportService {
       _bleTransport.stop(),
       _wifiTransport.stop(),
       _nativeTransport.stop(),
+      if (_torTransport != null) _torTransport!.stop(),
     ]);
     _peers.clear();
     _knownGateways.clear();
@@ -1044,6 +1072,11 @@ class MeshTransportService {
   void _onNativePeerEvent(MeshPeerEvent event) {
     _updatePeer(event.peerId, event.pseudo, event.hopCount, event.isGateway,
         TransportKind.nativeP2P, event.isConnected, platform: event.platform);
+  }
+
+  void _onTorPeerEvent(MeshPeerEvent event) {
+    _updatePeer(event.peerId, event.pseudo, event.hopCount, event.isGateway,
+        TransportKind.tor, event.isConnected);
   }
 
   /// Applique l'événement de pair BLE/Wi-Fi tel quel — les deux transports
@@ -1458,6 +1491,7 @@ class MeshTransportService {
     final bleHealth = <String, TransportHealth>{};
     final wifiHealth = <String, TransportHealth>{};
     final nativeHealth = <String, TransportHealth>{};
+    final torHealth = <String, TransportHealth>{};
 
     for (final entry in _transportHealth.entries) {
       for (final tEntry in entry.value.entries) {
@@ -1465,6 +1499,7 @@ class MeshTransportService {
           case TransportKind.ble: bleHealth[entry.key] = tEntry.value;
           case TransportKind.localWifi: wifiHealth[entry.key] = tEntry.value;
           case TransportKind.nativeP2P: nativeHealth[entry.key] = tEntry.value;
+          case TransportKind.tor: torHealth[entry.key] = tEntry.value;
           case TransportKind.both: break;
         }
       }
@@ -1491,6 +1526,7 @@ class MeshTransportService {
       bleHealth: bleHealth,
       wifiHealth: wifiHealth,
       nativeHealth: nativeHealth,
+      torHealth: torHealth,
     );
   }
 
@@ -1519,6 +1555,8 @@ class MeshTransportService {
         return nm.TransportKind.localWifi;
       case TransportKind.nativeP2P:
         return nm.TransportKind.nativeP2p;
+      case TransportKind.tor:
+        return nm.TransportKind.tor;
       case TransportKind.both:
         return nm.TransportKind.ble;
     }
@@ -1605,6 +1643,11 @@ class MeshTransportService {
     if (peer.transports.contains(TransportKind.ble) && type < 0x20) {
       ordered.add(TransportKind.ble);
     }
+    // Tor : dernier recours pour contacts distants — lent mais fonctionne
+    // à travers le monde entier.
+    if (peer.transports.contains(TransportKind.tor)) {
+      ordered.add(TransportKind.tor);
+    }
     ordered.removeWhere((k) => isTransportExcluded(peer.peerId, k));
 
     // Failover global : si un transport est dégradé dans l'ensemble du mesh
@@ -1649,6 +1692,7 @@ class MeshTransportService {
           _dropletToNearbyId[peerId] ?? peerId
         ),
       TransportKind.ble => (_bleTransport, peerId),
+      TransportKind.tor => (_torTransport, peerId),
       TransportKind.both => (null, peerId),
     };
     if (transport == null) return false;
@@ -1692,6 +1736,7 @@ class MeshTransportService {
           _wifiTransport,
           _nativeTransport,
           _bleTransport,
+          if (_torTransport != null) _torTransport!,
         ])
           t.name: t.metrics.toJson(),
       };
@@ -1702,6 +1747,7 @@ class MeshTransportService {
           _wifiTransport,
           _nativeTransport,
           _bleTransport,
+          if (_torTransport != null) _torTransport!,
         ])
           t.name: t.state,
       };
@@ -1845,6 +1891,71 @@ class MeshTransportService {
     return accepted > 0;
   }
 
+  // ── Directory & Mailbox (via Tor) ──────────────────────────────────────
+
+  /// Configure les URLs des serveurs directory et mailbox.
+  ///
+  /// À appeler AVANT `startMesh()` ou après si Tor vient de démarrer.
+  void configureTorServers({
+    String? directoryUrl,
+    String? mailboxUrl,
+  }) {
+    if (_torTransport != null) {
+      _torTransport!.directoryUrl = directoryUrl;
+      _torTransport!.mailboxUrl = mailboxUrl;
+      debugPrint('[MeshService] Tor servers configurés: '
+          'dir=${directoryUrl != null ? "✓" : "✗"} '
+          'mailbox=${mailboxUrl != null ? "✓" : "✗"}');
+    }
+  }
+
+  /// Cherche des contacts par pseudo dans l'annuaire .onion.
+  ///
+  /// Retourne une liste de [DirectoryContact] trouvés.
+  Future<List<DirectoryContact>> searchDirectory(String query) async {
+    if (_torTransport == null) {
+      debugPrint('[MeshService] Tor non disponible pour la recherche');
+      return [];
+    }
+    return _torTransport!.searchDirectory(query);
+  }
+
+  /// Dépose un message chiffré dans la mailbox d'un contact distant.
+  ///
+  /// Utile quand le destinataire est hors-ligne — le message sera stocké
+  /// sur le serveur mailbox .onion jusqu'à ce qu'il le récupère.
+  Future<String?> storeMailboxMessage({
+    required String toPeerId,
+    required String encryptedPayload,
+  }) async {
+    if (_torTransport == null) {
+      debugPrint('[MeshService] Tor non disponible pour la mailbox');
+      return null;
+    }
+    return _torTransport!.storeMailboxMessage(
+      toPeerId: toPeerId,
+      encryptedPayload: encryptedPayload,
+    );
+  }
+
+  /// Récupère tous les messages en attente dans notre mailbox.
+  Future<List<dynamic>> fetchMailboxMessages() async {
+    if (_torTransport == null) return [];
+    return _torTransport!.fetchMailboxMessages();
+  }
+
+  /// Supprime un message après l'avoir traité.
+  Future<bool> acknowledgeMailboxMessage(String messageId) async {
+    if (_torTransport == null) return false;
+    return _torTransport!.acknowledgeMailboxMessage(messageId);
+  }
+
+  /// Vrai si le client directory est initialisé et prêt.
+  bool get isDirectoryReady => _torTransport?.isDirectoryReady ?? false;
+
+  /// Vrai si le client mailbox est initialisé et prêt.
+  bool get isMailboxReady => _torTransport?.isMailboxReady ?? false;
+
   void dispose() {
     _adaptiveBeaconTimer?.cancel();
     _stalePeerTimer?.cancel();
@@ -1857,6 +1968,7 @@ class MeshTransportService {
     _bleTransport.dispose();
     _wifiTransport.dispose();
     _nativeTransport.dispose();
+    _torTransport?.dispose();
     _peerEventsCtrl.close();
     _incomingDataCtrl.close();
     _healthCtrl.close();
