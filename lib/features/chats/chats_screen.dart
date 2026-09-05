@@ -24,6 +24,7 @@
 // ============================================================================
 
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +45,6 @@ import '../../design_system/glassmorphism.dart';
 import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/scene_animee.dart';
-import '../status/status_composer.dart';
 import '../tor/tor_status_indicator.dart';
 import '../../shared/widgets/ios_magnifier_overlay.dart';
 
@@ -55,6 +55,16 @@ class ChatsScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatsScreen> createState() => _ChatsScreenState();
 }
 
+/// Les trois façons de regarder la liste.
+enum _FiltreChats {
+  toutes('Toutes'),
+  nonLues('Non lues'),
+  groupes('Groupes');
+
+  const _FiltreChats(this.libelle);
+  final String libelle;
+}
+
 class _ChatsScreenState extends ConsumerState<ChatsScreen> {
   bool _meshStarted = false;
   final _searchCtrl = TextEditingController();
@@ -62,6 +72,45 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
 
   /// Un rapport d'erreur attend d'être envoyé.
   bool _rapportEnAttente = false;
+
+  /// Le filtre actif de la liste.
+  ///
+  /// ── Pourquoi ce filtre, et pourquoi ces trois-là ──────────────────
+  ///
+  /// C'est le seul ajout de fond que WhatsApp ait apporté à une liste de
+  /// conversations ces dernières années, et il tient à une observation
+  /// simple : quand la liste dépasse une hauteur d'écran, on ne cherche
+  /// plus une conversation, on cherche CE QUI ATTEND UNE RÉPONSE. Faire
+  /// défiler pour retrouver les pastilles bleues est un travail que
+  /// l'interface peut faire à notre place.
+  ///
+  /// Trois entrées, pas cinq : au-delà, la rangée devient une seconde
+  /// barre d'onglets, et l'on passe son temps à se demander où l'on est.
+  _FiltreChats _filtre = _FiltreChats.toutes;
+
+  /// En dessous de ce nombre de conversations, la rangée de filtres ne
+  /// s'affiche pas du tout — voir `filtresUtiles` dans `build`.
+  static const int _seuilFiltres = 8;
+
+  /// Applique la recherche PUIS le filtre.
+  ///
+  /// L'ordre compte : chercher dans les non-lues d'un groupe donnerait
+  /// des résultats vides sans qu'on comprenne pourquoi. Une recherche
+  /// active neutralise donc le filtre — comme dans Mail.
+  List<Conversation> _appliquerFiltres(List<Conversation> source) {
+    if (_query.isNotEmpty) {
+      return source
+          .where((c) => c.pseudo.toLowerCase().contains(_query))
+          .toList();
+    }
+    return switch (_filtre) {
+      _FiltreChats.toutes => source,
+      _FiltreChats.nonLues =>
+        source.where((c) => c.unreadCount > 0).toList(),
+      _FiltreChats.groupes =>
+        source.where((c) => c.groupId != null).toList(),
+    };
+  }
 
   // Les points désignés par la visite guidée. Ce sont les trois choses
   // qu'on ne devine pas : que « zéro pair » n'est pas une panne, que le
@@ -202,20 +251,39 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
     );
   }
 
-  Future<void> _composeStatus() => composeStatus(context, ref);
-
   @override
   Widget build(BuildContext context) {
     ref.watch(archivedRevisionProvider);
     ref.watch(pinMuteRevisionProvider);
     final all = ref.watch(conversationsProvider);
-    final conversations = _query.isEmpty
-        ? all
-        : all
-            .where((c) => c.pseudo.toLowerCase().contains(_query))
-            .toList();
+    final conversations = _appliquerFiltres(all);
     final peers = ref.watch(meshPeerListProvider);
     final archivedCount = StorageService.getArchivedConversations().length;
+
+    // ⚠️ CALCULÉES UNE FOIS, PAS DANS `itemBuilder`.
+    //
+    // Les deux listes étaient reconstruites À CHAQUE LIGNE dessinée :
+    // `conversations.where(...).toList()` se trouvait à l'intérieur du
+    // constructeur d'élément. Dessiner vingt lignes parcourait donc la
+    // liste vingt fois, et cinquante lignes cinquante fois — un coût qui
+    // grandit avec le carré du nombre de conversations, payé à chaque
+    // image pendant le défilement. C'est exactement le genre de détail
+    // qui fait qu'une liste « accroche » sur un téléphone modeste.
+    // ⚠️ `const <Conversation>[]` et non `const []` : sans le type
+    // explicite, Dart infère `List<dynamic>` pour la branche vide, et
+    // toute la liste devient dynamique — les erreurs de champ ne sont
+    // alors plus vues à la compilation mais à l'exécution.
+    final List<Conversation> epinglees = _query.isEmpty
+        ? conversations.where((c) => c.isPinned).toList()
+        : const <Conversation>[];
+    final List<Conversation> autres = _query.isEmpty
+        ? conversations.where((c) => !c.isPinned).toList()
+        : conversations;
+
+    // Le filtre ne s'affiche que lorsqu'il sert à quelque chose. Sur une
+    // liste de trois conversations, une rangée de filtres est un meuble
+    // vide : elle occupe la place et ne trie rien.
+    final filtresUtiles = all.length >= _seuilFiltres;
 
     // ── LE WIDGET D'ÉCRAN D'ACCUEIL ──────────────────────────────
     //
@@ -302,6 +370,22 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
         const SliverToBoxAdapter(child: TorStatusIndicator()),
         SliverToBoxAdapter(child: _SearchField(controller: _searchCtrl)),
 
+        // La rangée de filtres, quand la liste est assez longue pour
+        // qu'elle serve. Cachée pendant une recherche : deux filtres
+        // simultanés donneraient des listes vides inexplicables.
+        if (filtresUtiles && _query.isEmpty)
+          SliverToBoxAdapter(
+            child: _RangeeFiltres(
+              actif: _filtre,
+              nonLues: all.where((c) => c.unreadCount > 0).length,
+              onChoisir: (f) {
+                if (f == _filtre) return;
+                OuroHaptics.selection();
+                setState(() => _filtre = f);
+              },
+            ),
+          ),
+
         if (_query.isEmpty && archivedCount > 0)
           SliverToBoxAdapter(
             child: _ArchivedRow(count: archivedCount, onTap: _openArchived),
@@ -319,78 +403,53 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
             ),
           )
         else ...[
-          // ── Épinglées ─────────────────────────────────────────────
-          if (_query.isEmpty && conversations.any((c) => c.isPinned)) ...[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  DesignTokens.screenMargin,
-                  DesignTokens.space3,
-                  DesignTokens.screenMargin,
-                  DesignTokens.space1,
-                ),
-                child: Text(
-                  'ÉPINGLÉES',
-                  style: OuroTypography.caption1.copyWith(
-                    color: OuroColors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ),
-            ),
+          // ── LA LISTE, EN UN SEUL BLOC ─────────────────────────────
+          //
+          // ⚠️ IL Y AVAIT DEUX INTERTITRES : « ÉPINGLÉES » ET
+          // « DISCUSSIONS ».
+          //
+          // Le second répétait le titre de l'écran, qui s'appelle déjà
+          // « Discussions » et se trouve trois centimètres au-dessus.
+          // Aucune application d'Apple ne fait ça : Messages n'écrit pas
+          // « MESSAGES » au-dessus de sa liste, Mail n'écrit pas
+          // « E-MAILS ». Un intertitre ne se justifie que s'il distingue
+          // deux choses de nature différente.
+          //
+          // Le premier, lui, disait quelque chose de vrai — mais au prix
+          // d'une ligne entière pour deux ou trois conversations. Cette
+          // information est passée SUR les lignes concernées, sous forme
+          // d'épingle. Résultat : deux éléments de moins avant la
+          // première conversation, et la même information.
+          //
+          // Les épinglées restent en tête, séparées du reste par un
+          // simple espace — c'est la séparation qu'emploie iOS quand
+          // deux groupes n'ont pas besoin d'être nommés.
+          if (epinglees.isNotEmpty)
             SliverList.builder(
-              key: ValueKey('pinned_${conversations.length}'),
-              itemCount: conversations.where((c) => c.isPinned).length,
-              itemBuilder: (context, i) {
-                final pinned = conversations.where((c) => c.isPinned).toList();
-                return _ConversationRow(
-                  key: ValueKey(pinned[i].key),
-                  conversation: pinned[i],
-                  onArchive: () => _archiveConversation(pinned[i]),
-                  onPin: () => _pinConversation(pinned[i]),
-                  onMute: () => _muteConversation(pinned[i]),
-                );
-              },
-            ),
-          ],
-          // ── Autres ────────────────────────────────────────────────
-          if (_query.isEmpty && conversations.any((c) => !c.isPinned))
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  DesignTokens.screenMargin,
-                  conversations.any((c) => c.isPinned) ? DesignTokens.space3 : DesignTokens.space1,
-                  DesignTokens.screenMargin,
-                  DesignTokens.space1,
-                ),
-                child: Text(
-                  'DISCUSSIONS',
-                  style: OuroTypography.caption1.copyWith(
-                    color: OuroColors.secondaryLabel,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-                ),
+              key: ValueKey('pinned_${epinglees.length}'),
+              itemCount: epinglees.length,
+              itemBuilder: (context, i) => _ConversationRow(
+                key: ValueKey(epinglees[i].key),
+                conversation: epinglees[i],
+                onArchive: () => _archiveConversation(epinglees[i]),
+                onPin: () => _pinConversation(epinglees[i]),
+                onMute: () => _muteConversation(epinglees[i]),
               ),
+            ),
+          if (epinglees.isNotEmpty && autres.isNotEmpty)
+            const SliverToBoxAdapter(
+              child: SizedBox(height: DesignTokens.space3),
             ),
           SliverList.builder(
-            key: ValueKey('list_${_query}_${conversations.length}'),
-            itemCount: _query.isEmpty
-                ? conversations.where((c) => !c.isPinned).length
-                : conversations.length,
-            itemBuilder: (context, i) {
-              final list = _query.isEmpty
-                  ? conversations.where((c) => !c.isPinned).toList()
-                  : conversations;
-              return _ConversationRow(
-                key: ValueKey(list[i].key),
-                conversation: list[i],
-                onArchive: () => _archiveConversation(list[i]),
-                onPin: () => _pinConversation(list[i]),
-                onMute: () => _muteConversation(list[i]),
-              );
-            },
+            key: ValueKey('list_${_query}_${autres.length}'),
+            itemCount: autres.length,
+            itemBuilder: (context, i) => _ConversationRow(
+              key: ValueKey(autres[i].key),
+              conversation: autres[i],
+              onArchive: () => _archiveConversation(autres[i]),
+              onPin: () => _pinConversation(autres[i]),
+              onMute: () => _muteConversation(autres[i]),
+            ),
           ),
         ],
       ],
@@ -416,15 +475,17 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
                 context.go('/group/create');
               },
             ),
-            Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
-            _SheetAction(
-              icon: Icons.auto_awesome_rounded,
-              label: 'Nouveau statut',
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _composeStatus();
-              },
-            ),
+            // ⚠️ « NOUVEAU STATUT » A ÉTÉ RETIRÉ D'ICI.
+            //
+            // Un statut ne se compose pas depuis la liste des
+            // conversations : il n'a rien à voir avec elles. Il vit dans
+            // l'onglet Actus, avec les statuts des autres — c'est là
+            // qu'on est quand l'idée d'en publier un vient, et c'est là
+            // que WhatsApp comme Instagram le placent.
+            //
+            // Le composeur lui-même (`status_composer.dart`) n'est pas
+            // supprimé : il est simplement appelé depuis le seul endroit
+            // où il a du sens.
             Divider(height: 0.5, thickness: 0.5, color: OuroColors.separator),
             _SheetAction(
               icon: Icons.health_and_safety_rounded,
@@ -564,6 +625,122 @@ class _BandeauRapport extends StatelessWidget {
                 ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// La rangée de filtres, façon WhatsApp — mais à la manière d'iOS.
+///
+/// ── Ce qu'on prend à WhatsApp, et ce qu'on ne prend pas ───────────────
+///
+/// On prend l'IDÉE : trois entrées pour cesser de faire défiler quand on
+/// cherche seulement ce qui attend une réponse.
+///
+/// On ne prend pas la FORME. Les puces de WhatsApp sont des pilules
+/// vertes pleines, très présentes, qui se disputent l'attention avec les
+/// pastilles de non-lu de la liste elle-même. Ici, la puce active est
+/// posée sur un fond de remplissage système — le même gris que la barre
+/// de recherche juste au-dessus — et seule sa TYPOGRAPHIE s'épaissit.
+/// Rien de coloré : sur cet écran, la couleur d'accent appartient déjà
+/// aux pastilles de non-lu, et deux bleus qui ne veulent pas dire la
+/// même chose, c'est un bleu de trop.
+class _RangeeFiltres extends StatelessWidget {
+  const _RangeeFiltres({
+    required this.actif,
+    required this.nonLues,
+    required this.onChoisir,
+  });
+
+  final _FiltreChats actif;
+
+  /// Le nombre de conversations non lues, affiché sur la puce
+  /// correspondante — c'est l'information qu'on venait chercher.
+  final int nonLues;
+
+  final ValueChanged<_FiltreChats> onChoisir;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        DesignTokens.screenMargin,
+        DesignTokens.space2,
+        DesignTokens.screenMargin,
+        DesignTokens.space1,
+      ),
+      child: Row(
+        children: [
+          for (final f in _FiltreChats.values)
+            Padding(
+              padding: const EdgeInsets.only(right: DesignTokens.space2),
+              child: _Puce(
+                libelle: f.libelle,
+                compte: f == _FiltreChats.nonLues ? nonLues : 0,
+                actif: f == actif,
+                onTap: () => onChoisir(f),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Puce extends StatelessWidget {
+  const _Puce({
+    required this.libelle,
+    required this.compte,
+    required this.actif,
+    required this.onTap,
+  });
+
+  final String libelle;
+  final int compte;
+  final bool actif;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OuroPressable(
+      onTap: onTap,
+      scale: 0.94,
+      semantique: compte > 0 ? '$libelle, $compte' : libelle,
+      child: AnimatedContainer(
+        duration: DesignTokens.durationFast,
+        curve: DesignTokens.curveStandard,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: actif
+              ? OuroColors.secondarySystemFill
+              : OuroColors.tertiarySystemFill.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusFull),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              libelle,
+              style: OuroTypography.subheadline.copyWith(
+                color: actif ? OuroColors.label : OuroColors.secondaryLabel,
+                fontWeight: actif ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+            // Le compte n'apparaît que s'il y a quelque chose à compter.
+            // « Non lues 0 » est une information vide qui occupe une
+            // place réelle.
+            if (compte > 0) ...[
+              const SizedBox(width: 5),
+              Text(
+                '$compte',
+                style: OuroTypography.subheadline.copyWith(
+                  color: OuroColors.secondaryLabel,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -788,6 +965,29 @@ class _ConversationRowState extends State<_ConversationRow> {
                         ),
                       ),
                     ),
+                    // ── L'ÉPINGLE, SUR LA LIGNE ELLE-MÊME ──────────
+                    //
+                    // Elle remplace le titre « ÉPINGLÉES » qui coiffait
+                    // le premier groupe. Un intertitre coûte une ligne
+                    // entière et une seconde lecture ; une épingle de
+                    // treize points sur les deux ou trois lignes
+                    // concernées dit la même chose sans rien ajouter à
+                    // la hauteur de l'écran. C'est ce que font Messages
+                    // et WhatsApp.
+                    if (c.isPinned) ...[
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Transform.rotate(
+                          angle: 0.7,
+                          child: Icon(
+                            Icons.push_pin_rounded,
+                            size: 13,
+                            color: OuroColors.tertiaryLabel,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],

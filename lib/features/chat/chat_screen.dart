@@ -4866,7 +4866,12 @@ class _InputBarState extends State<_InputBar>
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
         child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          // Le matériau partagé : la barre de saisie est du châssis, au
+          // même titre que la barre d'onglets. Sur un fond de
+          // conversation coloré, un flou sans saturation la faisait
+          // paraître grise alors que tout le reste de l'écran vibrait.
+          // 18 : la valeur réglée à la main pour cette barre, conservée.
+          filter: OuroMaterialFilter.flou(18),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
             decoration: BoxDecoration(

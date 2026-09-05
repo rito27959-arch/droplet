@@ -101,10 +101,7 @@ class OuroBlurSurface extends StatelessWidget {
     return ClipRRect(
       borderRadius: radius,
       child: BackdropFilter(
-        filter: ui.ImageFilter.blur(
-          sigmaX: material.blur,
-          sigmaY: material.blur,
-        ),
+        filter: OuroMaterialFilter.pour(material),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
@@ -115,6 +112,76 @@ class OuroBlurSurface extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Le FILTRE du matériau : flou **et** saturation.
+///
+/// ── Le détail qui sépare le verre du calque flouté ────────────────────
+///
+/// Un `BackdropFilter` qui ne fait que flouter donne du plastique dépoli.
+/// Le matériau d'Apple fait deux choses : il floute, et il RAVIVE
+/// légèrement les couleurs qui le traversent. C'est ce qui explique
+/// qu'une photo colorée reste vivante derrière une barre iOS, là où le
+/// même flou seul la rend grise et morte.
+///
+/// Personne ne remarque cette saturation consciemment ; tout le monde
+/// remarque son absence — sous la forme d'un « ça fait fade ».
+///
+/// Le fichier `ouro_glass.dart` applique déjà exactement ce principe au
+/// verre liquide de la barre d'onglets (`saturation: 1.08`). Ici, on le
+/// donne à TOUT le reste du châssis — feuilles modales, alertes,
+/// bandeaux — sans ajouter la moindre passe de shader : une matrice de
+/// couleur est composée avec le flou en une seule opération, au même
+/// coût qu'avant.
+class OuroMaterialFilter {
+  OuroMaterialFilter._();
+
+  /// À quel point les couleurs sont ravivées en traversant le verre.
+  ///
+  /// 1,0 = aucune correction. Au-delà de ~1,15 la teinte se met à
+  /// « baver » sur les bords des objets flous et l'effet se voit — ce
+  /// qui est précisément ce qu'on ne veut pas.
+  static const double saturation = 1.08;
+
+  static ui.ImageFilter pour(OuroMaterial material) => flou(material.blur);
+
+  /// Même matériau, mais pour les rares surfaces dont le flou a été
+  /// réglé à la main et ne doit pas changer.
+  ///
+  /// ⚠️ NE PAS LES BASCULER SUR UN `OuroMaterial` « PARCE QUE C'EST PLUS
+  /// PROPRE ». La barre de saisie est floutée à 18 ; le matériau
+  /// `regular` l'est à 40. Substituer l'un à l'autre au nom de
+  /// l'uniformité changerait franchement l'aspect d'un élément qu'on a
+  /// sous les yeux toute la journée — ce qui n'était pas la question.
+  static ui.ImageFilter flou(double sigma) {
+    return ui.ImageFilter.compose(
+      outer: ui.ColorFilter.matrix(_matriceSaturation(saturation)),
+      inner: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+    );
+  }
+
+  /// La matrice de saturation, exposée pour les rares surfaces qui font
+  /// varier leur intensité au fil d'une animation (le fond du menu
+  /// contextuel, qui se floute progressivement à l'ouverture).
+  static List<double> matricePour(double s) => _matriceSaturation(s);
+
+  /// La matrice de saturation standard, construite autour des poids de
+  /// luminance perçue (Rec. 709). Les mêmes coefficients que ceux
+  /// qu'emploient CoreImage et le shader de `liquid.frag`.
+  static List<double> _matriceSaturation(double s) {
+    const lr = 0.2126;
+    const lg = 0.7152;
+    const lb = 0.0722;
+    final ir = (1 - s) * lr;
+    final ig = (1 - s) * lg;
+    final ib = (1 - s) * lb;
+    return <double>[
+      ir + s, ig, ib, 0, 0,
+      ir, ig + s, ib, 0, 0,
+      ir, ig, ib + s, 0, 0,
+      0, 0, 0, 1, 0,
+    ];
   }
 }
 
@@ -157,10 +224,9 @@ class FrostedSheet extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
       child: BackdropFilter(
-        filter: ui.ImageFilter.blur(
-          sigmaX: material.blur,
-          sigmaY: material.blur,
-        ),
+        // Le même matériau que partout ailleurs — flou ET saturation.
+        // Voir `OuroMaterialFilter`.
+        filter: OuroMaterialFilter.pour(material),
         child: Container(
           decoration: BoxDecoration(
             color: material.tint,

@@ -171,9 +171,29 @@ class _ContextMenuOverlay extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).maybePop(),
                 child: BackdropFilter(
-                  filter: ui.ImageFilter.blur(
-                    sigmaX: 22 * t,
-                    sigmaY: 22 * t,
+                  // ⚠️ FLOU **ET** SATURATION, comme le reste du châssis.
+                  //
+                  // C'est le changement qu'a apporté WhatsApp à son menu
+                  // contextuel sur iOS 26 : le calque ne se contente plus
+                  // de flouter, il reprend les couleurs de la
+                  // conversation derrière lui. Un flou seul rend gris ce
+                  // qu'il recouvre — et sur un fond de conversation
+                  // coloré, c'est très visible.
+                  //
+                  // La saturation ne monte qu'avec l'ouverture (`t`) :
+                  // à mi-course, le fond est à moitié flouté et à moitié
+                  // ravivé, sans quoi la couleur sauterait d'un coup au
+                  // premier vingtième de seconde.
+                  filter: ui.ImageFilter.compose(
+                    outer: ui.ColorFilter.matrix(
+                      OuroMaterialFilter.matricePour(
+                        1 + (OuroMaterialFilter.saturation - 1) * t,
+                      ),
+                    ),
+                    inner: ui.ImageFilter.blur(
+                      sigmaX: 22 * t,
+                      sigmaY: 22 * t,
+                    ),
                   ),
                   child: ColoredBox(
                     color: Colors.black.withValues(
