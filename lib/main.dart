@@ -26,6 +26,7 @@ import 'core/models/mesh_message.dart';
 import 'core/models/voice_note_meta.dart';
 import 'core/providers/appearance_provider.dart';
 import 'core/providers/mesh_provider.dart';
+import 'core/providers/tor_providers.dart';
 import 'core/services/mesh_foreground_service.dart';
 import 'core/services/crash_journal.dart';
 import 'core/services/device_profile.dart';
@@ -63,6 +64,9 @@ import 'features/group/group_create_screen.dart';
 import 'features/group/group_info_screen.dart';
 import 'features/settings/backup_export_screen.dart';
 import 'features/settings/app_icon_screen.dart';
+import 'features/tor/tor_settings_screen.dart';
+import 'features/tor/qr_scanner_screen.dart';
+import 'features/tor/qr_generator_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/contribution/contribution_screen.dart';
 import 'features/safety/safety_screen.dart';
@@ -617,6 +621,27 @@ final _router = GoRouter(
       path: '/settings/icon',
       pageBuilder: (context, state) => _pushPage(const AppIconScreen()),
     ),
+    // ⚠️ CET ÉCRAN N'ÉTAIT ATTEINT PAR AUCUNE ROUTE.
+    //
+    // `TorSettingsScreen` existait, complet — interrupteur, adresse
+    // .onion, QR d'échange — et rien dans l'application n'y menait. Il
+    // n'était donc pas « en cours de développement » : il était
+    // inaccessible, ce qui revient exactement au même pour l'utilisateur.
+    GoRoute(
+      path: '/settings/tor',
+      pageBuilder: (context, state) => _pushPage(const TorSettingsScreen()),
+    ),
+    // Les deux écrans d'échange d'adresse .onion. `tor_settings_screen`
+    // pousse déjà ces chemins — ils n'existaient pas dans le routeur, si
+    // bien que les toucher affichait la page d'erreur de GoRouter.
+    GoRoute(
+      path: '/tor/scan',
+      pageBuilder: (context, state) => _pushPage(const QrScannerScreen()),
+    ),
+    GoRoute(
+      path: '/tor/qr',
+      pageBuilder: (context, state) => _pushPage(const QrGeneratorScreen()),
+    ),
     GoRoute(
       path: '/maps/offline',
       pageBuilder: (context, state) => _pushPage(const OfflineMapsScreen()),
@@ -807,6 +832,13 @@ class _MeshBootstrapState extends ConsumerState<MeshBootstrap> {
     // arrière-plan (sinon Android tue le processus après quelques minutes).
     MeshForegroundService.start().catchError((e) =>
         debugPrint('[MeshBootstrap] foreground service: $e'));
+    // Rallume Tor si l'utilisateur l'avait laissé allumé.
+    //
+    // ⚠️ APRÈS le mesh, jamais avant : l'amorçage d'un circuit Tor prend
+    // dix à trente secondes, et Droplet doit être utilisable en local
+    // pendant ce temps-là. C'est aussi tout le principe du projet — le
+    // maillage d'abord, le réseau lointain en supplément.
+    ref.read(torDemarrageProvider);
   }
 
   @override

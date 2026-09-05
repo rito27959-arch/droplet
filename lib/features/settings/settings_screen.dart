@@ -26,6 +26,8 @@ import '../../core/providers/appearance_provider.dart';
 import '../../core/providers/chat_background_provider.dart';
 import '../../core/providers/premium_provider.dart';
 import '../../core/providers/mesh_provider.dart';
+import '../../core/providers/tor_providers.dart';
+import '../../core/services/tor_service.dart';
 import '../../core/services/avatar_service.dart';
 import '../../core/services/premium_service.dart';
 import '../../core/services/mesh_foreground_service.dart';
@@ -143,6 +145,9 @@ class SettingsScreen extends ConsumerWidget {
                       subtitle: 'Export chiffré par mot de passe',
                       onTap: () => context.push('/backup/export'),
                     ),
+                    // L'écran existait déjà, sans aucun chemin pour y
+                    // arriver. C'est ce chemin.
+                    const _TorRow(),
                     OuroListRow(
                       icon: Icons.health_and_safety_rounded,
                       iconColor: OuroColors.systemRed,
@@ -856,6 +861,49 @@ class _AboutPoint extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// La ligne Tor des réglages : elle dit l'état réel, pas seulement le nom
+/// de l'écran.
+///
+/// ⚠️ Le sous-titre porte l'information utile. « Tor » seul obligerait à
+/// ouvrir l'écran pour savoir si c'est allumé — et c'est précisément la
+/// question qu'on se pose en parcourant les réglages.
+class _TorRow extends ConsumerWidget {
+  const _TorRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final etat = ref.watch(torStateProvider).valueOrNull;
+    final actif = ref.watch(torActifProvider);
+
+    final (couleur, sousTitre) = switch (etat) {
+      TorServiceState.connected => (
+          OuroColors.systemGreen,
+          'Circuit établi — trafic acheminé par Tor',
+        ),
+      TorServiceState.connecting => (
+          OuroColors.systemOrange,
+          'Connexion en cours…',
+        ),
+      TorServiceState.error => (
+          OuroColors.systemRed,
+          'Connexion impossible — toucher pour réessayer',
+        ),
+      _ => (
+          OuroColors.systemGray,
+          actif ? 'Activé, en attente' : 'Éteint — joindre au-delà du mesh',
+        ),
+    };
+
+    return OuroListRow(
+      icon: Icons.hub_rounded,
+      iconColor: couleur,
+      title: 'Tor',
+      subtitle: sousTitre,
+      onTap: () => context.push('/settings/tor'),
     );
   }
 }

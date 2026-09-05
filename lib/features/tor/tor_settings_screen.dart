@@ -4,6 +4,7 @@
 // Écran de paramètres Tor de Droplet — avec animations et UX soignée.
 // ============================================================================
 
+import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +15,7 @@ import '../../design_system/ouro_typography.dart';
 import '../../design_system/ouro_list.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
+import '../../design_system/ouro_padlock.dart';
 
 class TorSettingsScreen extends ConsumerStatefulWidget {
   const TorSettingsScreen({super.key});
@@ -69,19 +71,24 @@ class _TorSettingsScreenState extends ConsumerState<TorSettingsScreen>
   }
 
   Future<void> _toggleTor(bool enabled) async {
-    final torService = ref.read(torServiceProvider);
     setState(() => _generatingAddress = true);
 
     try {
-      if (enabled) {
-        await torService.start();
-      } else {
-        await torService.stop();
-      }
+      // ⚠️ PASSER PAR LE NOTIFIER, PAS PAR LE SERVICE.
+      //
+      // L'appel direct à `torService.start()` allumait bien Tor — mais
+      // n'enregistrait rien. Au lancement suivant, tout était éteint, sans
+      // que rien ne l'explique : l'utilisateur avait pourtant activé
+      // l'interrupteur et l'avait vu passer au vert. Le notifier retient
+      // le choix et le rejoue au démarrage.
+      await ref.read(torActifProvider.notifier).definir(enabled);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur Tor: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Erreur Tor: $e'),
+            backgroundColor: OuroColors.systemRed,
+          ),
         );
       }
     } finally {
@@ -114,6 +121,7 @@ class _TorSettingsScreenState extends ConsumerState<TorSettingsScreen>
                   _TorHeroCard(
                     isConnected: isConnected,
                     isConnecting: isConnecting,
+                    voulu: ref.watch(torActifProvider),
                     shieldScale: _shieldScale,
                     shieldGlow: _shieldGlow,
                     onToggle: _toggleTor,
@@ -204,6 +212,7 @@ class _TorHeroCard extends StatelessWidget {
     required this.shieldGlow,
     required this.onToggle,
     required this.generatingAddress,
+    required this.voulu,
   });
 
   final bool isConnected;
@@ -213,36 +222,53 @@ class _TorHeroCard extends StatelessWidget {
   final Future<void> Function(bool) onToggle;
   final bool generatingAddress;
 
+  /// Ce que l'utilisateur a DEMANDÉ, indépendamment de ce que le réseau a
+  /// réussi à faire.
+  ///
+  /// ⚠️ L'interrupteur suivait `isConnected || isConnecting`, c'est-à-dire
+  /// l'état du circuit. Quand la connexion échouait — réseau qui bloque
+  /// Tor, avion, tunnel — l'interrupteur revenait tout seul sur « éteint »
+  /// quelques secondes après avoir été activé. L'utilisateur en conclut
+  /// que son geste n'a pas été pris en compte, alors que le réglage, lui,
+  /// est bien enregistré. Un interrupteur dit une INTENTION ; c'est la
+  /// ligne d'état, en dessous, qui dit le résultat.
+  final bool voulu;
+
   @override
   Widget build(BuildContext context) {
-    final isActive = isConnected || isConnecting;
+    final couleurEtat = isConnected
+        ? OuroColors.systemGreen
+        : isConnecting
+            ? OuroColors.systemOrange
+            : OuroColors.systemGray;
 
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            if (isConnected)
-              Colors.green.shade900.withValues(alpha: 0.3)
-            else if (isConnecting)
-              Colors.amber.shade900.withValues(alpha: 0.3)
-            else
-              OuroColors.secondarySystemGroupedBackground,
-            OuroColors.secondarySystemGroupedBackground,
-          ],
-        ),
+        color: OuroColors.secondarySystemGroupedBackground,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isConnected
-              ? Colors.green.withValues(alpha: 0.3)
+              ? OuroColors.systemGreen.withValues(alpha: 0.30)
               : OuroColors.separator,
         ),
       ),
       child: Column(
         children: [
-          // Bouclier animé
+          // ── LE CADENAS ────────────────────────────────────────────
+          //
+          // ⚠️ C'ÉTAIT UN BOUCLIER ENTOURÉ D'UN HALO VERT PULSANT.
+          //
+          // Deux problèmes. Le halo coloré est explicitement banni par
+          // `design_tokens.dart` — « un effet de jeu vidéo, jamais
+          // utilisé par Apple, et le marqueur le plus reconnaissable
+          // d'une interface amateur ». Et un bouclier ne dit rien du
+          // passage d'un état à l'autre : il est vert ou il est gris.
+          //
+          // Le cadenas, lui, SE FERME. On voit l'anse descendre quand le
+          // circuit s'établit, et se rouvrir s'il retombe. C'est le même
+          // objet que dans la barre d'état et sur le bouton micro : une
+          // seule chose à apprendre pour toute l'application.
           AnimatedBuilder(
             animation: shieldScale,
             builder: (context, child) {
@@ -251,30 +277,23 @@ class _TorHeroCard extends StatelessWidget {
                 child: Container(
                   width: 80,
                   height: 80,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isActive
-                        ? Colors.green.withValues(alpha: 0.15)
-                        : OuroColors.systemGray5,
-                    boxShadow: [
-                      if (isConnected)
-                        BoxShadow(
-                          color: Colors.green.withValues(
-                            alpha: shieldGlow.value * 0.3,
-                          ),
-                          blurRadius: 20 + shieldGlow.value * 10,
-                          spreadRadius: shieldGlow.value * 5,
-                        ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.shield_rounded,
-                    size: 40,
                     color: isConnected
-                        ? Colors.green
-                        : isConnecting
-                            ? Colors.amber
-                            : OuroColors.systemGray,
+                        ? OuroColors.systemGreen.withValues(alpha: 0.14)
+                        : OuroColors.systemGray5,
+                  ),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: isConnected ? 1 : 0),
+                    duration: DesignTokens.durationSheet,
+                    curve: DesignTokens.curveStandard,
+                    builder: (context, fermeture, _) => OuroPadlock(
+                      fermeture: fermeture,
+                      couleur: couleurEtat,
+                      taille: 40,
+                      epaisseur: 4,
+                    ),
                   ),
                 ),
               );
@@ -291,11 +310,9 @@ class _TorHeroCard extends StatelessWidget {
                     ? 'Connexion…'
                     : 'Mode privé',
             style: OuroTypography.title2.copyWith(
-              color: isConnected
-                  ? Colors.green
-                  : isConnecting
-                      ? Colors.amber
-                      : OuroColors.label,
+              color: isConnected || isConnecting
+                  ? couleurEtat
+                  : OuroColors.label,
             ),
           ),
 
@@ -319,8 +336,15 @@ class _TorHeroCard extends StatelessWidget {
           if (generatingAddress)
             const CircularProgressIndicator(strokeWidth: 2)
           else
-            Switch(
-              value: isActive,
+            // `voulu` et non l'état du circuit : voir le champ.
+            // ⚠️ Aucune couleur passée : `activeColor` et
+            // `activeTrackColor` ont changé de nom entre deux versions de
+            // Flutter, et la valeur par défaut de `CupertinoSwitch` est
+            // déjà le vert du système. Un paramètre en moins, une
+            // rupture de compilation en moins à la prochaine montée de
+            // version.
+            CupertinoSwitch(
+              value: voulu,
               onChanged: onToggle,
             ),
         ],
@@ -343,19 +367,19 @@ class _AnimatedStateRow extends StatelessWidget {
     final (icon, color, text, detail) = switch (state) {
       TorServiceState.connecting => (
           Icons.sync_rounded,
-          Colors.amber,
+          OuroColors.systemOrange,
           'Connexion…',
           'Établissement du circuit Tor',
         ),
       TorServiceState.connected => (
           Icons.shield_rounded,
-          Colors.green,
+          OuroColors.systemGreen,
           'Connecté',
           'Circuit Tor actif — IP masquée',
         ),
       TorServiceState.error => (
           Icons.error_outline_rounded,
-          Colors.red,
+          OuroColors.systemRed,
           'Erreur',
           'Vérifiez votre connexion internet',
         ),

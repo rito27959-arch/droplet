@@ -45,6 +45,7 @@ import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/scene_animee.dart';
 import '../status/status_composer.dart';
+import '../tor/tor_status_indicator.dart';
 import '../../shared/widgets/ios_magnifier_overlay.dart';
 
 class ChatsScreen extends ConsumerStatefulWidget {
@@ -291,6 +292,14 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
               },
             ),
           ),
+        // L'état de Tor, quand il y a quelque chose à en dire.
+        //
+        // ⚠️ `TorStatusIndicator` n'était monté NULLE PART. Le composant
+        // existait, complet, et aucun écran ne l'affichait : rien dans
+        // l'application n'indiquait si le trafic passait par Tor ou non.
+        // Ici, il ne prend de la place que lorsqu'il en a besoin — il se
+        // réduit à un cadenas dès que le circuit tient.
+        const SliverToBoxAdapter(child: TorStatusIndicator()),
         SliverToBoxAdapter(child: _SearchField(controller: _searchCtrl)),
 
         if (_query.isEmpty && archivedCount > 0)

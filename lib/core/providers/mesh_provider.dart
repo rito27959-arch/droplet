@@ -38,6 +38,7 @@ import '../../features/chat/location_message.dart';
 import '../services/nom_pair.dart';
 import '../services/storage_service.dart';
 import '../services/mesh_transport_service.dart';
+import 'tor_providers.dart';
 import '../services/ble_mesh_protocol.dart';
 import '../services/call_signaling_service.dart';
 import '../services/webrtc_call_service.dart';
@@ -103,7 +104,17 @@ class ToastNotifier extends StateNotifier<DropletToast?> {
 /// (liste de conversations, écran de chat, écran d'appel...) regarde
 /// vers CE MÊME repository, jamais une copie.
 final meshRepositoryProvider = Provider<MeshRepository>((ref) {
-  final repo = MeshRepository();
+  // ⚠️ LE SERVICE TOR DOIT ÊTRE INJECTÉ ICI, SINON IL N'EXISTE PAS.
+  //
+  // `MeshTransportService` ne construit son `TorTransport` que si on lui
+  // passe un `TorService` — et le dépôt appelait `MeshTransportService()`
+  // sans argument. Le transport Tor valait donc `null` en permanence :
+  // tout le code d'acheminement par .onion était présent, compilé, et
+  // jamais atteint. C'est la raison de fond pour laquelle « Tor ne
+  // marchait pas ».
+  final repo = MeshRepository(
+    transport: MeshTransportService(torService: ref.watch(torServiceProvider)),
+  );
   ref.onDispose(() => repo.dispose());
   return repo;
 });

@@ -73,12 +73,14 @@ import '../../design_system/ouro_spinner.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/ouro_liquid.dart';
 import '../../design_system/ouro_haptics.dart';
+import '../../design_system/ouro_padlock.dart';
 import '../../design_system/design_tokens.dart';
 import '../../design_system/ouro_pressable.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/typing_indicator.dart';
 import '../../shared/widgets/heart_burst_overlay.dart';
 import '../../shared/widgets/reaction_effect_overlay.dart';
+import '../../shared/widgets/trash_toss_overlay.dart';
 import '../../shared/widgets/message_effects.dart';
 import '../../design_system/glassmorphism.dart';
 import '../../shared/widgets/confetti_overlay.dart';
@@ -1548,10 +1550,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             icon: Icons.delete_outline_rounded,
             label: 'Supprimer',
             destructive: true,
-            onTap: () => notifier.deleteMessage(m.id),
+            // La bulle part physiquement dans une corbeille au lieu de
+            // s'évaporer entre deux images. La suppression réelle a lieu
+            // au moment où elle y entre — voir `trash_toss_overlay.dart`
+            // pour pourquoi ce n'est pas avant.
+            onTap: () => unawaited(_supprimerAvecCorbeille(m)),
           ),
         ],
       ),
+    );
+  }
+
+  /// Supprime [m] en montrant où il part.
+  ///
+  /// ⚠️ ON ATTEND QUE LE MENU AIT FINI DE SE REFERMER.
+  ///
+  /// `_ActionRow` fait `Navigator.pop()` puis appelle cette fonction. Le
+  /// menu contextuel met 220 ms à se retirer (`reverseTransitionDuration`
+  /// dans `message_context_menu.dart`), et pendant tout ce temps il
+  /// affiche SA PROPRE copie de la bulle, qui revient se poser sur
+  /// l'originale. Lancer le vol tout de suite ferait donc voler deux
+  /// bulles identiques dans deux directions opposées.
+  ///
+  /// Les 40 ms de marge évitent de dépendre au dixième de milliseconde
+  /// d'une durée définie dans un autre fichier.
+  Future<void> _supprimerAvecCorbeille(MeshMessage m) async {
+    final notifier = ref.read(meshMessagesProvider.notifier);
+
+    await Future<void>.delayed(const Duration(milliseconds: 260));
+    if (!mounted) return;
+
+    final boite =
+        _messageKeys[m.id]?.currentContext?.findRenderObject() as RenderBox?;
+    // La bulle n'est plus à l'écran (défilement, message déjà parti) : on
+    // supprime sans mise en scène. Une animation absente ne doit jamais
+    // empêcher l'action qu'elle illustre.
+    if (boite == null || !boite.hasSize || !boite.attached) {
+      notifier.deleteMessage(m.id);
+      return;
+    }
+
+    TrashTossOverlay.jouer(
+      context,
+      origine: boite.localToGlobal(Offset.zero) & boite.size,
+      apercu: _previewOf(m),
+      onAvalee: () => notifier.deleteMessage(m.id),
     );
   }
 
@@ -4642,6 +4685,13 @@ class _InputBarState extends State<_InputBar>
   double _micDragY = 0;
   bool _micWillCancel = false;
 
+  /// Repère la rangée d'enregistrement à l'écran.
+  ///
+  /// Sert à savoir D'OÙ le micro doit s'envoler quand on jette la prise.
+  /// Sans position réelle, l'animation partirait d'un coin arbitraire et
+  /// on ne relierait pas ce qui vole à ce qu'on vient d'abandonner.
+  final GlobalKey _recBarKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -4702,7 +4752,51 @@ class _InputBarState extends State<_InputBar>
 
   Future<void> _stopMic() => widget.onMicStop();
 
-  Future<void> _cancelMic() => widget.onMicCancel();
+  /// Jette l'enregistrement en cours — et montre où il part.
+  ///
+  /// ⚠️ ICI, L'ACTION PASSE AVANT L'ANIMATION. C'est l'inverse de la
+  /// suppression d'un message.
+  ///
+  /// Pour un message, on retarde la suppression jusqu'à l'entrée dans la
+  /// corbeille, pour que la liste ne se réorganise pas sous l'animation.
+  /// Pour un enregistrement, ce serait une faute : le micro serait encore
+  /// ouvert pendant les sept dixièmes de seconde du vol, alors que
+  /// l'utilisateur vient de dire « non ». On coupe donc immédiatement, et
+  /// ce qui vole n'est plus qu'un souvenir de ce qui a déjà été jeté.
+  Future<void> _cancelMic() async {
+    _jeterLEnregistrement();
+    return widget.onMicCancel();
+  }
+
+  /// L'animation seule : le micro s'envole et tombe dans la corbeille.
+  void _jeterLEnregistrement() {
+    final boite =
+        _recBarKey.currentContext?.findRenderObject() as RenderBox?;
+    if (!mounted || boite == null || !boite.hasSize || !boite.attached) return;
+
+    final barre = boite.localToGlobal(Offset.zero) & boite.size;
+
+    // Le point de départ : la gauche de la barre, là où bat la pastille
+    // rouge — c'est l'endroit que l'œil associe à « ça enregistre ».
+    const cote = 44.0;
+    final depart = Rect.fromCenter(
+      center: Offset(barre.left + cote / 2, barre.center.dy),
+      width: cote,
+      height: cote,
+    );
+
+    TrashTossOverlay.jouer(
+      context,
+      origine: depart,
+      apercu: const _MicJete(),
+      // La corbeille se pose AU-DESSUS de la barre de saisie, pas au
+      // centre de l'écran : sinon elle tomberait derrière la barre
+      // elle-même, qui occupe déjà tout le bas.
+      cible: Offset(barre.center.dx, barre.top - 58),
+      // Rien à faire à l'arrivée : l'enregistrement est déjà annulé.
+      onAvalee: () {},
+    );
+  }
 
   void _resetMicVisuals() {
     _pulse.stop();
@@ -4956,6 +5050,7 @@ class _InputBarState extends State<_InputBar>
   /// annuler » qui bascule en « relâcher pour annuler » au-delà du seuil.
   Widget _recordingRow(String recLabel) {
     return AnimatedSwitcher(
+      key: _recBarKey,
       duration: 150.ms,
       child: _micWillCancel
           ? Row(
@@ -5024,6 +5119,7 @@ class _InputBarState extends State<_InputBar>
   /// Rangée de l'enregistrement MAINS LIBRES : plus rien à maintenir.
   Widget _lockedRow(String recLabel) {
     return Row(
+      key: _recBarKey,
       children: [
         IconButton(
           tooltip: "Supprimer l'enregistrement",
@@ -5359,7 +5455,17 @@ class _MicButtonState extends State<_MicButton> {
           children: [
             if (recording)
               Positioned(
-                bottom: 46 + lockProgress * 18,
+                // ⚠️ LA CAPSULE DESCEND VERS LE BOUTON À MESURE QU'ON
+                // MONTE.
+                //
+                // C'est contre-intuitif écrit comme ça, et c'est
+                // pourtant exactement ce que fait WhatsApp : le doigt
+                // monte, le cadenas VIENT À SA RENCONTRE. Les deux se
+                // rejoignent au moment du verrouillage. L'ancienne
+                // version faisait l'inverse — la capsule s'éloignait du
+                // doigt (`46 + lockProgress * 18`), si bien qu'on
+                // poursuivait une cible qui fuyait.
+                bottom: 64 - lockProgress * 16,
                 child: Opacity(
                   opacity: (0.35 + lockProgress * 0.65).clamp(0.0, 1.0),
                   child: Container(
@@ -5368,26 +5474,50 @@ class _MicButtonState extends State<_MicButton> {
                       vertical: 9,
                     ),
                     decoration: BoxDecoration(
-                      color: OuroColors.tertiarySystemBackground,
+                      // La capsule prend la couleur d'accent au moment où
+                      // le seuil est franchi : le fond change en même
+                      // temps que l'anse se ferme, pour que le seuil soit
+                      // lisible même du coin de l'œil.
+                      color: lockProgress >= 1
+                          ? OuroColors.accent.withValues(alpha: 0.18)
+                          : OuroColors.tertiarySystemBackground,
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          lockProgress >= 1
-                              ? Icons.lock_rounded
-                              : Icons.lock_open_rounded,
-                          size: 15,
-                          color: lockProgress >= 1
+                        // L'ANSE SUIT LE DOIGT. Voir `ouro_padlock.dart`
+                        // pour pourquoi ce n'est pas deux icônes.
+                        OuroPadlock(
+                          fermeture: lockProgress,
+                          taille: 16,
+                          couleur: lockProgress >= 1
                               ? OuroColors.accent
                               : OuroColors.secondaryLabel,
                         ),
                         const SizedBox(height: 2),
-                        Icon(
-                          Icons.keyboard_arrow_up_rounded,
-                          size: 13,
-                          color: OuroColors.tertiaryLabel,
+                        // Le chevron respire vers le haut tant qu'on n'a
+                        // pas verrouillé, et s'efface une fois le seuil
+                        // atteint : il n'a plus rien à demander.
+                        // ⚠️ Son propre `AnimatedBuilder` : la pulsation
+                        // n'appartient pas à cette partie de l'arbre, et
+                        // sans abonnement explicite le chevron resterait
+                        // figé à la valeur qu'avait la pulsation lors du
+                        // dernier mouvement du doigt.
+                        AnimatedBuilder(
+                          animation: widget.pulse,
+                          builder: (context, enfant) => Opacity(
+                            opacity: 1 - lockProgress,
+                            child: Transform.translate(
+                              offset: Offset(0, -2 * widget.pulse.value),
+                              child: enfant,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 13,
+                            color: OuroColors.tertiaryLabel,
+                          ),
                         ),
                       ],
                     ),
@@ -6535,5 +6665,33 @@ class _ThreadSheetState extends State<_ThreadSheet> {
 
   String _formatTime(DateTime t) {
     return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Le micro qu'on jette : ce qui vole vers la corbeille quand on
+/// abandonne un enregistrement en cours.
+///
+/// ── Pourquoi un micro et pas la barre entière ─────────────────────────
+///
+/// La barre d'enregistrement fait toute la largeur de l'écran. Réduite à
+/// un dixième de sa taille pendant le vol, elle ne serait plus qu'un
+/// trait illisible. Ce qu'on jette, dans la tête de l'utilisateur, ce
+/// n'est pas une barre : c'est SA VOIX. Le micro est le seul dessin qui
+/// dise ça en douze pixels.
+class _MicJete extends StatelessWidget {
+  const _MicJete();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: OuroColors.systemRed,
+        boxShadow: DesignTokens.cardShadow,
+      ),
+      child: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
+    );
   }
 }
