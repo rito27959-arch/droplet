@@ -97,12 +97,28 @@ class NexusControllerState {
       phase.index >= NexusPhase.awakening.index &&
       phase.index <= NexusPhase.identity.index;
 
+  /// Faut-il encore DESSINER quelque chose ?
+  ///
+  /// Différent de [isActive] : la phase de dissolution ne fait plus rien
+  /// avancer, mais elle doit rester à l'écran le temps de s'effacer. Les
+  /// démonter au même instant, c'est la coupure sèche qu'on voit dans les
+  /// applications où « l'animation s'arrête » au lieu de « se terminer ».
+  bool get isVisible => phase != NexusPhase.idle;
+
   /// L'expérience est-elle terminée ?
   bool get isComplete => phase == NexusPhase.complete;
 
+  /// Le temps écoulé depuis le début, en secondes.
+  ///
+  /// Sert d'horloge UNIQUE aux couches qui s'animent (particules). Une
+  /// couche qui lit `DateTime.now()` de son côté avance à un rythme que
+  /// personne ne contrôle : elle ne s'arrête pas quand la séquence
+  /// s'arrête, et ne se rejoue pas à l'identique sur les deux téléphones.
+  double get elapsedSeconds =>
+      overallProgress * NexusDurations.total.inMilliseconds / 1000.0;
+
   /// Crée un état shader correspondant.
   NexusShaderState toShaderState() => NexusShaderState(
-        time: 0, // le shader a son propre ticker
         phase: phase,
         phaseProgress: phaseProgress,
         overallProgress: overallProgress,
@@ -230,10 +246,16 @@ class NexusController extends ChangeNotifier {
   // ── Mise à jour à chaque frame ────────────────────────────────────────────
 
   void _onTick(Duration elapsed) {
-    if (_state.phase == NexusPhase.idle ||
-        _state.phase == NexusPhase.complete) {
-      return;
-    }
+    // ⚠️ LA PHASE `complete` DOIT TICKER, ELLE AUSSI.
+    //
+    // Elle était exclue ici, et c'est ce qui produisait une fin ratée :
+    // pendant ses 600 ms, `phaseProgress` restait bloqué à 0 et
+    // l'intensité à son maximum. Le calcul de dissolution écrit plus bas
+    // (`intensity = 1 - phaseProgress`) ne s'exécutait donc jamais.
+    // L'écran restait sombre, figé, puis tout disparaissait d'un coup.
+    // Une expérience de huit secondes se juge beaucoup à sa dernière
+    // demi-seconde.
+    if (_state.phase == NexusPhase.idle) return;
 
     // Calculer la progression dans la phase courante
     final phaseDuration = _durationFor(_state.phase).inMilliseconds;
@@ -302,6 +324,19 @@ class NexusController extends ChangeNotifier {
     _phaseTimer?.cancel();
     _updateState(NexusPhase.complete, 1.0, intensity: 0, overallProgress: 1.0);
     onComplete?.call();
+  }
+
+  /// Interrompt la séquence sans détruire le contrôleur.
+  ///
+  /// ⚠️ C'EST LA MÉTHODE À APPELER POUR UN ARRÊT ANTICIPÉ (l'utilisateur
+  /// tape pour passer l'animation). L'ancien code appelait directement
+  /// `dispose()` à cet endroit ; le `State` le rappelait ensuite dans son
+  /// propre `dispose()`, et un `ChangeNotifier` détruit deux fois lève une
+  /// assertion — l'app s'arrêtait donc en mode debug précisément quand on
+  /// essayait d'écourter l'animation.
+  void stop() {
+    _ticker?.stop();
+    _phaseTimer?.cancel();
   }
 
   @override

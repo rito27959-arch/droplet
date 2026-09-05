@@ -116,12 +116,14 @@ class NexusParticles {
     required NexusPhase phase,
     required int colorSignature,
     required double intensity,
+    required double time,
   }) {
     return _NexusParticlesPainter(
       particles: _particles,
       phase: phase,
       colorSignature: colorSignature,
       intensity: intensity,
+      time: time,
     );
   }
 }
@@ -133,6 +135,7 @@ class _NexusParticlesPainter extends CustomPainter {
     required this.phase,
     required this.colorSignature,
     required this.intensity,
+    required this.time,
   });
 
   final List<_Particle> particles;
@@ -140,12 +143,22 @@ class _NexusParticlesPainter extends CustomPainter {
   final int colorSignature;
   final double intensity;
 
+  /// L'horloge de la séquence, en secondes (voir
+  /// `NexusControllerState.elapsedSeconds`).
+  ///
+  /// ⚠️ IL LISAIT `DateTime.now()` DANS `paint`. Deux conséquences, toutes
+  /// deux visibles : les particules avançaient sur l'horloge du téléphone
+  /// plutôt que sur celle de l'animation (donc à un point différent sur
+  /// chacun des deux appareils, alors que toute l'idée du Nexus est que
+  /// les deux écrans montrent la même chose au même instant) — et,
+  /// surtout, `shouldRepaint` ne voyait aucun changement à comparer.
+  final double time;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (intensity <= 0) return;
 
     final color = Color(colorSignature);
-    final time = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
     // Nombre de particules visibles selon la phase
     final visibility = _phaseVisibility();
@@ -196,7 +209,13 @@ class _NexusParticlesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _NexusParticlesPainter oldDelegate) {
-    return oldDelegate.intensity != intensity ||
+    // ⚠️ `time` D'ABORD. Sans lui, ce test répondait « rien n'a changé »
+    // dès que la phase et l'intensité se stabilisaient — c'est-à-dire
+    // pendant TOUT le milieu de la séquence, les phases 2 à 5. Les
+    // particules se figeaient sur place pendant six secondes, alors même
+    // que le code qui calcule leur déplacement, lui, était correct.
+    return oldDelegate.time != time ||
+        oldDelegate.intensity != intensity ||
         oldDelegate.phase != phase ||
         oldDelegate.colorSignature != colorSignature;
   }

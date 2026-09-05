@@ -13,6 +13,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/services/qr_code_exchange.dart';
 import '../../core/providers/tor_providers.dart';
+import '../../design_system/design_tokens.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_typography.dart';
 import '../../design_system/ouro_scaffold.dart';
@@ -41,7 +42,9 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
     );
     _scaleAnimation = CurvedAnimation(
       parent: _animController,
-      curve: Curves.elasticOut,
+      // ⚠️ C'ÉTAIT `Curves.elasticOut`. Le cadre de visée d'un scanner
+      // doit se poser là où l'on vise, pas osciller autour.
+      curve: DesignTokens.curveEnter,
     );
     _scannerController = MobileScannerController(
       detectionSpeed: DetectionSpeed.normal,

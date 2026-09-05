@@ -74,6 +74,7 @@ import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/ouro_liquid.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/design_tokens.dart';
+import '../../design_system/ouro_pressable.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/typing_indicator.dart';
 import '../../shared/widgets/heart_burst_overlay.dart';
@@ -3918,12 +3919,13 @@ class _LinkPreviewCard extends StatelessWidget {
               color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
             ),
           ),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => _openUrl(context),
-              child: Padding(
+          // ⚠️ C'ÉTAIT `Material` + `InkWell`, uniquement pour obtenir
+          // l'onde d'Android. Dans une bulle de conversation — l'élément
+          // le plus regardé de l'app — c'était la dernière onde Material
+          // encore visible à l'écran.
+          child: OuroPressable(
+            onTap: () => _openUrl(context),
+            child: Padding(
                 padding: const EdgeInsets.all(10),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -3982,7 +3984,6 @@ class _LinkPreviewCard extends StatelessWidget {
               ),
             ),
           ),
-        ),
       ],
     );
   }

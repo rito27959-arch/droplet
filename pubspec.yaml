@@ -77,7 +77,14 @@ dependencies:
   # d'onglets, la seule pièce de châssis visible en permanence — et
   # bascule tout seul sur le flou classique (`fake`) quand le téléphone
   # chauffe. Voir `ouro_glass.dart`.
-  liquid_glass_renderer: ^0.2.0-dev.4
+  # ⚠️ VERSION EXACTE, PAS DE `^`. Ce paquet est en 0.2.0-dev : sur une
+  # version de développement, `^` autorise n'importe quelle 0.2.x à venir,
+  # et ce paquet porte le MATÉRIAU SIGNATURE de toute l'application (la
+  # barre d'onglets en verre liquide). Une mise à jour silencieuse pendant
+  # un `pub upgrade` changerait l'apparence de l'app sans qu'aucune ligne
+  # de Droplet n'ait bougé. On monte de version délibérément, en regardant
+  # le résultat, ou pas du tout.
+  liquid_glass_renderer: 0.2.0-dev.4
   animated_emoji: ^3.2.1
   photo_manager: ^3.12.0
   # Compression d'images en pur Dart — pour réduire les photos de statut

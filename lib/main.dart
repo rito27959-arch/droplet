@@ -191,19 +191,26 @@ class DropletApp extends ConsumerWidget {
         routerConfig: _router,
         builder: (context, child) => ToastOverlay(
           child: MeshBootstrap(
-            child: NotificationBridge(
-              child: IncomingCallOverlay(
-                child: GroupIncomingCallOverlay(
-                  child: RepaintBoundary(
-                    // ⚠️ CE BOUNDARY EST LA SOURCE DE L'INSTANTANÉ DE
-                    // TRANSITION DE THÈME. `ModeTransitionOverlay.capture()`
-                    // le lit pour prendre une photo de l'écran AVANT que le
-                    // thème ne change, comme Telegram. Ne pas le retirer ni
-                    // le remplacer par un enfant simple.
-                    key: ModeTransitionOverlay.repaintBoundaryKey,
-                    child: KeyedSubtree(
-                      key: ValueKey(brightness),
-                      child: child ?? const SizedBox(),
+            // La couche Nexus s'insère ici, avec les autres écrans plein
+            // écran de l'app (appel entrant, appel de groupe). Elle ne
+            // passe PAS par `Overlay` : il n'y en a aucun au-dessus de ce
+            // point de l'arbre — voir `NexusStage` pour l'histoire
+            // complète de ce bug.
+            child: NexusHost(
+              child: NotificationBridge(
+                child: IncomingCallOverlay(
+                  child: GroupIncomingCallOverlay(
+                    child: RepaintBoundary(
+                      // ⚠️ CE BOUNDARY EST LA SOURCE DE L'INSTANTANÉ DE
+                      // TRANSITION DE THÈME. `ModeTransitionOverlay.capture()`
+                      // le lit pour prendre une photo de l'écran AVANT que le
+                      // thème ne change, comme Telegram. Ne pas le retirer ni
+                      // le remplacer par un enfant simple.
+                      key: ModeTransitionOverlay.repaintBoundaryKey,
+                      child: KeyedSubtree(
+                        key: ValueKey(brightness),
+                        child: child ?? const SizedBox(),
+                      ),
                     ),
                   ),
                 ),
@@ -838,8 +845,10 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
   // Se souvient si l'appel entrant en cours a fini par être décroché, pour
   // savoir s'il faut afficher « appel manqué » quand il se termine.
   bool _incomingWasConnected = false;
-  // Empêche de lancer plusieurs animations Nexus simultanément.
-  bool _nexusAffiche = false;
+  // ⚠️ Plus de drapeau « une animation Nexus est en cours » ici : c'est
+  // `NexusStage` qui détient cet état, au même endroit que la couche
+  // affichée. Deux copies d'une même vérité finissent toujours par
+  // diverger — ici, elles divergeaient dès que l'affichage échouait.
   Timer? _nexusSafetyTimer;
 
   /// Envoie une réponse écrite depuis une notification.
@@ -987,9 +996,7 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
     // L'émetteur envoie un NexusEvent (seed + couleur) au destinataire,
     // et les deux jouent la même animation synchronisée.
     _nexusPeerSub = repo.firstPeerConnection.listen((peer) {
-      if (_nexusAffiche) return;
       if (!mounted) return;
-      _nexusAffiche = true;
       _startNexusSafetyTimer();
 
       final event = NexusEvent(
@@ -1002,33 +1009,24 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
       // Envoyer l'événement au pair pour synchroniser les deux animations.
       unawaited(repo.sendNexusEvent(peer.peerId, event));
 
-      NexusOverlay.show(
-        context,
+      // `play` ignore la demande si une séquence est déjà à l'écran :
+      // c'est la scène qui tient cet état, plus un drapeau local qu'il
+      // fallait penser à remettre à zéro dans chaque chemin de sortie.
+      NexusStage.play(NexusRequest(
         seed: event.seed,
         colorSignature: event.colorSignature,
         peerName: peer.pseudo,
-        onComplete: () {
-          _nexusAffiche = false;
-          _nexusSafetyTimer?.cancel();
-        },
-      );
+      ));
     });
     // Quand on REÇOIT un NexusEvent d'un pair (l'autre appareil a détecté
     // la connexion en premier), on lance la même animation avec sa seed.
     _nexusEventSub = repo.nexusEvents.listen((event) {
-      if (_nexusAffiche) return;
       if (!mounted) return;
-      _nexusAffiche = true;
       _startNexusSafetyTimer();
-      NexusOverlay.show(
-        context,
+      NexusStage.play(NexusRequest(
         seed: event.seed,
         colorSignature: event.colorSignature,
-        onComplete: () {
-          _nexusAffiche = false;
-          _nexusSafetyTimer?.cancel();
-        },
-      );
+      ));
     });
     // Surveille l'état des appels pour détecter deux moments précis :
     // « on m'appelle et l'app est en arrière-plan » (→ notif d'appel
@@ -1090,14 +1088,20 @@ class _NotificationBridgeState extends ConsumerState<NotificationBridge>
     super.dispose();
   }
 
-  /// Sécurité : si l'animation Nexus ne se ferme pas toute seule (shader
-  /// indisponible, contexte mort, etc.), on débloque le flag après 12s.
+  /// Sécurité : si l'animation Nexus ne se referme pas toute seule, on
+  /// retire la couche de force après 12 s.
+  ///
+  /// La séquence dure 9,9 s au total ; passé douze, quelque chose s'est
+  /// mal passé. L'ancienne version se contentait de remettre un drapeau à
+  /// zéro — ce qui autorisait une NOUVELLE animation par-dessus celle
+  /// restée coincée, sans jamais retirer la première. Ici on retire
+  /// vraiment ce qui est à l'écran.
   void _startNexusSafetyTimer() {
     _nexusSafetyTimer?.cancel();
     _nexusSafetyTimer = Timer(const Duration(seconds: 12), () {
-      if (_nexusAffiche) {
-        debugPrint('[Droplet] nexus safety: flag débloqué');
-        _nexusAffiche = false;
+      if (NexusStage.current.value != null) {
+        debugPrint('[Droplet] nexus safety: couche retirée de force');
+        NexusStage.clear();
       }
     });
   }
