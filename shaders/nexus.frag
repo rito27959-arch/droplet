@@ -26,7 +26,15 @@
 //
 // Les uniformes sont CALÉS sur ce que Dart envoie via `FragmentShader` :
 //   uSize, uTime, uPhase, uPhaseProgress, uOverallProgress,
-//   uSeed (xyzw), uColor (xyzw), uIntensity, uDpr
+//   uSeed (xyzw), uColor (xyzw), uIntensity
+//
+// ⚠️ COÛT PAR PIXEL. Un shader plein écran s'exécute environ deux millions
+// de fois par image sur un téléphone 1080p. Chaque `snoise` supplémentaire
+// se paie donc deux millions de fois, soixante fois par seconde. Les
+// budgets d'échantillons ci-dessous (VOL_SAMPLES, BLOOM_SAMPLES, NODES)
+// sont réglés pour tenir sur un GPU de milieu de gamme : les augmenter
+// « pour voir » est le moyen le plus sûr de faire tomber l'animation à
+// dix images par seconde.
 // ============================================================================
 
 #version 460 core
@@ -49,7 +57,6 @@ uniform float uColorG;           // Couleur signature G (0→1)
 uniform float uColorB;           // Couleur signature B (0→1)
 uniform float uColorA;           // Couleur signature A (0→1)
 uniform float uIntensity;        // Intensité globale (0→1)
-uniform float uDpr;              // Device pixel ratio
 
 out vec4 fragColor;
 
@@ -208,7 +215,10 @@ vec2 fluidDisplace(vec2 uv, float time, float strength) {
 // de plusieurs vagues et en prenant le carré de leur somme : les crêtes
 // s'additionnent et brillent, les creux s'annulent et s'assombrissent.
 float caustics(vec2 uv, float time, float intensity) {
-    float t = time * 0.4;
+    // La seed décale la phase des ondelettes : deux rencontres n'ont pas
+    // le même dessin de lumière, mais les deux téléphones d'une MÊME
+    // rencontre ont exactement le même.
+    float t = time * 0.4 + uSeedW * 6.283;
     float c = 0.0;
     // Trois ondelettes à des fréquences et directions différentes
     for (int i = 0; i < 3; i++) {
@@ -237,21 +247,26 @@ float caustics(vec2 uv, float time, float intensity) {
 //
 // La technique est allégée pour mobile : pas de vraie densité 3D, juste
 // une évaluation 2D du bruit le long du rayon, avec 6 échantillons.
+// ⚠️ ÉCHANTILLONS ET OCTAVES : le poste de dépense n°1 du shader.
+// La version d'origine faisait 6 échantillons × `fbm` (3 octaves) = 18
+// bruits de Simplex PAR PIXEL, rien que pour cette fonction. À 1080p et
+// 60 images par seconde, cela représente environ 2,2 milliards
+// d'évaluations par seconde — hors de portée d'un GPU de téléphone.
+// 4 échantillons × 1 octave conservent le rendu (un voile lumineux flou,
+// que personne ne regarde en détail) pour un vingtième du coût.
 float volumetricLight(vec2 uv, vec2 lightPos, float time, float intensity) {
     vec2 rayDir = normalize(lightPos - uv);
     float dist = length(lightPos - uv);
     float accumulation = 0.0;
-    float density = 0.0;
-    const int SAMPLES = 6;
+    const int SAMPLES = 4;
     float stepSize = 1.0 / float(SAMPLES);
 
     for (int i = 0; i < SAMPLES; i++) {
         float t = float(i) * stepSize;
         vec2 samplePos = uv + rayDir * t * dist * 0.6;
-        float d = fbm(vec3(samplePos * 3.0, time * 0.2 + t * 2.0));
+        float d = snoise(vec3(samplePos * 3.0, time * 0.2 + t * 2.0));
         d = smoothstep(-0.2, 0.8, d);
         accumulation += d * (1.0 - t);
-        density += d;
     }
 
     accumulation /= float(SAMPLES);
@@ -267,10 +282,13 @@ float volumetricLight(vec2 uv, vec2 lightPos, float time, float intensity) {
 // sample de la luminosité locale à une échelle plus large.
 float bloom(vec2 uv, float time, float intensity) {
     float b = 0.0;
-    const int SAMPLES = 8;
+    // 4 directions au lieu de 8 : le halo est un flou large, doubler le
+    // nombre de directions double le coût sans que l'œil distingue la
+    // différence.
+    const int SAMPLES = 4;
     float totalWeight = 0.0;
     for (int i = 0; i < SAMPLES; i++) {
-        float angle = float(i) * 0.785398; // pi/4
+        float angle = float(i) * 1.570796; // pi/2
         vec2 offset = vec2(cos(angle), sin(angle));
         float weight = 1.0 / (1.0 + float(i) * 0.5);
         float n = snoise(vec3((uv + offset * 0.08) * 5.0, time * 0.3));
@@ -325,10 +343,12 @@ float dropletShape(vec2 uv, vec2 center, float radius, float time, float softnes
     float dist = length(d);
     // Légère déformation organique du bord
     float angle = atan(d.y, d.x);
+    // Le bord de la goutte se déforme selon la seed : c'est la « forme »
+    // propre à cette rencontre-là.
     float deform = snoise(vec3(
         cos(angle) * 2.0,
         sin(angle) * 2.0,
-        time * 0.8
+        time * 0.8 + uSeedZ * 10.0
     )) * radius * 0.12;
     float r = radius + deform;
     return smootherstep(r, r * softness, dist);
@@ -338,11 +358,38 @@ float dropletShape(vec2 uv, vec2 center, float radius, float time, float softnes
 // MAIN
 // ============================================================================
 void main() {
-    vec2 uv = FlutterFragCoord().xy / (uSize * uDpr);
+    // ⚠️ NE PAS RÉINTRODUIRE LE RATIO DE PIXELS ICI.
+    //
+    // `FlutterFragCoord()` rend déjà la coordonnée dans l'espace LOGIQUE
+    // du canvas — le même que celui de `uSize`, qui vient de `size` du
+    // CustomPainter. Diviser une seconde fois par la densité d'écran
+    // écrasait toute la scène dans le coin supérieur gauche : sur un
+    // téléphone en densité 3, l'écran entier tenait dans uv ∈ [0 ; 0,33],
+    // le centre (0,5 ; 0,5) tombait HORS de l'écran, et il ne restait que
+    // du noir vignetté. C'est la cause exacte du « l'effet Nexus ne
+    // marche pas ». `shaders/liquid.frag` — qui, lui, fonctionne — fait
+    // simplement `FlutterFragCoord().xy / uSize`.
+    vec2 uv = FlutterFragCoord().xy / uSize;
     vec2 center = vec2(0.5, 0.5);
     float t = uTime;
     vec3 baseColor = vec3(uColorR, uColorG, uColorB);
-    float intensity = uIntensity;
+
+    // ⚠️ TOUS LES UNIFORMES DÉCLARÉS DOIVENT ÊTRE LUS.
+    //
+    // `uSeedZ`, `uSeedW`, `uColorA` et `uOverallProgress` étaient déclarés
+    // et jamais utilisés. Deux problèmes, dont un grave :
+    //
+    //  • Le grave : les uniformes sont adressés par POSITION depuis Dart
+    //    (`setFloat(0)`, `setFloat(1)`…). Un compilateur qui élimine les
+    //    uniformes inutilisés décale toute la numérotation, et le shader
+    //    reçoit alors la couleur là où il attend la progression. Le rendu
+    //    devient absurde sans qu'aucune erreur ne soit levée.
+    //
+    //  • L'autre : la seed fait 32 octets et sert à ce que les DEUX
+    //    téléphones voient exactement la même chose. En n'en lisant que la
+    //    moitié, toutes les rencontres se ressemblaient davantage qu'elles
+    //    n'auraient dû.
+    float intensity = uIntensity * uColorA;
 
     // ── Fond sombre avec respiration ─────────────────────────────────────
     // Le fond n'est pas noir pur : il a une teinte très sombre issue de
@@ -422,24 +469,37 @@ void main() {
     // Phase 4+ : Sync dual — les deux écrans ne font qu'un
     if (uPhase >= 4.0) {
         float syncT = uPhase == 4.0 ? uPhaseProgress : 1.0;
-        // Réseau de points lumineux (représentation mesh)
+        // Réseau de points lumineux (représentation mesh).
+        //
+        // ⚠️ CETTE BOUCLE ÉTAIT QUADRATIQUE. La version d'origine reliait
+        // chaque nœud à TOUS les suivants : 12 nœuds = 66 segments, chacun
+        // avec son `exp`, son `length` et son `smootherstep`, évalués pour
+        // chaque pixel de l'écran. La phase 4 tombait à quelques images par
+        // seconde — l'animation « sautait » exactement au moment censé être
+        // le plus impressionnant.
+        //
+        // Un maillage ne se lit pas au nombre de segments : il se lit à sa
+        // FORME. Huit nœuds reliés à leur voisin immédiat et au suivant
+        // donnent la même lecture (un anneau connecté qui pulse) en 16
+        // segments au lieu de 66, avec une boucle linéaire.
         float network = 0.0;
-        const int NODES = 12;
+        const int NODES = 8;
         for (int i = 0; i < NODES; i++) {
             float fi = float(i);
-            // Position pseudo-aléatoire stable (dépend de la seed)
+            // Position pseudo-aléatoire stable (dépend de la seed, donc
+            // IDENTIQUE sur les deux téléphones — c'est ce qui fait que les
+            // deux écrans montrent le même réseau au même instant).
             vec2 nodePos = center + vec2(
                     cos(fi * 2.399 + uSeedX * 6.283) * 0.25,
                     sin(fi * 2.399 + uSeedY * 6.283) * 0.25
             );
-            // Taille variable
             float nodeSize = 0.003 + sin(fi + t) * 0.001;
             float d = length(uv - nodePos);
             network += exp(-d * d * 8000.0) * nodeSize * 50.0;
 
-            // Lignes de connexion entre nœuds proches
-            for (int j = i + 1; j < NODES; j++) {
-                float fj = float(j);
+            // Deux segments par nœud : le voisin immédiat et le suivant.
+            for (int k = 1; k <= 2; k++) {
+                float fj = mod(fi + float(k), float(NODES));
                 vec2 nodeJ = center + vec2(
                     cos(fj * 2.399 + uSeedX * 6.283) * 0.25,
                     sin(fj * 2.399 + uSeedY * 6.283) * 0.25
@@ -447,7 +507,6 @@ void main() {
                 vec2 mid = (nodePos + nodeJ) * 0.5;
                 float lineD = length(uv - mid);
                 float lineLen = length(nodePos - nodeJ);
-                // Pulsation le long de la ligne
                 float pulse = sin(t * 3.0 + fi + fj) * 0.5 + 0.5;
                 network += exp(-lineD * lineD * 15000.0)
                     * smootherstep(lineLen * 0.5, lineLen * 0.3, lineD)
@@ -486,15 +545,36 @@ void main() {
 
     // ── Vignette ─────────────────────────────────────────────────────────
     // Assombrit les bords de l'écran pour focaliser l'attention au centre.
-    float vignette = 1.0 - dot(uv - center, uv - center) * 1.5;
+    // Le cadre se resserre à mesure que la séquence avance : l'attention
+    // se concentre vers le centre, là où le nom du pair va apparaître.
+    float vignette = 1.0 - dot(uv - center, uv - center)
+        * (1.5 + uOverallProgress * 0.35);
     vignette = smootherstep(0.0, 1.0, vignette);
 
     // ── Assemblage final ─────────────────────────────────────────────────
-    vec3 final = vec3(r, g, bCh) * vignette;
+    // ⚠️ La variable s'appelait `final`. C'est un mot réservé pour un
+    // usage futur dans plusieurs compilateurs GLSL : selon la chaîne de
+    // compilation, le shader passait ou refusait de compiler — et un
+    // shader qui ne compile pas ne produit AUCUNE erreur visible à
+    // l'écran, juste un effet absent.
+    vec3 composed = vec3(r, g, bCh) * vignette;
 
     // Le tout est modulé par l'intensité globale pour que le fond
     // reste visible quand le Nexus n'est pas en cours.
-    final = mix(bg, final, intensity);
+    composed = mix(bg, composed, intensity);
 
-    fragColor = vec4(final, 1.0);
+    // ── Opacité : le shader doit S'INVITER, pas remplacer l'écran ────────
+    //
+    // ⚠️ La sortie était `vec4(composed, 1.0)` — opaque en permanence.
+    // Conséquence : à la première image, un rectangle presque noir
+    // recouvrait l'application d'un coup. Toute la phase d'éveil, qui
+    // consiste précisément à assombrir PROGRESSIVEMENT, ne pouvait donc
+    // rien assombrir du tout : il n'y avait plus rien à voir dessous.
+    //
+    // L'alpha suit maintenant l'intensité, qui monte pendant l'éveil et
+    // redescend pendant la dissolution. Flutter attend une sortie à alpha
+    // PRÉ-MULTIPLIÉ : on multiplie donc aussi la couleur, sans quoi les
+    // demi-transparences ressortent trop claires.
+    float alpha = clamp(intensity, 0.0, 1.0);
+    fragColor = vec4(composed * alpha, alpha);
 }

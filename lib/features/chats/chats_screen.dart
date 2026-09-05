@@ -39,6 +39,7 @@ import '../../shared/widgets/bulle_guide.dart';
 import '../settings/journal_sheet.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_scaffold.dart';
+import '../../design_system/ouro_pressable.dart';
 import '../../design_system/glassmorphism.dart';
 import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
@@ -1119,8 +1120,10 @@ class _ArchivedSheet extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                         vertical: DesignTokens.space2,
                       ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+                      // Enfoncement iOS plutôt que l'onde de Material —
+                      // c'est la même liste de conversations que dans
+                      // l'écran principal, elle doit répondre pareil.
+                      child: OuroPressable(
                         onTap: () {
                           Navigator.of(context).pop();
                           if (c.peerId != null) {
@@ -1241,14 +1244,23 @@ class _MeshNotificationBannerState extends State<_MeshNotificationBanner>
     _ctrl?.dispose();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      // 350 ms : la durée de référence des transitions iOS. Les 500 ms
+      // d'origine servaient à laisser le rebond se terminer ; sans rebond,
+      // elles ne font plus qu'attendre.
+      duration: DesignTokens.durationStandard,
     );
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, -1),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _ctrl!,
-      curve: Curves.elasticOut,
+      // ⚠️ C'ÉTAIT `Curves.elasticOut`. Une bannière de message non lu qui
+      // rebondit en descendant du haut est exactement ce que
+      // `design_tokens.dart` interdit : elle dépasse sa position finale,
+      // revient, et retarde de plusieurs dixièmes de seconde la lecture du
+      // message — à chaque message, toute la journée. iOS ne fait jamais
+      // rebondir une notification.
+      curve: DesignTokens.curveEnter,
     ));
     _ctrl!.forward();
     // Auto-masquer après 4 secondes

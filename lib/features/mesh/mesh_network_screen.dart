@@ -21,6 +21,7 @@ import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/design_tokens.dart';
 import '../../design_system/glassmorphism.dart';
+import '../../design_system/ouro_pressable.dart';
 import '../../shared/widgets/mesh_visualizer.dart';
 import '../../shared/widgets/peer_avatar.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -144,8 +145,9 @@ class _PeerRow extends StatelessWidget {
     return OuroCard(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
+      // Enfoncement iOS, pas l'onde de Material : voir `ouro_pressable.dart`
+      // pour la raison. Une carte large s'enfonce peu — 0,97.
+      child: OuroPressable(
         onTap: () => _showPeerDetails(context),
         child: Row(
           children: [

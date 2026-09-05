@@ -27,6 +27,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/device_profile.dart';
 import '../../design_system/design_tokens.dart';
 import '../../design_system/ouro_typography.dart';
 import 'nexus_controller.dart';
@@ -34,48 +35,96 @@ import 'nexus_event.dart';
 import 'nexus_particles.dart';
 import 'nexus_shader.dart';
 
-/// Affiche l'expérience Nexus en overlay plein écran.
-///
-/// Mode d'emploi :
-///
-/// ```dart
-/// // Depuis n'importe quel State :
-/// NexusOverlay.show(
-///   context,
-///   seed: nexusEvent.seed,
-///   colorSignature: nexusEvent.colorSignature,
-///   peerName: 'Alice',
-///   onComplete: () => Navigator.of(context).pop(),
-/// );
-/// ```
-class NexusOverlay {
-  NexusOverlay._();
+/// Ce qu'il faut savoir pour jouer une séquence Nexus.
+@immutable
+class NexusRequest {
+  const NexusRequest({
+    required this.seed,
+    required this.colorSignature,
+    this.peerName = '',
+  });
 
-  /// Affiche l'overlay Nexus.
-  ///
-  /// L'overlay prend le contrôle total de l'écran pendant ~8 secondes,
-  /// puis se referme tout seul et appelle [onComplete].
-  static OverlayEntry show(
-    BuildContext context, {
-    required String seed,
-    required int colorSignature,
-    String peerName = '',
-    VoidCallback? onComplete,
-  }) {
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (_) => _NexusOverlayWidget(
-        seed: seed,
-        colorSignature: colorSignature,
-        peerName: peerName,
-        onComplete: () {
-          entry.remove();
-          onComplete?.call();
-        },
-      ),
+  final String seed;
+  final int colorSignature;
+  final String peerName;
+}
+
+/// La scène Nexus : on y dépose une demande, [NexusHost] la joue.
+///
+/// ── POURQUOI PAS UN `OverlayEntry` ────────────────────────────────────
+///
+/// C'était la première des deux causes de la panne. L'ancienne version
+/// faisait `Overlay.of(context).insert(entry)` depuis `NotificationBridge`
+/// — un widget placé dans le `builder` de `MaterialApp.router`, donc
+/// AU-DESSUS du `Navigator`. Or c'est le `Navigator` qui fournit l'unique
+/// `Overlay` de l'application : en remontant l'arbre depuis ce point, il
+/// n'y en a aucun. `Overlay.of` lève alors une exception, à l'intérieur
+/// d'un écouteur de flux — c'est-à-dire loin de tout écran, sans rien
+/// afficher nulle part. L'animation ne se lançait jamais, et le drapeau
+/// « Nexus en cours » restait bloqué douze secondes.
+///
+/// Le reste de l'app (appel entrant, appel de groupe, notifications) ne
+/// passe déjà PAS par `Overlay` : ce sont des couches de `Stack` posées
+/// dans ce même `builder`. Nexus fait désormais comme eux — c'est plus
+/// simple, et cela ne peut plus dépendre d'un ancêtre qui n'existe pas.
+class NexusStage {
+  NexusStage._();
+
+  static final ValueNotifier<NexusRequest?> _current =
+      ValueNotifier<NexusRequest?>(null);
+
+  /// La séquence en cours, ou `null`. Observée par [NexusHost].
+  static ValueListenable<NexusRequest?> get current => _current;
+
+  /// Lance une séquence. Sans effet si une autre est déjà à l'écran.
+  static void play(NexusRequest request) {
+    if (_current.value != null) return;
+    _current.value = request;
+  }
+
+  /// Retire la séquence de l'écran.
+  static void clear() => _current.value = null;
+}
+
+/// La couche qui affiche la séquence Nexus par-dessus toute l'app.
+///
+/// À placer dans le `builder` de `MaterialApp`, comme les autres couches
+/// plein écran de Droplet.
+class NexusHost extends StatelessWidget {
+  const NexusHost({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<NexusRequest?>(
+      valueListenable: NexusStage.current,
+      // ⚠️ TOUTE L'APPLICATION EST CE `child`. Le passer ici plutôt que de
+      // le lire dans le `builder` évite de reconstruire l'arbre entier au
+      // début et à la fin de chaque séquence — c'est-à-dire précisément
+      // aux deux instants où l'on demande déjà beaucoup au téléphone.
+      child: child,
+      builder: (context, request, child) {
+        return Stack(
+          children: [
+            child!,
+            if (request != null)
+              Positioned.fill(
+                child: _NexusOverlayWidget(
+                  // La clé garantit qu'une NOUVELLE rencontre repart d'un
+                  // état neuf plutôt que de reprendre l'animation
+                  // précédente au milieu.
+                  key: ValueKey(request.seed),
+                  seed: request.seed,
+                  colorSignature: request.colorSignature,
+                  peerName: request.peerName,
+                  onComplete: NexusStage.clear,
+                ),
+              ),
+          ],
+        );
+      },
     );
-    Overlay.of(context).insert(entry);
-    return entry;
   }
 }
 
@@ -83,6 +132,7 @@ class NexusOverlay {
 
 class _NexusOverlayWidget extends StatefulWidget {
   const _NexusOverlayWidget({
+    super.key,
     required this.seed,
     required this.colorSignature,
     required this.peerName,
@@ -111,9 +161,7 @@ class _NexusOverlayWidgetState extends State<_NexusOverlayWidget>
       seed: widget.seed,
       colorSignature: widget.colorSignature,
       peerName: widget.peerName,
-    )..onComplete = () {
-        widget.onComplete?.call();
-      };
+    )..onComplete = _terminer;
     _controller.start(this);
   }
 
@@ -121,6 +169,24 @@ class _NexusOverlayWidgetState extends State<_NexusOverlayWidget>
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Déjà terminée ? Évite qu'un tap et la fin naturelle ne se marchent
+  /// dessus.
+  bool _termine = false;
+
+  /// Le shader a-t-il renoncé sur cet appareil ?
+  bool _sansShader = DeviceProfile.sansShader;
+
+  /// Écourte la séquence — l'utilisateur a tapé pour la passer.
+  ///
+  /// ⚠️ `stop()` et NON `dispose()` — c'est `dispose()` du `State` qui
+  /// détruit le contrôleur, une seule fois. Voir `NexusController.stop`.
+  void _terminer() {
+    if (_termine) return;
+    _termine = true;
+    _controller.stop();
+    widget.onComplete?.call();
   }
 
   @override
@@ -134,10 +200,18 @@ class _NexusOverlayWidgetState extends State<_NexusOverlayWidget>
           child: _NexusContent(
             state: state,
             particles: _particles,
-            onDismiss: () {
-              _controller.dispose();
-              widget.onComplete?.call();
+            sansShader: _sansShader,
+            onShaderIndisponible: () {
+              // Le shader a échoué à la compilation sur un appareil qui
+              // était pourtant censé le supporter. Sans lui, l'écran n'a
+              // plus de source de lumière : on assombrit alors beaucoup
+              // moins, sinon il ne reste qu'un rectangle noir pendant huit
+              // secondes — le symptôme même qu'on vient de corriger.
+              if (mounted && !_sansShader) {
+                setState(() => _sansShader = true);
+              }
             },
+            onDismiss: _terminer,
           ),
         );
       },
@@ -151,11 +225,15 @@ class _NexusContent extends StatelessWidget {
   const _NexusContent({
     required this.state,
     required this.particles,
+    required this.sansShader,
+    required this.onShaderIndisponible,
     required this.onDismiss,
   });
 
   final NexusControllerState state;
   final NexusParticles particles;
+  final bool sansShader;
+  final VoidCallback onShaderIndisponible;
   final VoidCallback onDismiss;
 
   @override
@@ -170,13 +248,26 @@ class _NexusContent extends StatelessWidget {
             phase: state.phase,
             phaseProgress: state.phaseProgress,
             colorSignature: state.colorSignature,
+            sansShader: sansShader,
           ),
 
           // ── Couche 2 : Shader Nexus ──────────────────────────────────
-          NexusShaderWidget(
-            state: state.toShaderState(),
-            active: state.isActive,
-          ),
+          //
+          // Sauté entièrement sur les appareils modestes : un shader plein
+          // écran y coûte plus cher que tout le reste de l'app réuni. Les
+          // particules et le texte suffisent à raconter la même chose —
+          // c'est le même arbitrage que le verre liquide de la barre
+          // d'onglets (`ouro_glass.dart`), et il se prend au même endroit :
+          // dans le code, pas dans un réglage à la charge de l'utilisateur.
+          if (!DeviceProfile.sansShader)
+            NexusShaderWidget(
+              state: state.toShaderState(),
+              // `isVisible` et non `isActive` : la couche reste montée
+              // pendant la dissolution, sinon l'image la plus lumineuse
+              // disparaît d'un coup au lieu de s'éteindre.
+              active: state.isVisible,
+              onUnavailable: onShaderIndisponible,
+            ),
 
           // ── Couche 3 : Particules ────────────────────────────────────
           CustomPaint(
@@ -184,6 +275,7 @@ class _NexusContent extends StatelessWidget {
               phase: state.phase,
               colorSignature: state.colorSignature,
               intensity: state.intensity,
+              time: state.elapsedSeconds,
             ),
             size: Size.infinite,
           ),
@@ -218,20 +310,31 @@ class _Background extends StatelessWidget {
     required this.phase,
     required this.phaseProgress,
     required this.colorSignature,
+    required this.sansShader,
   });
 
   final NexusPhase phase;
   final double phaseProgress;
   final int colorSignature;
 
+  /// Sans shader, l'écran n'a plus de source de lumière : on assombrit
+  /// moins, pour que les particules restent lisibles au lieu de se perdre
+  /// dans du noir.
+  final bool sansShader;
+
   @override
   Widget build(BuildContext context) {
+    final maxDarkness = sansShader ? 0.55 : 0.85;
     // Le fond passe de transparent (idle) à noir profond (awakening),
     // puis reste sombre pendant toute la séquence.
     final darkness = switch (phase) {
       NexusPhase.idle => 0.0,
-      NexusPhase.awakening => phaseProgress * 0.85,
-      _ => 0.85,
+      NexusPhase.awakening => phaseProgress * maxDarkness,
+      // La dissolution rend l'app à l'utilisateur progressivement. Sans
+      // cette ligne, l'assombrissement restait au maximum jusqu'à la
+      // dernière image, puis l'écran réapparaissait d'un coup.
+      NexusPhase.complete => maxDarkness * (1.0 - phaseProgress),
+      _ => maxDarkness,
     };
 
     return Container(

@@ -36,6 +36,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../design_system/design_tokens.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_typography.dart';
 
@@ -323,7 +324,15 @@ class _AvatarRingState extends State<AvatarRing>
         child: AnimatedBuilder(
           animation: Listenable.merge([_rotation, _pose]),
           builder: (context, enfant) {
-            final pose = Curves.elasticOut.transform(
+            // ⚠️ C'ÉTAIT `Curves.elasticOut`. L'intention était bonne — le
+            // dépassement ne portait que sur 6 % de l'échelle, soit moins
+            // d'un pour cent de dépassement réel, invisible. Mais une
+            // règle qui souffre des exceptions « parce qu'ici ça ne se
+            // voit pas » ne tient pas six mois : c'est exactement comme
+            // cela que les quatre autres rebonds étaient revenus dans
+            // l'app. La règle est donc sans exception, et le rendu ici est
+            // identique.
+            final pose = DesignTokens.curveEnter.transform(
               _pose.value.clamp(0.0, 1.0),
             );
             return CustomPaint(

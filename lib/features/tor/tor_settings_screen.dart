@@ -50,7 +50,10 @@ class _TorSettingsScreenState extends ConsumerState<TorSettingsScreen>
       duration: const Duration(milliseconds: 1500),
     );
     _shieldScale = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _shieldController, curve: Curves.elasticOut),
+      // ⚠️ C'ÉTAIT `Curves.elasticOut` : le bouclier dépassait sa taille
+      // puis revenait, pendant une seconde et demie. Un écran de sécurité
+      // est le dernier endroit où l'interface doit avoir l'air de jouer.
+      CurvedAnimation(parent: _shieldController, curve: DesignTokens.curveEnter),
     );
     _shieldGlow = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _shieldController, curve: Curves.easeInOut),
