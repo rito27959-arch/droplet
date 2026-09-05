@@ -41,6 +41,7 @@ import '../settings/journal_sheet.dart';
 import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_scaffold.dart';
 import '../../design_system/ouro_pressable.dart';
+import '../../design_system/ouro_liquid_surface.dart';
 import '../../design_system/glassmorphism.dart';
 import '../../design_system/design_tokens.dart';
 import '../../shared/widgets/peer_avatar.dart';
@@ -761,9 +762,21 @@ class _SearchField extends StatelessWidget {
         DesignTokens.screenMargin,
         DesignTokens.space2,
       ),
+      // ── VERRE LIQUIDE SUR LE CHAMP DE RECHERCHE ─────────────────
+      //
+      // Troisième surface de châssis d'iOS 26 : la barre de recherche
+      // n'est plus un rectangle gris posé sur le fond, c'est une capsule
+      // de verre sous laquelle la liste défile et se déforme. C'est
+      // aussi, ici, la surface la plus démonstrative de l'écran : le
+      // contenu passe littéralement dessous à chaque défilement.
       child: SizedBox(
         height: 36,
-        child: OuroCard(
+        child: OuroLiquidSurface(
+          borderRadius: DesignTokens.radiusMd,
+          // Mince : ce champ porte du texte qu'on tape et qu'on relit.
+          thickness: 8,
+          blur: 10,
+          child: OuroCard(
           padding: EdgeInsets.zero,
           borderRadius: DesignTokens.radiusMd,
           child: TextField(
@@ -800,6 +813,7 @@ class _SearchField extends StatelessWidget {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

@@ -44,6 +44,7 @@ import '../../core/providers/tor_providers.dart';
 import '../../core/services/tor_service.dart';
 import '../../design_system/design_tokens.dart';
 import '../../design_system/ouro_colors.dart';
+import '../../design_system/ouro_liquid_surface.dart';
 import '../../design_system/ouro_padlock.dart';
 import '../../design_system/ouro_pressable.dart';
 import '../../design_system/ouro_typography.dart';
@@ -194,7 +195,16 @@ class _Capsule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
+    // Même matière que la capsule de notification et que la barre
+    // d'onglets : sur iOS, tout ce qui flotte au-dessus du contenu est
+    // fait de la même chose. Une seule capsule sur cet écran qui serait
+    // en verre dépoli quand les autres réfractent se remarquerait
+    // immédiatement, sans qu'on sache dire quoi.
+    return OuroLiquidSurface(
+      borderRadius: DesignTokens.radiusFull,
+      thickness: 8,
+      blur: 10,
+      child: AnimatedContainer(
       duration: DesignTokens.durationStandard,
       curve: DesignTokens.curveStandard,
       margin: const EdgeInsets.symmetric(vertical: DesignTokens.space1),
@@ -260,6 +270,7 @@ class _Capsule extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }

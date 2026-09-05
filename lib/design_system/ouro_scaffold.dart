@@ -29,6 +29,7 @@ import 'ouro_colors.dart';
 import 'ouro_haptics.dart';
 import 'ouro_typography.dart';
 import 'glassmorphism.dart';
+import 'ouro_liquid_surface.dart';
 import 'design_tokens.dart';
 
 /// Écran à grand titre repliable, façon iOS.
@@ -234,8 +235,30 @@ class _NavigationBar extends StatelessWidget {
     return AnimatedSwitcher(
       duration: DesignTokens.durationFast,
       child: collapsed
-          ? OuroBlurSurface(
+          // ── VERRE LIQUIDE SUR LA BARRE REPLIÉE ────────────────────
+          //
+          // C'est le second endroit d'iOS 26 où le matériau saute aux
+          // yeux : la barre de navigation, quand le contenu commence à
+          // passer dessous. Tant que le grand titre est déployé, la
+          // barre n'existe pas visuellement — donc rien à peindre, et
+          // aucune passe de shader. Elle n'apparaît QU'AU DÉFILEMENT,
+          // exactement au moment où il y a quelque chose à réfracter.
+          //
+          // ⚠️ Rayon 0 : une barre de navigation est coupée droit en
+          // haut et sur les côtés — elle touche les bords de l'écran.
+          // Lui donner un rayon la ferait flotter comme une carte, ce
+          // qu'elle n'est pas.
+          ? OuroLiquidSurface(
               key: const ValueKey('collapsed'),
+              borderRadius: 0,
+              clipBehavior: Clip.hardEdge,
+              // Fine : une barre de navigation laisse voir ce qui passe
+              // dessous, c'est tout son intérêt. Trop épaisse, le titre
+              // du contenu se tord en la traversant et devient illisible
+              // pendant tout le défilement.
+              thickness: 8,
+              blur: 12,
+              child: OuroBlurSurface(
               material: OuroMaterial.thin,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -250,6 +273,7 @@ class _NavigationBar extends StatelessWidget {
                     color: OuroColors.separator,
                   ),
                 ],
+              ),
               ),
             )
           : SizedBox(

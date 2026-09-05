@@ -22,6 +22,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'ouro_colors.dart';
 import 'design_tokens.dart';
+import 'ouro_liquid_surface.dart';
 import 'ouro_pressable.dart';
 
 /// Les quatre épaisseurs de matériau translucide d'iOS.
@@ -221,11 +222,39 @@ class FrostedSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ── VERRE LIQUIDE, PAS SEULEMENT VERRE DÉPOLI ────────────────────
+    //
+    // iOS 26 pose du Liquid Glass sur ses feuilles modales : le contenu
+    // qui passe derrière ne se contente pas d'être flouté, il est
+    // RÉFRACTÉ — dévié comme à travers une lentille, plus fort près du
+    // bord, avec un liseré lumineux sur la tranche.
+    //
+    // La feuille est le meilleur endroit de l'application pour ça :
+    // elle est grande, elle monte devant du contenu qui reste visible en
+    // dessous, et on la regarde longtemps. C'est aussi une surface
+    // TEMPORAIRE — le coût de la passe de shader n'est payé que le temps
+    // où elle est à l'écran, contrairement à la barre d'onglets.
+    //
+    // `OuroLiquidSurface` retombe toute seule sur le flou d'origine
+    // quand l'appareil chauffe ou n'a pas la mémoire pour un shader.
+    return OuroLiquidSurface(
+      borderRadius: topRadius,
+      // Une feuille porte du texte dense : il lui faut plus de voile
+      // qu'à une capsule, sinon une photo qui défile derrière rend les
+      // libellés illisibles.
+      blur: 14,
+      thickness: 11,
+      child: _corps(context),
+    );
+  }
+
+  Widget _corps(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
       child: BackdropFilter(
-        // Le même matériau que partout ailleurs — flou ET saturation.
-        // Voir `OuroMaterialFilter`.
+        // Le voile de secours SOUS le verre liquide : il garantit la
+        // lisibilité du texte quel que soit le fond, et c'est lui seul
+        // qui reste en mode dégradé.
         filter: OuroMaterialFilter.pour(material),
         child: Container(
           decoration: BoxDecoration(

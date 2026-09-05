@@ -23,6 +23,7 @@ import '../../core/providers/mesh_provider.dart';
 import '../../design_system/ouro_colors.dart';
 import '../../design_system/ouro_typography.dart';
 import '../../design_system/glassmorphism.dart';
+import '../../design_system/ouro_liquid_surface.dart';
 import '../../design_system/design_tokens.dart';
 
 /// Affiche les notifications éphémères par-dessus toute l'app.
@@ -97,7 +98,21 @@ class _ToastCapsule extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: DesignTokens.screenMargin,
       ),
-      child: OuroBlurSurface(
+      // ── VERRE LIQUIDE : LA CAPSULE SYSTÈME D'iOS ───────────────────
+      //
+      // C'est l'exemple le plus caractéristique du matériau chez Apple —
+      // la capsule qui descend annoncer « AirPods connectés » ou un
+      // changement de sonnerie. Elle flotte au-dessus de tout, elle est
+      // petite, elle ne reste que deux secondes : le coût de la passe de
+      // shader est payé sur une poignée d'images, et c'est le moment où
+      // l'œil est le plus disponible pour voir la matière.
+      child: OuroLiquidSurface(
+        borderRadius: DesignTokens.radiusFull,
+        // Une capsule est petite : le verre y est plus mince, sinon la
+        // déformation avale les quelques mots qu'elle porte.
+        thickness: 9,
+        blur: 12,
+        child: OuroBlurSurface(
         material: OuroMaterial.thick,
         borderRadius: BorderRadius.circular(DesignTokens.radiusFull),
         padding: const EdgeInsets.symmetric(
@@ -120,6 +135,7 @@ class _ToastCapsule extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
