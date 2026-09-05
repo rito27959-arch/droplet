@@ -148,15 +148,20 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
                           width: 100,
                           height: 100,
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: OuroColors.systemGreen,
                             shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.green.withValues(alpha: 0.4),
-                                blurRadius: 30,
-                                spreadRadius: 5,
-                              ),
-                            ],
+                            // ⚠️ C'ÉTAIT UN HALO VERT DE 30 POINTS DE
+                            // FLOU, ÉTALÉ SUR 5.
+                            //
+                            // `design_tokens.dart` bannit explicitement
+                            // les halos colorés : « un effet de jeu
+                            // vidéo, jamais utilisé par Apple, et le
+                            // marqueur le plus reconnaissable d'une
+                            // interface amateur ». Une pastille verte
+                            // pleine sur fond de caméra sombre se voit
+                            // déjà parfaitement ; le halo n'ajoutait que
+                            // du bruit autour d'elle.
+                            boxShadow: DesignTokens.floatingShadow,
                           ),
                           child: const Icon(
                             Icons.check_rounded,
@@ -199,19 +204,24 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
             padding: const EdgeInsets.all(12),
             margin: const EdgeInsets.only(bottom: 16),
             decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.15),
+              color: OuroColors.systemRed.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: Colors.red, size: 20),
+                // ⚠️ PAS `const` : `OuroColors.systemRed` est un accesseur
+                // qui dépend du mode clair/sombre, pas une constante de
+                // compilation. C'est aussi tout l'intérêt — une couleur
+                // figée à la compilation ne pourrait pas s'inverser avec
+                // le thème.
+                Icon(Icons.warning_amber_rounded,
+                    color: OuroColors.systemRed, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Tor n\'est pas actif. Activez-le dans Réglages > Tor.',
                     style: OuroTypography.subheadline.copyWith(
-                      color: Colors.red,
+                      color: OuroColors.systemRed,
                     ),
                   ),
                 ),
@@ -240,7 +250,7 @@ class _QrScannerScreenState extends ConsumerState<QrScannerScreen>
       children: [
         Text(
           'Contact scopé !',
-          style: OuroTypography.title2.copyWith(color: Colors.green),
+          style: OuroTypography.title2.copyWith(color: OuroColors.systemGreen),
         ),
         const SizedBox(height: 8),
         Container(

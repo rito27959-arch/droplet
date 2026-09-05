@@ -963,13 +963,15 @@ class _MyPin extends StatelessWidget {
             shape: BoxShape.circle,
             color: OuroColors.accent,
             border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: OuroColors.accent.withValues(alpha: 0.5),
-                blurRadius: 14,
-                spreadRadius: 2,
-              ),
-            ],
+            // ⚠️ C'ÉTAIT UN HALO BLEU DE 14 POINTS.
+            //
+            // Le point « vous êtes ici » de Plans n'a jamais eu de halo
+            // coloré : un disque bleu, un anneau blanc, et une OMBRE
+            // NEUTRE qui le décolle de la carte. Le halo bleu ne se
+            // distinguait d'ailleurs pas des routes bleues de la carte
+            // elle-même, ce qui est le pire endroit pour peindre de la
+            // lumière : sur un fond qui a déjà la même couleur.
+            boxShadow: DesignTokens.cardShadow,
           ),
         ),
         const SizedBox(height: 4),

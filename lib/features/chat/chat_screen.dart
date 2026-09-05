@@ -5551,17 +5551,19 @@ class _MicButtonState extends State<_MicButton> {
                       color: recording
                           ? OuroColors.systemRed
                           : OuroColors.accent,
-                      boxShadow: recording
-                          ? [
-                              BoxShadow(
-                                color: OuroColors.systemRed.withValues(
-                                  alpha: 0.4 * widget.pulse.value,
-                                ),
-                                blurRadius: 16,
-                                spreadRadius: 2,
-                              ),
-                            ]
-                          : null,
+                      // ⚠️ LE HALO ROUGE A ÉTÉ RETIRÉ.
+                      //
+                      // Il faisait doublon : le bouton GROSSIT déjà au
+                      // rythme de la même pulsation, quelques lignes plus
+                      // haut (`scale: 1 + pulse * 0.14`). Deux signaux
+                      // pour un seul événement, dont l'un est un halo
+                      // coloré — précisément l'effet que
+                      // `design_tokens.dart` bannit comme « marqueur le
+                      // plus reconnaissable d'une interface amateur ».
+                      //
+                      // Le grossissement seul est ce que fait iOS : un
+                      // objet qui respire, sans lumière peinte autour.
+                      boxShadow: recording ? DesignTokens.cardShadow : null,
                     ),
                     child: const Icon(
                       Icons.mic_rounded,
