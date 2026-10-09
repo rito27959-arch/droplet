@@ -1,0 +1,14 @@
+{
+  "name": "Droplet Web",
+  "short_name": "Droplet",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "description": "Vos discussions Droplet dans le navigateur, même téléphone éteint.",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

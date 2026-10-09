@@ -1,0 +1,9 @@
+.dart_tool/
+.packages
+build/
+flutter/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+.vercel
+.DS_Store

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Droplet Web — vos discussions Droplet dans le navigateur.">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <title>Droplet Web</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* Le fond est posé AVANT que Flutter démarre : pas d'éclair blanc en
+       mode sombre, pas d'éclair noir en mode clair. La goutte attend au
+       centre, comme l'écran de lancement d'une app iOS. */
+    html, body { margin: 0; height: 100%; background: #F2F2F7; }
+    @media (prefers-color-scheme: dark) { html, body { background: #000; } }
+    #lancement {
+      position: fixed; inset: 0; display: grid; place-items: center;
+      transition: opacity .35s cubic-bezier(.16,1,.3,1);
+    }
+    #lancement svg { width: 56px; height: 56px; animation: respire 1.6s ease-in-out infinite; }
+    @keyframes respire { 50% { transform: scale(.94); opacity: .8; } }
+    @media (prefers-reduced-motion: reduce) { #lancement svg { animation: none; } }
+  </style>
+</head>
+<body>
+  <div id="lancement" aria-hidden="true">
+    <svg viewBox="0 0 64 64">
+      <path d="M32 6c7.6 9.6 18 20 18 31.5a18 18 0 0 1-36 0C14 26 24.4 15.6 32 6z" fill="#ff2d55"/>
+      <circle cx="32" cy="38" r="6.5" fill="none" stroke="#fff" stroke-width="3" opacity=".92"/>
+    </svg>
+  </div>
+  <script>
+    // La goutte s'efface dès que Flutter a dessiné sa première image.
+    window.addEventListener('flutter-first-frame', function () {
+      var l = document.getElementById('lancement');
+      if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 400); }
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+name: droplet_web
+description: Droplet Web — vos discussions Droplet dans le navigateur, même téléphone éteint.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.10.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # Les clés de l'appareil (X25519). Dans un navigateur, le paquet passe
+  # par WebCrypto quand c'est possible, sinon par son implémentation Dart.
+  cryptography: ^2.7.0
+  # Le code QR de liaison — le même paquet que l'app.
+  qr_flutter: ^4.1.0
+  # Le niveau de correction d'erreur « H » : la goutte posée au centre du
+  # code masque des modules, que la correction reconstruit.
+  qr: ^3.0.1
+  # L'accès au navigateur (nom du navigateur pour « Chrome sur macOS »).
+  web: ^1.1.0
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    # ⚠️ À COPIER depuis l'app : cp ../assets/fonts/Inter-Variable.ttf assets/fonts/
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
