@@ -15,11 +15,14 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:args/args.dart';
+
+import 'liaison.dart';
 
 // ── Modèle de données ──────────────────────────────────────────────
 
@@ -100,6 +103,9 @@ class DirectoryDb {
 
 final _db = DirectoryDb();
 final _router = Router()
+  ..put('/liaison/<channel>', reserveLiaison)
+  ..post('/liaison/<channel>', publishLiaison)
+  ..get('/liaison/<channel>', readLiaison)
   ..post('/register', _handleRegister)
   ..delete('/register', _handleUnregister)
   ..get('/search', _handleSearch)
@@ -186,7 +192,7 @@ Response _handleHealth(Request request) {
 
 Future<void> main(List<String> args) async {
   final parser = ArgParser()
-    ..addOption('port', abbr: 'p', defaultsTo: '8080', help: 'Port d\'écoute')
+    ..addOption('port', abbr: 'p', defaultsTo: Platform.environment['PORT'] ?? '8080', help: 'Port d\'écoute')
     ..addOption('host', abbr: 'h', defaultsTo: '127.0.0.1', help: 'Adresse d\'écoute');
 
   final results = parser.parse(args);
@@ -196,11 +202,13 @@ Future<void> main(List<String> args) async {
   // Nettoyage périodique des entrées expirées (toutes les heures).
   Timer.periodic(const Duration(hours: 1), (_) {
     final cleaned = _db.sweep();
+    liaisonStore.sweep();
     if (cleaned > 0) print('[Directory] Nettoyé $cleaned entrées expirées');
   });
 
   final handler = const Pipeline()
       .addMiddleware(logRequests())
+      .addMiddleware(liaisonCors(allowedOrigin: Platform.environment['DROPLET_WEB_ORIGIN']))
       .addHandler(_router.call);
 
   final server = await io.serve(handler, host, port);
@@ -210,4 +218,5 @@ Future<void> main(List<String> args) async {
   print('  DELETE /register — Se désinscrire');
   print('  GET /search?q=   — Chercher un contact');
   print('  GET /health      — Health check');
+  print('  PUT/POST/GET /liaison/<channel> — Liaison temporaire');
 }
