@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# Ces serveurs possèdent chacun leur propre pubspec et leur propre CI Dart.
+analyzer:
+  exclude:
+    - droplet_directory/**
+    - droplet_mailbox/**
+    - droplet_server/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

@@ -1,0 +1,26 @@
+name: Annuaire Droplet
+
+on:
+  pull_request:
+    paths: ['droplet_directory/**', '.github/workflows/directory.yml']
+  push:
+    branches: [main]
+    paths: ['droplet_directory/**', '.github/workflows/directory.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  annuaire:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: droplet_directory
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.10.3'
+      - run: dart pub get
+      - run: dart test
+      - run: dart compile exe lib/server.dart -o /tmp/droplet-directory-server
