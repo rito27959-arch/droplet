@@ -168,7 +168,11 @@ jobs:
         with: { ref: droplet-drop }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
+      # Les cibles Rust d'Apple : la bibliothèque du moteur est compilée
+      # pour chacune (iPhone, simulateur Apple silicon et Intel, Mac).
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
       - name: Build macOS et iOS
         run: |
           set +e
@@ -179,7 +183,9 @@ jobs:
           { flutter build macos --release 2>&1 | tail -40; echo "code macos: ${PIPESTATUS[0]}"
             flutter build ios --release --no-codesign > /tmp/ios.txt 2>&1; echo "code ios appareil: $?"
             grep -E "error:|Signing|requires a development team" /tmp/ios.txt | sort -u | head -20
-            flutter build ios --simulator --debug 2>&1 | tail -15; echo "code ios: ${PIPESTATUS[0]}"; } > /tmp/journal.txt
+            flutter build ios --simulator --debug > /tmp/ios-sim.txt 2>&1; c=$?
+            grep -E "error(\[E[0-9]+\])?:|SEVERE: (Error|Exception|Failed|error)" /tmp/ios-sim.txt | sort -u | head -30
+            tail -8 /tmp/ios-sim.txt; echo "code ios: $c"; } > /tmp/journal.txt
           cat /tmp/journal.txt
           cd -
           git config user.name ci; git config user.email ci@users.noreply.github.com
