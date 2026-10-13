@@ -15,6 +15,7 @@ import '../app/modeles.dart';
 import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
+import '../design/marque.dart';
 import '../design/typo.dart';
 import '../src/rust/api/simple.dart' as moteur;
 import 'choisir.dart';
@@ -316,18 +317,22 @@ class _TableauSessionState extends State<TableauSession> {
                   const SizedBox(height: 14),
                   BarreProgression(valeur: total == 0 ? 0 : fait / total, hauteur: 8),
                   const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 18,
-                    runSpacing: 10,
-                    children: [
-                      _Chiffre(context.t('en_cours'), '$enCours'),
-                      _Chiffre(context.t('etat_attente'), '$attente'),
-                      _Chiffre(context.t('deconnectes'), '$coupes'),
-                      _Chiffre(context.t('debit'), debit > 0 ? debitLocal(debit) : '—'),
-                      _Chiffre(context.t('transfere'), tailleLocale(fait)),
-                      _Chiffre(context.t('temps_restant'), restant > 0 ? dureeLocale(restant) : '—'),
-                    ],
-                  ),
+                  // Six chiffres en grille régulière (3 colonnes), comme les
+                  // widgets d'iOS : l'œil lit les colonnes, pas un vrac.
+                  _Grille(chiffres: [
+                    _Chiffre(context.t('en_cours'), '$enCours'),
+                    _Chiffre(context.t('etat_attente'), '$attente'),
+                    _Chiffre(context.t('deconnectes'), '$coupes', alerte: coupes > 0),
+                    _Chiffre(context.t('debit'), debit > 0 ? debitLocal(debit) : '—'),
+                    _Chiffre(context.t('transfere'), tailleLocale(fait)),
+                    _Chiffre(context.t('temps_restant'), restant > 0 ? dureeLocale(restant) : '—'),
+                  ]),
+                  if (parts.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Divider(height: 1, color: p.trait),
+                    const SizedBox(height: 16),
+                    _Mosaique(parts: parts),
+                  ],
                 ],
               ),
             ),
@@ -386,7 +391,13 @@ class _TableauSessionState extends State<TableauSession> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [SizedBox(width: 340, child: qr), const SizedBox(width: 20), Expanded(child: tableau)],
                       )
-                    : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [qr, const SizedBox(height: 16), tableau]),
+                    // Sur téléphone : tant que la distribution attend ses
+                    // participants, le code d'abord ; une fois lancée, le
+                    // tableau d'abord — c'est lui qu'on regarde.
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: etat == 'ouverte' ? [qr, const SizedBox(height: 16), tableau] : [tableau, const SizedBox(height: 16), qr],
+                      ),
               ),
             ],
           ),
@@ -397,23 +408,80 @@ class _TableauSessionState extends State<TableauSession> {
 }
 
 class _Chiffre extends StatelessWidget {
-  const _Chiffre(this.libelle, this.valeur);
+  const _Chiffre(this.libelle, this.valeur, {this.alerte = false});
 
   final String libelle;
   final String valeur;
+  final bool alerte;
 
   @override
   Widget build(BuildContext context) {
     final p = context.p;
-    return SizedBox(
-      width: 120,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(valeur, style: Typo.chiffres.copyWith(color: p.texte, fontWeight: FontWeight.w600, fontSize: 16)),
-          Text(libelle, style: Typo.legende.copyWith(color: p.texte2)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(valeur, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.chiffres.copyWith(color: alerte ? p.attention : p.texte, fontWeight: FontWeight.w600, fontSize: 17)),
+        const SizedBox(height: 2),
+        Text(libelle, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.legende.copyWith(color: p.texte2)),
+      ],
+    );
+  }
+}
+
+class _Grille extends StatelessWidget {
+  const _Grille({required this.chiffres});
+
+  final List<Widget> chiffres;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (var i = 0; i < chiffres.length; i += 3) ...[
+          if (i > 0) const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var k = i; k < i + 3; k++) Expanded(child: k < chiffres.length ? chiffres[k] : const SizedBox()),
+            ],
+          ),
         ],
-      ),
+      ],
+    );
+  }
+}
+
+/// Tous les participants d'un coup d'œil : un anneau par appareil, vert
+/// quand il a tout reçu, orange s'il est déconnecté. La liste détaillée
+/// suit dessous.
+class _Mosaique extends StatelessWidget {
+  const _Mosaique({required this.parts});
+
+  final List<Transfert> parts;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final t in parts)
+          Tooltip(
+            message: t.pair.nom.isEmpty ? t.pair.courte : t.pair.nom,
+            child: AnneauProgression(
+              valeur: t.progression,
+              taille: 34,
+              epaisseur: 3.5,
+              couleur: t.etat == EtatTransfert.termine ? p.succes : (t.etat == EtatTransfert.interrompu ? p.attention : null),
+              centre: Icon(
+                t.etat == EtatTransfert.termine ? Icons.check_rounded : AvatarAppareil.icone(t.pair.plateforme),
+                size: 15,
+                color: t.etat == EtatTransfert.termine ? p.succes : p.texte2,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

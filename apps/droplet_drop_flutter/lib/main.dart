@@ -86,7 +86,6 @@ class _DropletDropState extends State<DropletDrop> with WidgetsBindingObserver {
           GlobalCupertinoLocalizations.delegate,
         ],
         theme: themeDroplet(palette),
-        ),
         builder: (context, enfant) => AnnotatedRegion<SystemUiOverlayStyle>(
           value: sombre ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
           child: enfant!,

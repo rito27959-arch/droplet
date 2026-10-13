@@ -77,5 +77,6 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
       thumbColor: WidgetStatePropertyAll(palette.texte3.withValues(alpha: 0.5)),
       radius: const Radius.circular(8),
       thickness: const WidgetStatePropertyAll(6),
-    );
+    ),
+  );
 }
