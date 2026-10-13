@@ -7,5 +7,139 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-String greet({required String name}) =>
-    RustLib.instance.api.crateApiSimpleGreet(name: name);
+// These functions are ignored because they are not marked as `pub`: `diffuser`, `g`, `info`, `sources`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Global`
+
+/// Démarre le moteur (une seule fois), la découverte et l'historique.
+Future<InfoAppareil> demarrer({
+  required String nom,
+  required String plateforme,
+  required String donnees,
+  required String reception,
+}) => RustLib.instance.api.crateApiSimpleDemarrer(
+  nom: nom,
+  plateforme: plateforme,
+  donnees: donnees,
+  reception: reception,
+);
+
+/// Le flux des événements (plusieurs écouteurs possibles).
+Stream<String> evenements() => RustLib.instance.api.crateApiSimpleEvenements();
+
+/// Les appareils découverts en ce moment (JSON : liste).
+String appareils() => RustLib.instance.api.crateApiSimpleAppareils();
+
+/// La découverte marche-t-elle sur ce réseau / cette plateforme ?
+bool decouverteActive() =>
+    RustLib.instance.api.crateApiSimpleDecouverteActive();
+
+/// Envoie des fichiers à un ou plusieurs appareils. [cibles] : JSON,
+/// `[{"adresses":["192.168.1.12:47321"],"empreinte":"…","nom":"…"}]`.
+/// Rend l'identifiant du groupe d'envoi.
+Future<String> envoyer({
+  required List<String> chemins,
+  required List<String> noms,
+  required String cibles,
+}) => RustLib.instance.api.crateApiSimpleEnvoyer(
+  chemins: chemins,
+  noms: noms,
+  cibles: cibles,
+);
+
+/// Une adresse saisie à la main (« 192.168.1.12 » ou « 192.168.1.12:47321 »).
+String cibleManuelle({required String adresse, String? empreinte}) => RustLib
+    .instance
+    .api
+    .crateApiSimpleCibleManuelle(adresse: adresse, empreinte: empreinte);
+
+bool repondre({required String offre, required bool accepter}) => RustLib
+    .instance
+    .api
+    .crateApiSimpleRepondre(offre: offre, accepter: accepter);
+
+void pause({required String id}) =>
+    RustLib.instance.api.crateApiSimplePause(id: id);
+
+void reprendre({required String id}) =>
+    RustLib.instance.api.crateApiSimpleReprendre(id: id);
+
+void annuler({required String id}) =>
+    RustLib.instance.api.crateApiSimpleAnnuler(id: id);
+
+/// Crée une session Group Drop ; rend son JSON (`id`, `invitation`,
+/// `expire`, `total`, `fichiers`).
+Future<String> creerSession({
+  required List<String> chemins,
+  required List<String> noms,
+  required int minutes,
+  required bool demarrer,
+}) => RustLib.instance.api.crateApiSimpleCreerSession(
+  chemins: chemins,
+  noms: noms,
+  minutes: minutes,
+  demarrer: demarrer,
+);
+
+/// Rejoint une session à partir de son invitation (QR code ou lien).
+Future<String> rejoindre({required String invitation, String? adresse}) =>
+    RustLib.instance.api.crateApiSimpleRejoindre(
+      invitation: invitation,
+      adresse: adresse,
+    );
+
+/// Lit une invitation sans la rejoindre (pour l'aperçu) : JSON ou erreur.
+String lireInvitation({required String invitation}) =>
+    RustLib.instance.api.crateApiSimpleLireInvitation(invitation: invitation);
+
+void definirNom({required String nom}) =>
+    RustLib.instance.api.crateApiSimpleDefinirNom(nom: nom);
+
+void definirReception({required String dossier}) =>
+    RustLib.instance.api.crateApiSimpleDefinirReception(dossier: dossier);
+
+/// Faire confiance (ou plus) aux envois de cet appareil.
+void definirConfiance({required String empreinte, required bool confiance}) =>
+    RustLib.instance.api.crateApiSimpleDefinirConfiance(
+      empreinte: empreinte,
+      confiance: confiance,
+    );
+
+List<String> confiance() => RustLib.instance.api.crateApiSimpleConfiance();
+
+String historique({required String recherche}) =>
+    RustLib.instance.api.crateApiSimpleHistorique(recherche: recherche);
+
+void effacerHistorique({String? id}) =>
+    RustLib.instance.api.crateApiSimpleEffacerHistorique(id: id);
+
+/// Les états finaux, pour l'interface.
+String version() => RustLib.instance.api.crateApiSimpleVersion();
+
+/// Ce que l'appareil sait de lui-même.
+class InfoAppareil {
+  final String empreinte;
+  final String courte;
+  final int port;
+  final List<String> adresses;
+
+  const InfoAppareil({
+    required this.empreinte,
+    required this.courte,
+    required this.port,
+    required this.adresses,
+  });
+
+  @override
+  int get hashCode =>
+      empreinte.hashCode ^ courte.hashCode ^ port.hashCode ^ adresses.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InfoAppareil &&
+          runtimeType == other.runtimeType &&
+          empreinte == other.empreinte &&
+          courte == other.courte &&
+          port == other.port &&
+          adresses == other.adresses;
+}
