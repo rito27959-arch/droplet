@@ -1,0 +1,47 @@
+name: Intégration serveurs
+on:
+  push:
+    branches: [verif-serveurs]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: test, POSTGRES_DB: droplet }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: |
+          set +e
+          python3 - <<'PY' > /tmp/env.sh
+          import os, base64
+          from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+          from cryptography.hazmat.primitives import serialization
+          g = os.urandom(32); k = X25519PrivateKey.from_private_bytes(g)
+          p = k.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+          print(f"export CLE_SERVEUR={base64.b64encode(g).decode()}")
+          print(f"export CLE_PUBLIQUE={base64.b64encode(p).decode()}")
+          print("export CLE_INTERNE=interne-de-test")
+          print("export DATABASE_URL=postgres://postgres:test@127.0.0.1:5432/droplet")
+          print("export DIRECTORY_URL=http://127.0.0.1:8080")
+          PY
+          . /tmp/env.sh
+          (cd droplet_directory && dart pub get >/dev/null && dart compile exe lib/server.dart -o /tmp/annuaire) > /tmp/build.txt 2>&1
+          (cd droplet_mailbox && dart pub get >/dev/null && dart compile exe lib/server.dart -o /tmp/boite) >> /tmp/build.txt 2>&1
+          PORT=8080 /tmp/annuaire > /tmp/annuaire.log 2>&1 &
+          sleep 3
+          PORT=8081 /tmp/boite > /tmp/boite.log 2>&1 &
+          sleep 3
+          python3 outils/test_securite.py > /tmp/r.txt 2>&1; echo "code: $?" >> /tmp/r.txt
+          { cat /tmp/r.txt; echo "== annuaire"; tail -30 /tmp/annuaire.log; echo "== boite"; tail -30 /tmp/boite.log; echo "== build"; tail -20 /tmp/build.txt; } > /tmp/journal.txt
+          cat /tmp/journal.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-integration; git rm -rfq . >/dev/null
+          cp /tmp/journal.txt journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-integration
+          grep -q "RÉSULTAT OK" /tmp/r.txt

@@ -1,0 +1,91 @@
+# Test d'intégration : annuaire + boîte aux lettres + Postgres.
+import base64, hashlib, hmac, json, os, subprocess, sys, threading, time, urllib.request
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes, serialization
+
+ANN, BOI = 'http://127.0.0.1:8080', 'http://127.0.0.1:8081'
+SERVEUR_PUB = X25519PublicKey.from_public_bytes(base64.b64decode(os.environ['CLE_PUBLIQUE']))
+ok = True
+def verifier(nom, cond):
+    global ok
+    print(('✅ ' if cond else '❌ ') + nom); ok &= bool(cond)
+
+def req(url, methode='GET', corps=None, entetes=None):
+    data = json.dumps(corps).encode() if corps is not None else None
+    r = urllib.request.Request(url, method=methode, data=data, headers={'content-type': 'application/json', **(entetes or {})})
+    try:
+        with urllib.request.urlopen(r, timeout=40) as x: return x.status, x.read().decode()
+    except urllib.error.HTTPError as e: return e.code, e.read().decode()
+
+class Appareil:
+    def __init__(s, nom):
+        s.cle = X25519PrivateKey.generate()
+        s.pub = base64.b64encode(s.cle.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
+        s.id = hashlib.sha256((nom + str(time.time())).encode()).hexdigest()
+        s.k = HKDF(hashes.SHA256(), 32, salt=b'droplet-mesh', info=b'droplet-auth-v1').derive(s.cle.exchange(SERVEUR_PUB))
+    def signer(s, methode, chemin, corps=b''):
+        ts = str(int(time.time()))
+        canon = f"{methode}\n{chemin}\n{ts}\n{hashlib.sha256(corps).hexdigest()}"
+        sig = base64.urlsafe_b64encode(hmac.new(s.k, canon.encode(), hashlib.sha256).digest()).decode().rstrip('=')
+        return {'x-droplet-id': s.id, 'x-droplet-ts': ts, 'x-droplet-sig': sig}
+    def inscription(s, signe=False, pub=None):
+        corps = {'peerId': s.id, 'pseudo': 'T', 'onion': 'x.onion', 'publicKey': pub or s.pub}
+        brut = json.dumps(corps).encode()
+        e = s.signer('POST', '/register', brut) if signe else {}
+        r = urllib.request.Request(ANN + '/register', method='POST', data=brut, headers={'content-type': 'application/json', **e})
+        try:
+            with urllib.request.urlopen(r) as x: return x.status
+        except urllib.error.HTTPError as e2: return e2.code
+
+alice, bob, pirate = Appareil('alice'), Appareil('bob'), Appareil('pirate')
+verifier('inscription sans signature (ancienne app) acceptée', alice.inscription() == 200)
+verifier('bob inscrit', bob.inscription() == 200)
+verifier('le pirate ne peut pas remplacer la clé d’Alice', pirate.inscription(pub=pirate.pub) == 200 and
+         req(ANN + '/register', 'POST', {'peerId': alice.id, 'pseudo': 'P', 'onion': 'p.onion', 'publicKey': pirate.pub})[0] == 409)
+verifier('/notify refusé sans clé interne', req(ANN + '/notify', 'POST', {'peerId': alice.id, 'title': 'x', 'body': 'y'})[0] == 403)
+verifier('/notify accepté avec la clé interne', req(ANN + '/notify', 'POST', {'peerId': alice.id, 'title': 'x', 'body': 'y'}, {'x-cle-interne': os.environ['CLE_INTERNE']})[0] == 200)
+
+# Boîte aux lettres
+st, c = req(BOI + '/messages', 'POST', {'from': bob.id, 'to': alice.id, 'payload': 'chiffre-1'})
+verifier('dépôt sans signature (ancienne app)', st == 200)
+st, c = req(BOI + '/messages/' + alice.id)
+verifier('relève sans signature tant qu’Alice n’a jamais signé', st == 200 and json.loads(c)['count'] == 1)
+chemin = '/messages/' + alice.id
+st, c = req(BOI + chemin, entetes=alice.signer('GET', chemin))
+verifier('relève signée acceptée', st == 200)
+verifier('après signature, relève non signée REFUSÉE', req(BOI + chemin)[0] == 401)
+verifier('signature du pirate refusée', req(BOI + chemin, entetes={**pirate.signer('GET', chemin), 'x-droplet-id': alice.id})[0] == 401)
+e = alice.signer('GET', chemin); req(BOI + chemin, entetes=e)
+verifier('rejeu de la même signature refusé', req(BOI + chemin, entetes=e)[0] == 401)
+vieux = alice.signer('GET', chemin); vieux['x-droplet-ts'] = str(int(time.time()) - 900)
+verifier('signature périmée refusée', req(BOI + chemin, entetes=vieux)[0] == 401)
+verifier('le pirate ne dépose plus au nom d’Alice', req(BOI + '/messages', 'POST', {'from': alice.id, 'to': bob.id, 'payload': 'faux'})[0] == 401)
+
+# Attente longue
+resultat = {}
+def attendre():
+    t0 = time.time(); st, c = req(BOI + chemin + '?attendre=20', entetes=alice.signer('GET', chemin))
+    resultat['duree'] = time.time() - t0; resultat['n'] = json.loads(c)['count'] if st == 200 else -1
+id_msg = json.loads(req(BOI + chemin, entetes=alice.signer('GET', chemin))[1])['messages'][0]['id']
+req(BOI + chemin + '/' + id_msg, 'DELETE', entetes=alice.signer('DELETE', chemin + '/' + id_msg))
+th = threading.Thread(target=attendre); th.start(); time.sleep(2)
+req(BOI + '/messages', 'POST', {'from': bob.id, 'to': alice.id, 'payload': 'chiffre-2'}); th.join()
+verifier(f"attente longue réveillée par le dépôt ({resultat.get('duree', 0):.1f} s)", resultat.get('n') == 1 and resultat['duree'] < 8)
+
+# Persistance : on redémarre la boîte
+subprocess.run(['pkill', '-f', '/tmp/boite'])
+time.sleep(1); subprocess.Popen(['/tmp/boite'], env={**os.environ, 'PORT': '8081'}); time.sleep(3)
+st, c = req(BOI + chemin, entetes=alice.signer('GET', chemin))
+verifier('le message survit au redémarrage', st == 200 and json.loads(c)['count'] == 1)
+subprocess.run(['pkill', '-f', '/tmp/annuaire'])
+time.sleep(1); subprocess.Popen(['/tmp/annuaire'], env={**os.environ, 'PORT': '8080'}); time.sleep(3)
+verifier('la protection d’Alice survit au redémarrage de l’annuaire',
+         req(ANN + '/register', 'POST', {'peerId': alice.id, 'pseudo': 'P', 'onion': 'p.onion', 'publicKey': pirate.pub})[0] == 409)
+st, c = req(ANN + '/search?q=T')
+verifier('l’inscription survit au redémarrage', st == 200 and len(json.loads(c)['results']) >= 1)
+
+# Débit
+codes = [req(BOI + '/messages', 'POST', {'from': bob.id, 'to': pirate.id, 'payload': 'x'})[0] for _ in range(80)]
+verifier(f'inondation freinée (429 après {codes.index(429) if 429 in codes else "∞"} dépôts)', 429 in codes)
+print('RÉSULTAT', 'OK' if ok else 'ÉCHEC'); sys.exit(0 if ok else 1)
