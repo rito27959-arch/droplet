@@ -77,18 +77,18 @@ class Securite {
 
   /// Lit CLE_SERVEUR (graine X25519 en base64), CLE_INTERNE et
   /// EXIGER_SIGNATURE dans l'environnement.
-  static Future<Securite> depuisEnvironnement() async {
+  static Future<Securite> depuisEnvironnement({bool silencieux = false}) async {
     final graine = Platform.environment['CLE_SERVEUR'];
     SimpleKeyPair? cle;
     if (graine != null && graine.isNotEmpty) {
       cle = await X25519().newKeyPairFromSeed(base64.decode(base64.normalize(graine)));
       final pub = await cle.extractPublicKey();
-      print('[Sécurité] Clé publique du serveur : ${base64.encode(pub.bytes)}');
-    } else {
+      if (!silencieux) print('[Sécurité] Clé publique du serveur : ${base64.encode(pub.bytes)}');
+    } else if (!silencieux) {
       print('[Sécurité] ⚠️ CLE_SERVEUR absente : les signatures ne peuvent pas être vérifiées');
     }
     final interne = Platform.environment['CLE_INTERNE'] ?? '';
-    if (interne.isEmpty) print('[Sécurité] ⚠️ CLE_INTERNE absente : /notify refusera tout');
+    if (interne.isEmpty && !silencieux) print('[Sécurité] ⚠️ CLE_INTERNE absente : /notify refusera tout');
     return Securite._(cle, interne, Platform.environment['EXIGER_SIGNATURE'] == '1');
   }
 
@@ -216,9 +216,11 @@ String adresseClient(Request r) {
   return info is HttpConnectionInfo ? info.remoteAddress.address : 'inconnu';
 }
 
-/// Middleware : limite globale par adresse IP.
-Middleware limiteParIp(Debit debit) => (Handler suivant) => (Request r) {
-      if (r.url.path == 'health') return suivant(r);
+/// Middleware : limite globale par adresse IP. Les appels de nos propres
+/// serveurs ([exempter]) n'y sont pas soumis : la boîte aux lettres réveille
+/// des milliers de téléphones par minute depuis une seule adresse.
+Middleware limiteParIp(Debit debit, {bool Function(Request)? exempter}) => (Handler suivant) => (Request r) {
+      if (r.url.path == 'health' || (exempter?.call(r) ?? false)) return suivant(r);
       if (!debit.autoriser(adresseClient(r))) {
         return Response(429, body: '{"error":"trop de requêtes"}', headers: {
           'content-type': 'application/json',

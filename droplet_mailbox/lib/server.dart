@@ -27,6 +27,10 @@
 //   • LIMITÉ. Par adresse IP, par expéditeur et par destinataire : un
 //     client fou ou malveillant ne sature ni le serveur ni la boîte d'un
 //     autre. Taille d'un message et d'une boîte bornées.
+//   • SUR TOUS LES CŒURS. Dart n'utilise qu'un cœur par isolat : le service
+//     lance une copie de lui-même par cœur (variable COPIES, 8 au plus),
+//     toutes sur le même port. Mesuré : une copie sature vers 10 000
+//     appareils en attente longue ; huit en tiennent bien davantage.
 //   • ÉCONOME. L'attente longue remplace l'interrogation toutes les 30 s :
 //     une requête qui attend ne coûte presque rien, et le message arrive
 //     tout de suite au lieu d'attendre le tour suivant.
@@ -35,6 +39,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
@@ -56,8 +61,19 @@ final _hasard = Random.secure();
 final _http = http.Client();
 final _annuaire = Platform.environment['DIRECTORY_URL'] ?? 'https://droplet-directory-production.up.railway.app';
 
-final _depotsParExpediteur = Debit(capacite: 60, parMinute: 120);
-final _depotsParDestinataire = Debit(capacite: 200, parMinute: 300);
+/// Le nombre de copies (isolats) du service, une par cœur.
+final int _copies = () {
+  final demande = int.tryParse(Platform.environment['COPIES'] ?? '');
+  return (demande ?? Platform.numberOfProcessors).clamp(1, 8);
+}();
+
+/// Chaque copie tient ses propres compteurs : on partage les limites entre
+/// elles pour que le total reste celui voulu.
+Debit _limite(int capacite, int parMinute) =>
+    Debit(capacite: max(2, capacite ~/ _copies), parMinute: max(2, parMinute ~/ _copies));
+
+final _depotsParExpediteur = _limite(60, 120);
+final _depotsParDestinataire = _limite(200, 300);
 
 /// Les relèves en attente sur cette copie du service, par destinataire.
 final _attentes = <String, List<Completer<void>>>{};
@@ -76,9 +92,18 @@ Endpoint _endpoint() {
   );
 }
 
-Future<void> _preparerBase() async {
-  final reglages = PoolSettings(maxConnectionCount: 20, sslMode: SslMode.disable);
+/// Ouvre les connexions de CETTE copie. Postgres accepte 100 connexions :
+/// les copies se partagent 80, il en reste pour l'annuaire.
+Future<void> _ouvrirBase() async {
+  final reglages = PoolSettings(maxConnectionCount: max(4, 80 ~/ _copies), sslMode: SslMode.disable);
   _db = Pool.withEndpoints([_endpoint()], settings: reglages);
+  // Les dépôts faits sur une AUTRE copie du service réveillent nos attentes.
+  final ecoute = await Connection.open(_endpoint(), settings: ConnectionSettings(sslMode: SslMode.disable));
+  ecoute.channels['boite'].listen(_reveiller);
+}
+
+/// Crée les tables, une seule fois, avant de lancer les copies.
+Future<void> _preparerBase() async {
   await _db.execute('''
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
@@ -99,10 +124,6 @@ Future<void> _preparerBase() async {
       cree TIMESTAMPTZ NOT NULL DEFAULT now(),
       vu TIMESTAMPTZ NOT NULL DEFAULT now()
     )''');
-
-  // Les dépôts faits sur une AUTRE copie du service réveillent nos attentes.
-  final ecoute = await Connection.open(_endpoint(), settings: ConnectionSettings(sslMode: SslMode.disable));
-  ecoute.channels['boite'].listen(_reveiller);
 }
 
 Future<({String? cle, bool signe})> _compte(String peerId) async {
@@ -284,6 +305,7 @@ final _routes = Router()
 
 Future<void> main() async {
   _securite = await Securite.depuisEnvironnement();
+  await _ouvrirBase();
   await _preparerBase();
 
   // Le ménage : les messages jamais relevés au bout de 30 jours.
@@ -299,14 +321,28 @@ Future<void> main() async {
     }
   });
 
+  for (var i = 1; i < _copies; i++) {
+    await Isolate.spawn(_copie, i, debugName: 'boite-$i');
+  }
+  await _servir(0);
+  print('[Boîte] Prête — $_copies copie(s), stockage Postgres');
+}
+
+/// Une copie supplémentaire : ses propres connexions, le même port.
+Future<void> _copie(int numero) async {
+  _securite = await Securite.depuisEnvironnement(silencieux: true);
+  await _ouvrirBase();
+  await _servir(numero);
+}
+
+Future<void> _servir(int numero) async {
   final handler = const Pipeline()
-      .addMiddleware(journalSobre('Boîte'))
-      .addMiddleware(limiteParIp(Debit(capacite: 120, parMinute: 600)))
+      .addMiddleware(journalSobre(numero == 0 ? 'Boîte' : 'Boîte $numero'))
+      .addMiddleware(limiteParIp(_limite(120, 600)))
       .addHandler(_routes.call);
 
   final port = int.parse(Platform.environment['PORT'] ?? '8081');
-  final serveur = await io.serve(handler, InternetAddress.anyIPv4, port);
+  final serveur = await io.serve(handler, InternetAddress.anyIPv4, port, shared: true);
   serveur.autoCompress = true;
   serveur.idleTimeout = const Duration(seconds: 40);
-  print('[Boîte] Prête sur le port ${serveur.port} — stockage Postgres');
 }
