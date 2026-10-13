@@ -1,0 +1,11 @@
+health 200
+vide 204 (attendu 204)
+depot 201 (attendu 201)
+releve 200 cors https://web.dropletmesh.app
+dechiffre {'peerId': 'test-ci', 'pseudo': 'Test', 'appareil': 'LJy7pJDPN1ip', 'nom': 'CI · Linux'}
+deuxieme releve 204 (attendu 204 : remise une seule fois)
+preflight 204 GET, POST, DELETE, OPTIONS
+etat {"lie":true}
+revocation 200 {"lie":false}
+OK
+code: 0
