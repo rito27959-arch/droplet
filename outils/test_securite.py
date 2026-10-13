@@ -75,11 +75,11 @@ verifier(f"attente longue réveillée par le dépôt ({resultat.get('duree', 0):
 
 # Persistance : on redémarre la boîte
 subprocess.run(['pkill', '-f', '/tmp/boite'])
-time.sleep(1); subprocess.Popen(['/tmp/boite'], env={**os.environ, 'PORT': '8081'}); time.sleep(3)
+time.sleep(1); subprocess.Popen(['/tmp/boite'], env={**os.environ, 'PORT': '8081'}, stdout=open('/tmp/boite.log', 'a'), stderr=subprocess.STDOUT); time.sleep(3)
 st, c = req(BOI + chemin, entetes=alice.signer('GET', chemin))
 verifier('le message survit au redémarrage', st == 200 and json.loads(c)['count'] == 1)
 subprocess.run(['pkill', '-f', '/tmp/annuaire'])
-time.sleep(1); subprocess.Popen(['/tmp/annuaire'], env={**os.environ, 'PORT': '8080'}); time.sleep(3)
+time.sleep(1); subprocess.Popen(['/tmp/annuaire'], env={**os.environ, 'PORT': '8080'}, stdout=open('/tmp/annuaire.log', 'a'), stderr=subprocess.STDOUT); time.sleep(3)
 verifier('la protection d’Alice survit au redémarrage de l’annuaire',
          req(ANN + '/register', 'POST', {'peerId': alice.id, 'pseudo': 'P', 'onion': 'p.onion', 'publicKey': pirate.pub})[0] in (401, 409))
 verifier('Alice (signée) se réinscrit normalement', alice.inscription(signe=True) == 200)

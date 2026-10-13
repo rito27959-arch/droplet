@@ -43,6 +43,7 @@
 // envoyer une notification à quelqu'un.
 // ============================================================================
 
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
@@ -203,10 +204,14 @@ class Debit {
   }
 }
 
-/// L'adresse du client, derrière le proxy de Railway.
+/// L'adresse du client, derrière le proxy de Railway. Railway écrit
+/// lui-même X-Real-IP ; dans X-Forwarded-For, c'est la DERNIÈRE adresse
+/// qu'il ajoute — la première peut être inventée par le client.
 String adresseClient(Request r) {
+  final reelle = r.headers['x-real-ip'];
+  if (reelle != null && reelle.isNotEmpty) return reelle.trim();
   final fwd = r.headers['x-forwarded-for'];
-  if (fwd != null && fwd.isNotEmpty) return fwd.split(',').first.trim();
+  if (fwd != null && fwd.isNotEmpty) return fwd.split(',').last.trim();
   final info = r.context['shelf.io.connection_info'];
   return info is HttpConnectionInfo ? info.remoteAddress.address : 'inconnu';
 }
@@ -222,6 +227,37 @@ Middleware limiteParIp(Debit debit) => (Handler suivant) => (Request r) {
       }
       return suivant(r);
     };
+
+/// Un journal sobre, fait pour tenir la charge : jamais de contenu, jamais
+/// une ligne par requête (à 100 000 appareils, ce serait des millions de
+/// lignes par heure). Les erreurs serveur et les requêtes très lentes sont
+/// écrites tout de suite ; le reste est résumé une fois par minute.
+Middleware journalSobre(String nom) {
+  final bilan = <int, int>{};
+  var lentes = 0;
+  Timer.periodic(const Duration(minutes: 1), (_) {
+    if (bilan.isEmpty) return;
+    final total = bilan.values.fold(0, (a, b) => a + b);
+    final detail = (bilan.keys.toList()..sort()).map((c) => '$c×${bilan[c]}').join(' ');
+    print('[$nom] dernière minute : $total requêtes ($detail)${lentes > 0 ? ' · $lentes lentes' : ''}');
+    bilan.clear();
+    lentes = 0;
+  });
+  return (Handler suivant) => (Request r) async {
+        final debut = DateTime.now();
+        final rep = await suivant(r);
+        final ms = DateTime.now().difference(debut).inMilliseconds;
+        bilan[rep.statusCode] = (bilan[rep.statusCode] ?? 0) + 1;
+        // Une attente longue dure 20 s par nature : elle n'est pas « lente ».
+        final attente = r.url.queryParameters.containsKey('attendre');
+        if (!attente && ms > 2000) lentes++;
+        if (rep.statusCode >= 500 || (!attente && ms > 5000)) {
+          final chemin = r.url.path.length > 24 ? '${r.url.path.substring(0, 24)}…' : r.url.path;
+          print('[$nom] ${r.method} /$chemin → ${rep.statusCode} ($ms ms)');
+        }
+        return rep;
+      };
+}
 
 Response json(Object corps, {int statut = 200, Map<String, String>? enTetes}) => Response(
       statut,

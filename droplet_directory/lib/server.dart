@@ -1582,7 +1582,7 @@ Future<void> main(List<String> args) async {
   });
 
   final handler = const Pipeline()
-      .addMiddleware(logRequests())
+      .addMiddleware(journalSobre('Directory'))
       .addMiddleware(limiteParIp(Debit(capacite: 120, parMinute: 600)))
       .addMiddleware(Liaisons.cors())
       .addHandler(_router.call);

@@ -300,7 +300,7 @@ Future<void> main() async {
   });
 
   final handler = const Pipeline()
-      .addMiddleware(_journal())
+      .addMiddleware(journalSobre('Boîte'))
       .addMiddleware(limiteParIp(Debit(capacite: 120, parMinute: 600)))
       .addHandler(_routes.call);
 
@@ -310,14 +310,3 @@ Future<void> main() async {
   serveur.idleTimeout = const Duration(seconds: 40);
   print('[Boîte] Prête sur le port ${serveur.port} — stockage Postgres');
 }
-
-/// Un journal sobre : pas d'identifiant complet, jamais de contenu.
-Middleware _journal() => (Handler suivant) => (Request r) async {
-      final debut = DateTime.now();
-      final rep = await suivant(r);
-      if (rep.statusCode >= 400 || r.method != 'GET') {
-        final chemin = r.url.path.length > 24 ? '${r.url.path.substring(0, 24)}…' : r.url.path;
-        print('[Boîte] ${r.method} /$chemin → ${rep.statusCode} (${DateTime.now().difference(debut).inMilliseconds} ms)');
-      }
-      return rep;
-    };
