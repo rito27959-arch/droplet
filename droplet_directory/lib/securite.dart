@@ -50,6 +50,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart' as c;
 import 'package:cryptography/cryptography.dart';
+import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
 
 enum Verdict {
@@ -71,6 +72,13 @@ class Securite {
   final bool exigerSignature;
 
   static const _fenetre = Duration(minutes: 5);
+
+  /// Le registre PARTAGÉ des signatures déjà vues (Postgres) : rend `true`
+  /// la première fois qu'une signature se présente. Indispensable dès que
+  /// le service tourne en plusieurs copies (isolats, répliques) — la
+  /// mémoire de l'une ne voit pas les requêtes reçues par l'autre, et une
+  /// requête rejouée vers une autre copie passerait.
+  Future<bool> Function(String signature)? premiereFois;
   final _x25519 = X25519();
   final _cache = LinkedHashMap<String, List<int>>();
   final _vues = <String, DateTime>{};
@@ -120,6 +128,15 @@ class Securite {
     _oublierVieilles();
     if (_vues.containsKey(sig)) return Verdict.invalide;
     _vues[sig] = DateTime.now();
+    final registre = premiereFois;
+    if (registre != null) {
+      try {
+        if (!await registre(sig)) return Verdict.invalide;
+      } catch (_) {
+        // Base injoignable : la mémoire locale reste la seule garde, et la
+        // requête n'est pas bloquée pour autant.
+      }
+    }
     return Verdict.signe;
   }
 
@@ -266,3 +283,22 @@ Response json(Object corps, {int statut = 200, Map<String, String>? enTetes}) =>
       body: jsonEncode(corps),
       headers: {'content-type': 'application/json', ...?enTetes},
     );
+
+/// Le registre des signatures vues, dans Postgres (table non journalisée :
+/// rapide, et rien de grave à la perdre au redémarrage de la base — les
+/// signatures ne valent de toute façon que 5 minutes).
+Future<void> preparerRegistreSignatures(Pool db) async {
+  await db.execute(
+      'CREATE UNLOGGED TABLE IF NOT EXISTS signatures_vues (sig TEXT PRIMARY KEY, vu TIMESTAMPTZ NOT NULL DEFAULT now())');
+}
+
+Future<bool> Function(String) registreSignatures(Pool db) => (sig) async {
+      final r = await db.execute(
+        Sql.named('INSERT INTO signatures_vues (sig) VALUES (@s) ON CONFLICT DO NOTHING'),
+        parameters: {'s': sig},
+      );
+      return r.affectedRows == 1;
+    };
+
+Future<void> oublierVieillesSignatures(Pool db) =>
+    db.execute("DELETE FROM signatures_vues WHERE vu < now() - interval '15 minutes'");

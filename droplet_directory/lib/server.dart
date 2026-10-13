@@ -1523,6 +1523,8 @@ Future<void> main(List<String> args) async {
   try {
     _base = await Persistance.ouvrir();
     if (_base != null) {
+      _securite.premiereFois = _base!.registre;
+      Timer.periodic(const Duration(minutes: 5), (_) => _base?.oublierVieillesSignatures2().catchError((_) {}));
       _comptes.addAll(await _base!.comptes());
       for (final l in await _base!.annuaire()) {
         _db.register(DirectoryEntry(

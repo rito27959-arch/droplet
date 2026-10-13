@@ -100,6 +100,7 @@ Future<void> _ouvrirBase() async {
   final budget = int.tryParse(Platform.environment['CONNEXIONS_BASE'] ?? '') ?? 80;
   final reglages = PoolSettings(maxConnectionCount: max(4, budget ~/ _copies), sslMode: SslMode.disable);
   _db = Pool.withEndpoints([_endpoint()], settings: reglages);
+  _securite.premiereFois = registreSignatures(_db);
   // Les dépôts faits sur une AUTRE copie du service réveillent nos attentes.
   final ecoute = await Connection.open(_endpoint(), settings: ConnectionSettings(sslMode: SslMode.disable));
   ecoute.channels['boite'].listen(_reveiller);
@@ -107,6 +108,7 @@ Future<void> _ouvrirBase() async {
 
 /// Crée les tables, une seule fois, avant de lancer les copies.
 Future<void> _preparerBase() async {
+  await preparerRegistreSignatures(_db);
   await _db.execute('''
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
@@ -310,6 +312,8 @@ Future<void> main() async {
   _securite = await Securite.depuisEnvironnement();
   await _ouvrirBase();
   await _preparerBase();
+
+  Timer.periodic(const Duration(minutes: 5), (_) => oublierVieillesSignatures(_db).catchError((_) {}));
 
   // Le ménage : les messages jamais relevés au bout de 30 jours.
   Timer.periodic(const Duration(hours: 1), (_) async {

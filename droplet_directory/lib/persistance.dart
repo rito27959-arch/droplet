@@ -19,6 +19,8 @@ import 'dart:io';
 
 import 'package:postgres/postgres.dart';
 
+import 'securite.dart';
+
 class Persistance {
   Persistance._(this._db);
 
@@ -61,8 +63,13 @@ class Persistance {
         fcm TEXT,
         vu TIMESTAMPTZ NOT NULL DEFAULT now()
       )''');
+    await preparerRegistreSignatures(db);
     return Persistance._(db);
   }
+
+  /// Voir `Securite.premiereFois`.
+  Future<bool> Function(String) get registre => registreSignatures(_db);
+  Future<void> oublierVieillesSignatures2() => oublierVieillesSignatures(_db);
 
   Future<List<ResultRow>> annuaire() =>
       _db.execute('SELECT peer_id, pseudo, onion, cle, fcm, vu FROM annuaire');
