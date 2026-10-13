@@ -1,0 +1,323 @@
+[1m[92m    Updating[0m crates.io index
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m flutter_rust_bridge_codegen v2.13.0
+[1m[92m  Installing[0m flutter_rust_bridge_codegen v2.13.0
+[1m[92m    Updating[0m crates.io index
+[1m[33mwarning[0m: package `futures-util v0.3.29` in Cargo.lock is yanked in registry `crates-io`
+  [1m[94m|[0m
+  [1m[94m= [0m[1mhelp[0m: consider running without --locked
+[1m[92m    Updating[0m crates.io index
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m addr2line v0.20.0
+[1m[92m  Downloaded[0m anstream v0.6.15
+[1m[92m  Downloaded[0m adler v1.0.2
+[1m[92m  Downloaded[0m anstyle v1.0.1
+[1m[92m  Downloaded[0m aho-corasick v1.0.3
+[1m[92m  Downloaded[0m anyhow v1.0.86
+[1m[92m  Downloaded[0m convert_case v0.5.0
+[1m[92m  Downloaded[0m bitflags v1.3.2
+[1m[92m  Downloaded[0m cargo-platform v0.1.3
+[1m[92m  Downloaded[0m clap_lex v0.6.0
+[1m[92m  Downloaded[0m colored v1.9.4
+[1m[92m  Downloaded[0m memchr v2.5.0
+[1m[92m  Downloaded[0m autocfg v1.1.0
+[1m[92m  Downloaded[0m serial_test_derive v2.0.0
+[1m[92m  Downloaded[0m cpufeatures v0.2.12
+[1m[92m  Downloaded[0m crypto-common v0.1.6
+[1m[92m  Downloaded[0m filetime v0.2.23
+[1m[92m  Downloaded[0m colorchoice v1.0.0
+[1m[92m  Downloaded[0m cfg-if v1.0.0
+[1m[92m  Downloaded[0m glob v0.3.1
+[1m[92m  Downloaded[0m cargo_metadata v0.14.2
+[1m[92m  Downloaded[0m clap_derive v4.4.7
+[1m[92m  Downloaded[0m generic-array v0.14.7
+[1m[92m  Downloaded[0m equivalent v1.0.1
+[1m[92m  Downloaded[0m futures-channel v0.3.29
+[1m[92m  Downloaded[0m anstyle-parse v0.2.1
+[1m[92m  Downloaded[0m cargo_toml v0.21.0
+[1m[92m  Downloaded[0m console v0.16.0
+[1m[92m  Downloaded[0m include_dir_macros v0.7.3
+[1m[92m  Downloaded[0m anstyle-query v1.0.0
+[1m[92m  Downloaded[0m block-buffer v0.10.4
+[1m[92m  Downloaded[0m futures-io v0.3.29
+[1m[92m  Downloaded[0m heck v0.4.1
+[1m[92m  Downloaded[0m camino v1.1.6
+[1m[92m  Downloaded[0m clap v4.4.8
+[1m[92m  Downloaded[0m futures v0.3.29
+[1m[92m  Downloaded[0m futures-task v0.3.29
+[1m[92m  Downloaded[0m iana-time-zone v0.1.57
+[1m[92m  Downloaded[0m inotify-sys v0.1.5
+[1m[92m  Downloaded[0m cc v1.0.82
+[1m[92m  Downloaded[0m is_terminal_polyfill v1.70.1
+[1m[92m  Downloaded[0m utf8parse v0.2.1
+[1m[92m  Downloaded[0m walkdir v2.4.0
+[1m[92m  Downloaded[0m unsafe-libyaml v0.2.11
+[1m[92m  Downloaded[0m version_check v0.9.4
+[1m[92m  Downloaded[0m fastrand v2.0.0
+[1m[92m  Downloaded[0m futures-executor v0.3.29
+[1m[92m  Downloaded[0m lazy_static v1.4.0
+[1m[92m  Downloaded[0m futures-core v0.3.29
+[1m[92m  Downloaded[0m enum-iterator-derive v1.2.1
+[1m[92m  Downloaded[0m hex v0.4.3
+[1m[92m  Downloaded[0m notify-debouncer-mini v0.4.1
+[1m[92m  Downloaded[0m futures-sink v0.3.29
+[1m[92m  Downloaded[0m include_dir v0.7.3
+[1m[92m  Downloaded[0m serde_spanned v0.6.8
+[1m[92m  Downloaded[0m indicatif-log-bridge v0.2.3
+[1m[92m  Downloaded[0m pathdiff v0.2.1
+[1m[92m  Downloaded[0m strum v0.26.3
+[1m[92m  Downloaded[0m dashmap v5.5.3
+[1m[92m  Downloaded[0m itoa v1.0.9
+[1m[92m  Downloaded[0m heck v0.5.0
+[1m[92m  Downloaded[0m ryu v1.0.15
+[1m[92m  Downloaded[0m enum-iterator v1.4.1
+[1m[92m  Downloaded[0m is-terminal v0.4.9
+[1m[92m  Downloaded[0m pin-utils v0.1.0
+[1m[92m  Downloaded[0m toml_datetime v0.6.8
+[1m[92m  Downloaded[0m inotify v0.9.6
+[1m[92m  Downloaded[0m rustversion v1.0.14
+[1m[92m  Downloaded[0m backtrace v0.3.68
+[1m[92m  Downloaded[0m digest v0.10.7
+[1m[92m  Downloaded[0m either v1.9.0
+[1m[92m  Downloaded[0m lock_api v0.4.10
+[1m[92m  Downloaded[0m log v0.4.19
+[1m[92m  Downloaded[0m paste v1.0.14
+[1m[92m  Downloaded[0m quote v1.0.37
+[1m[92m  Downloaded[0m bitflags v2.4.0
+[1m[92m  Downloaded[0m mio v0.8.11
+[1m[92m  Downloaded[0m semver v1.0.18
+[1m[92m  Downloaded[0m strsim v0.10.0
+[1m[92m  Downloaded[0m pin-project-lite v0.2.13
+[1m[92m  Downloaded[0m same-file v1.0.6
+[1m[92m  Downloaded[0m parking_lot_core v0.9.8
+[1m[92m  Downloaded[0m derivative v2.2.0
+[1m[92m  Downloaded[0m crossbeam-utils v0.8.16
+[1m[92m  Downloaded[0m notify v6.1.1
+[1m[92m  Downloaded[0m enum_dispatch v0.3.12
+[1m[92m  Downloaded[0m parking_lot v0.12.1
+[1m[92m  Downloaded[0m rustc-demangle v0.1.23
+[1m[92m  Downloaded[0m proc-macro2 v1.0.85
+[1m[92m  Downloaded[0m num-traits v0.2.16
+[1m[92m  Downloaded[0m once_cell v1.18.0
+[1m[92m  Downloaded[0m sha1 v0.10.6
+[1m[92m  Downloaded[0m scopeguard v1.2.0
+[1m[92m  Downloaded[0m topological-sort v0.2.2
+[1m[92m  Downloaded[0m unit-prefix v0.5.1
+[1m[92m  Downloaded[0m miniz_oxide v0.7.1
+[1m[92m  Downloaded[0m unicode-ident v1.0.11
+[1m[92m  Downloaded[0m indicatif v0.18.0
+[1m[92m  Downloaded[0m serial_test v2.0.0
+[1m[92m  Downloaded[0m crossbeam-channel v0.5.8
+[1m[92m  Downloaded[0m indexmap v2.7.1
+[1m[92m  Downloaded[0m hashbrown v0.14.2
+[1m[92m  Downloaded[0m clap_builder v4.4.8
+[1m[92m  Downloaded[0m itertools v0.10.5
+[1m[92m  Downloaded[0m chrono v0.4.26
+[1m[92m  Downloaded[0m hashbrown v0.15.2
+[1m[92m  Downloaded[0m tempfile v3.7.1
+[1m[92m  Downloaded[0m slab v0.4.9
+[1m[92m  Downloaded[0m futures-util v0.3.29
+[1m[92m  Downloaded[0m cbindgen v0.28.0
+[1m[92m  Downloaded[0m regex v1.9.3
+[1m[92m  Downloaded[0m gimli v0.27.3
+[1m[92m  Downloaded[0m object v0.31.1
+[1m[92m  Downloaded[0m fern v0.6.2
+[1m[92m  Downloaded[0m rustix v0.38.8
+[1m[92m  Downloaded[0m regex-syntax v0.7.4
+[1m[92m  Downloaded[0m time v0.1.45
+[1m[92m  Downloaded[0m strum_macros v0.26.4
+[1m[92m  Downloaded[0m typenum v1.17.0
+[1m[92m  Downloaded[0m regex-automata v0.3.6
+[1m[92m  Downloaded[0m libc v0.2.153
+[1m[92m  Downloaded[0m smallvec v1.11.0
+[1m[92m  Downloaded[0m linux-raw-sys v0.4.5
+[1m[92m  Downloaded[0m portable-atomic v1.8.0
+[1m[92m  Downloaded[0m toml v0.8.20
+[1m[92m  Downloaded[0m serde_yaml v0.9.29
+[1m[92m  Downloaded[0m toml v0.5.11
+[1m[92m  Downloaded[0m serde_derive v1.0.217
+[1m[92m  Downloaded[0m serde v1.0.217
+[1m[92m  Downloaded[0m toml_edit v0.22.24
+[1m[92m  Downloaded[0m serde_json v1.0.108
+[1m[92m  Downloaded[0m winnow v0.7.2
+[1m[92m  Downloaded[0m syn v1.0.109
+[1m[92m  Downloaded[0m unicode-width v0.2.1
+[1m[92m  Downloaded[0m syn v2.0.85
+[1m[92m   Compiling[0m proc-macro2 v1.0.85
+[1m[92m   Compiling[0m unicode-ident v1.0.11
+[1m[92m   Compiling[0m libc v0.2.153
+[1m[92m   Compiling[0m autocfg v1.1.0
+[1m[92m   Compiling[0m serde v1.0.217
+[1m[92m   Compiling[0m cfg-if v1.0.0
+[1m[92m   Compiling[0m memchr v2.5.0
+[1m[92m   Compiling[0m typenum v1.17.0
+[1m[92m   Compiling[0m futures-core v0.3.29
+[1m[92m   Compiling[0m log v0.4.19
+[1m[92m   Compiling[0m version_check v0.9.4
+[1m[92m   Compiling[0m rustix v0.38.8
+[1m[92m   Compiling[0m generic-array v0.14.7
+[1m[92m   Compiling[0m slab v0.4.9
+[1m[92m   Compiling[0m bitflags v2.4.0
+[1m[92m   Compiling[0m quote v1.0.37
+[1m[92m   Compiling[0m syn v2.0.85
+[1m[92m   Compiling[0m hashbrown v0.15.2
+[1m[92m   Compiling[0m equivalent v1.0.1
+[1m[92m   Compiling[0m linux-raw-sys v0.4.5
+[1m[92m   Compiling[0m futures-channel v0.3.29
+[1m[92m   Compiling[0m futures-task v0.3.29
+[1m[92m   Compiling[0m indexmap v2.7.1
+[1m[92m   Compiling[0m lock_api v0.4.10
+[1m[92m   Compiling[0m once_cell v1.18.0
+[1m[92m   Compiling[0m parking_lot_core v0.9.8
+[1m[92m   Compiling[0m crossbeam-utils v0.8.16
+[1m[92m   Compiling[0m futures-util v0.3.29
+[1m[92m   Compiling[0m futures-sink v0.3.29
+[1m[92m   Compiling[0m cc v1.0.82
+[1m[92m   Compiling[0m num-traits v0.2.16
+[1m[92m   Compiling[0m futures-io v0.3.29
+[1m[92m   Compiling[0m scopeguard v1.2.0
+[1m[92m   Compiling[0m winnow v0.7.2
+[1m[92m   Compiling[0m utf8parse v0.2.1
+[1m[92m   Compiling[0m ryu v1.0.15
+[1m[92m   Compiling[0m serde_derive v1.0.217
+[1m[92m   Compiling[0m itoa v1.0.9
+[1m[92m   Compiling[0m serde_json v1.0.108
+[1m[92m   Compiling[0m smallvec v1.11.0
+[1m[92m   Compiling[0m portable-atomic v1.8.0
+[1m[92m   Compiling[0m pin-utils v0.1.0
+[1m[92m   Compiling[0m pin-project-lite v0.2.13
+[1m[92m   Compiling[0m anstyle-parse v0.2.1
+[1m[92m   Compiling[0m backtrace v0.3.68
+[1m[92m   Compiling[0m inotify-sys v0.1.5
+[1m[92m   Compiling[0m same-file v1.0.6
+[1m[92m   Compiling[0m lazy_static v1.4.0
+[1m[92m   Compiling[0m gimli v0.27.3
+[1m[92m   Compiling[0m unicode-width v0.2.1
+[1m[92m   Compiling[0m rustversion v1.0.14
+[1m[92m   Compiling[0m anstyle v1.0.1
+[1m[92m   Compiling[0m is_terminal_polyfill v1.70.1
+[1m[92m   Compiling[0m adler v1.0.2
+[1m[92m   Compiling[0m semver v1.0.18
+[1m[92m   Compiling[0m colorchoice v1.0.0
+[1m[92m   Compiling[0m anstyle-query v1.0.0
+[1m[92m   Compiling[0m bitflags v1.3.2
+[1m[92m   Compiling[0m syn v1.0.109
+[1m[92m   Compiling[0m camino v1.1.6
+[1m[92m   Compiling[0m inotify v0.9.6
+[1m[92m   Compiling[0m anstream v0.6.15
+[1m[92m   Compiling[0m toml_datetime v0.6.8
+[1m[92m   Compiling[0m serde_spanned v0.6.8
+[1m[92m   Compiling[0m toml_edit v0.22.24
+[1m[92m   Compiling[0m addr2line v0.20.0
+[1m[92m   Compiling[0m miniz_oxide v0.7.1
+[1m[92m   Compiling[0m console v0.16.0
+[1m[92m   Compiling[0m futures-executor v0.3.29
+[1m[92m   Compiling[0m walkdir v2.4.0
+[1m[92m   Compiling[0m toml v0.8.20
+[1m[92m   Compiling[0m crossbeam-channel v0.5.8
+[1m[92m   Compiling[0m block-buffer v0.10.4
+[1m[92m   Compiling[0m crypto-common v0.1.6
+[1m[92m   Compiling[0m is-terminal v0.4.9
+[1m[92m   Compiling[0m aho-corasick v1.0.3
+[1m[92m   Compiling[0m object v0.31.1
+[1m[92m   Compiling[0m mio v0.8.11
+[1m[92m   Compiling[0m time v0.1.45
+[1m[92m   Compiling[0m filetime v0.2.23
+[1m[92m   Compiling[0m hashbrown v0.14.2
+[1m[92m   Compiling[0m unit-prefix v0.5.1
+[1m[92m   Compiling[0m anyhow v1.0.86
+[1m[92m   Compiling[0m cbindgen v0.28.0
+[1m[92m   Compiling[0m rustc-demangle v0.1.23
+[1m[92m   Compiling[0m paste v1.0.14
+[1m[92m   Compiling[0m strsim v0.10.0
+[1m[92m   Compiling[0m fastrand v2.0.0
+[1m[92m   Compiling[0m clap_lex v0.6.0
+[1m[92m   Compiling[0m heck v0.4.1
+[1m[92m   Compiling[0m iana-time-zone v0.1.57
+[1m[92m   Compiling[0m regex-syntax v0.7.4
+[1m[92m   Compiling[0m chrono v0.4.26
+[1m[92m   Compiling[0m clap_derive v4.4.7
+[1m[92m   Compiling[0m clap_builder v4.4.8
+[1m[92m   Compiling[0m regex-automata v0.3.6
+[1m[92m   Compiling[0m tempfile v3.7.1
+[1m[92m   Compiling[0m indicatif v0.18.0
+[1m[92m   Compiling[0m dashmap v5.5.3
+[1m[92m   Compiling[0m notify v6.1.1
+[1m[92m   Compiling[0m colored v1.9.4
+[1m[92m   Compiling[0m digest v0.10.7
+[1m[92m   Compiling[0m futures v0.3.29
+[1m[92m   Compiling[0m cargo-platform v0.1.3
+[1m[92m   Compiling[0m parking_lot v0.12.1
+[1m[92m   Compiling[0m serial_test_derive v2.0.0
+[1m[92m   Compiling[0m enum-iterator-derive v1.2.1
+[1m[92m   Compiling[0m include_dir_macros v0.7.3
+[1m[92m   Compiling[0m cpufeatures v0.2.12
+[1m[92m   Compiling[0m either v1.9.0
+[1m[92m   Compiling[0m heck v0.5.0
+[1m[92m   Compiling[0m unsafe-libyaml v0.2.11
+[1m[92m   Compiling[0m derivative v2.2.0
+[1m[92m   Compiling[0m strum_macros v0.26.4
+[1m[92m   Compiling[0m serde_yaml v0.9.29
+[1m[92m   Compiling[0m itertools v0.10.5
+[1m[92m   Compiling[0m enum_dispatch v0.3.12
+[1m[92m   Compiling[0m sha1 v0.10.6
+[1m[92m   Compiling[0m enum-iterator v1.4.1
+[1m[92m   Compiling[0m include_dir v0.7.3
+[1m[92m   Compiling[0m serial_test v2.0.0
+[1m[92m   Compiling[0m cargo_metadata v0.14.2
+[1m[92m   Compiling[0m fern v0.6.2
+[1m[92m   Compiling[0m notify-debouncer-mini v0.4.1
+[1m[92m   Compiling[0m indicatif-log-bridge v0.2.3
+[1m[92m   Compiling[0m regex v1.9.3
+[1m[92m   Compiling[0m clap v4.4.8
+[1m[92m   Compiling[0m cargo_toml v0.21.0
+[1m[92m   Compiling[0m toml v0.5.11
+[1m[92m   Compiling[0m glob v0.3.1
+[1m[92m   Compiling[0m topological-sort v0.2.2
+[1m[92m   Compiling[0m pathdiff v0.2.1
+[1m[92m   Compiling[0m strum v0.26.3
+[1m[92m   Compiling[0m hex v0.4.3
+[1m[92m   Compiling[0m convert_case v0.5.0
+[1m[92m   Compiling[0m flutter_rust_bridge_codegen v2.13.0
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 1m 20s
+[1m[92m  Installing[0m /home/runner/.cargo/bin/flutter_rust_bridge_codegen
+[1m[92m   Installed[0m package `flutter_rust_bridge_codegen v2.13.0` (executable `flutter_rust_bridge_codegen`)
+Flutter 3.47.7 • channel stable • https://github.com/flutter/flutter.git
+Framework • revision abaf9c5237 (5 days ago) • 2026-10-08 09:51:21 -0700
+Engine • hash d8a2d6c768c334d53e16277f837970ffa1e2de81 (revision deb287481e) (6 days ago) • 2026-10-07 17:09:12.000Z
+Tools • Dart 3.13.5 • DevTools 2.60.0
+Creating project droplet_drop_flutter...
+Resolving dependencies in `droplet_drop_flutter`...
+Downloading packages...
+Got dependencies in `droplet_drop_flutter`.
+Wrote 124 files.
+
+All done!
+You can find general documentation for Flutter at: https://docs.flutter.dev/
+Detailed API documentation is available at: https://api.flutter.dev/
+If you prefer video documentation, consider: https://www.youtube.com/c/flutterdev
+
+In order to run your application, type:
+
+  $ cd droplet_drop_flutter
+  $ flutter run
+
+Your application code is in droplet_drop_flutter/lib/main.dart.
+
+[2026-10-13T11:36:44.728Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/fvm.rs:22] The user actively skipped installing fvm.
+[2026-10-13T11:36:44.728Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/fvm.rs:28] Has .fvmrc but no fvm binary installation, thus skip using fvm.
+[2026-10-13T11:36:44.728Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/flutter.rs:142] Execute `flutter create --help` (this may take a while)
+[2026-10-13T11:36:44.796Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/integration/integrator/mod.rs:57] Overlay template onto project
+[2026-10-13T11:36:44.798Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/integration/integrator/mod.rs:73] Modify file permissions
+[2026-10-13T11:36:44.798Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/integration/integrator/mod.rs:77] Add pub dependencies
+[2026-10-13T11:36:44.799Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/fvm.rs:28] Has .fvmrc but no fvm binary installation, thus skip using fvm.
+[2026-10-13T11:36:44.799Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/flutter.rs:97] Execute `flutter pub add rust_lib_droplet_drop --path=rust_builder` inside None (this may take a while)
+[2026-10-13T11:36:45.166Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/fvm.rs:28] Has .fvmrc but no fvm binary installation, thus skip using fvm.
+[2026-10-13T11:36:45.167Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/flutter.rs:97] Execute `flutter pub add flutter_rust_bridge:2.13.0` inside None (this may take a while)
+[2026-10-13T11:36:45.566Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/fvm.rs:28] Has .fvmrc but no fvm binary installation, thus skip using fvm.
+[2026-10-13T11:36:45.566Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/flutter.rs:97] Execute `flutter pub add integration_test --dev --sdk=flutter` inside None (this may take a while)
+[2026-10-13T11:36:46.045Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/integration/integrator/mod.rs:88] Setup cargokit dependencies
+[2026-10-13T11:36:46.045Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/flutter.rs:114] Execute `flutter pub get` inside "/home/runner/work/droplet/droplet/sortie/droplet_drop_flutter/rust_builder/cargokit/build_tool" (this may take a while)
+[2026-10-13T11:36:47.883Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/integration/integrator/mod.rs:95] Apply Dart fixes
+[2026-10-13T11:36:55.044Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/integration/integrator/mod.rs:102] Format Dart code
+code integrate: 0
