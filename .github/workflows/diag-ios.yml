@@ -1,0 +1,30 @@
+# Diagnostic temporaire : la compilation iOS (simulateur), journal complet.
+name: Diagnostic iOS
+on:
+  push:
+    branches: [diag-ios]
+permissions:
+  contents: write
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - name: iOS simulateur
+        run: |
+          set +e
+          cd apps/droplet_drop_flutter
+          flutter pub get > /dev/null
+          flutter build ios --simulator --debug -v > /tmp/ios.txt 2>&1; echo "code: $?" >> /tmp/ios.txt
+          cd -
+          grep -n -B60 "Cargokit BuildTool failed" /tmp/ios.txt | grep -v "^\s*$" | head -150 > /tmp/extrait.txt
+          grep -nE "^error|error\[|error:|warning: unused" /tmp/ios.txt | head -60 >> /tmp/extrait.txt
+          tail -5 /tmp/ios.txt >> /tmp/extrait.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-diag-ios; git rm -rfq --cached . >/dev/null
+          cp /tmp/extrait.txt journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-diag-ios
