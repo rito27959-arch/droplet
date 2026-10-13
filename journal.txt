@@ -1,0 +1,24 @@
+== droplet_directory
+pub: 0
+Analyzing lib...
+No issues found!
+analyse: 0
+Generated: /tmp/srv
+compilation: 0
+== droplet_mailbox
+pub: 0
+Analyzing lib...
+No issues found!
+analyse: 0
+Generated: /tmp/srv
+compilation: 0
+== outils/verif_appels
+pub: 0
+Analyzing lib...
+
+warning - server.dart:371:41 - Unnecessary cast. Try removing the cast. - unnecessary_cast
+
+1 issue found.
+analyse: 2
+Generated: /tmp/srv
+compilation: 0
