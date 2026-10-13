@@ -103,10 +103,17 @@ pub struct Invitation {
     pub x: u64,
 }
 
+/// Le préfixe des liens d'invitation : une page web, pour qu'un code
+/// scanné par l'appareil photo d'un téléphone SANS Droplet Drop mène
+/// quelque part (la page explique, propose le téléchargement, et copie
+/// l'invitation). Tout ce qui compte est après « # » : le navigateur ne
+/// l'envoie jamais au serveur.
+pub const LIEN_INVITATION: &str = "https://drop.dropletmesh.app/rejoindre/#";
+
 impl Invitation {
     pub fn encoder(&self) -> String {
         let j = serde_json::to_vec(self).unwrap_or_default();
-        format!("dropletdrop://rejoindre#{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(j))
+        format!("{LIEN_INVITATION}{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(j))
     }
 
     pub fn decoder(texte: &str) -> Option<Self> {
@@ -1078,4 +1085,27 @@ pub fn adresses_locales() -> Vec<String> {
         v.push("127.0.0.1".into());
     }
     v
+}
+
+#[cfg(test)]
+mod tests_invitation {
+    use super::*;
+
+    fn exemple() -> Invitation {
+        Invitation { v: 1, h: vec!["192.168.1.12".into()], p: 47321, fp: "ab".repeat(32), s: "0".repeat(32), j: "f".repeat(64), n: "Cours".into(), x: 2_000_000_000 }
+    }
+
+    /// Le lien web, l'ancien lien, et l'invitation nue : les trois se lisent.
+    #[test]
+    fn liens_web_et_anciens() {
+        let lien = exemple().encoder();
+        assert!(lien.starts_with("https://drop.dropletmesh.app/rejoindre/#"));
+        let charge = lien.rsplit('#').next().unwrap();
+        for texte in [lien.clone(), format!("dropletdrop://rejoindre#{charge}"), charge.to_string(), format!("  {lien}\n")] {
+            let i = Invitation::decoder(&texte).expect("invitation lisible");
+            assert_eq!(i.n, "Cours");
+            assert_eq!(i.p, 47321);
+        }
+        assert!(Invitation::decoder("https://drop.dropletmesh.app/rejoindre/#abc").is_none());
+    }
 }

@@ -21,13 +21,16 @@ Future<String?> scannerCode(BuildContext context) {
 Future<String?> collerCode(BuildContext context) async {
   final champ = TextEditingController();
   final presse = await Clipboard.getData('text/plain');
-  if (presse?.text?.contains('dropletdrop://') ?? false) champ.text = presse!.text!.trim();
+  // Une invitation dans le presse-papiers (lien web, ou ancien lien
+  // « dropletdrop:// ») : le champ est déjà rempli.
+  final copie = presse?.text?.trim() ?? '';
+  if (copie.contains('/rejoindre') && copie.contains('#')) champ.text = copie;
   if (!context.mounted) return null;
   final r = await showDialog<String>(
     context: context,
     builder: (c) => AlertDialog(
       title: Text(c.t('coller_invitation')),
-      content: TextField(controller: champ, autofocus: true, minLines: 1, maxLines: 4, decoration: InputDecoration(hintText: 'dropletdrop://rejoindre#…')),
+      content: TextField(controller: champ, autofocus: true, minLines: 1, maxLines: 4, decoration: InputDecoration(hintText: 'https://drop.dropletmesh.app/rejoindre/#…')),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c), child: Text(c.t('annuler'))),
         TextButton(onPressed: () => Navigator.pop(c, champ.text.trim()), child: Text(c.t('continuer'))),

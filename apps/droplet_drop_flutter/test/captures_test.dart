@@ -16,6 +16,7 @@ import 'package:droplet_drop/ecrans/recevoir.dart';
 import 'package:droplet_drop/ecrans/reglages.dart';
 import 'package:droplet_drop/ecrans/transfert.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -87,7 +88,7 @@ void _etatType() {
     e.transferts['s$i'] = t('s$i', 's1', _pair('Poste ${(i + 1).toString().padLeft(2, '0')}', i.isEven ? 'windows' : 'linux', _fp(i + 1)), etat, avance,
         debit: etat == EtatTransfert.transfert ? 21000000 : 0, restant: etat == EtatTransfert.transfert ? 95 : null, total: 4200000000, f: zip);
   }
-  e.mesSessions['s1'] = Session(id: 's1', invitation: 'dropletdrop://rejoindre#${'x' * 300}', expire: DateTime(2026, 10, 13, 18, 30), total: 4200000000, fichiers: zip);
+  e.mesSessions['s1'] = Session(id: 's1', invitation: 'https://drop.dropletmesh.app/rejoindre/#${'x' * 300}', expire: DateTime(2026, 10, 13, 18, 30), total: 4200000000, fichiers: zip);
   e.sessions['s1'] = const EtatSession(id: 's1', etat: 'en_cours', participants: 30, termines: 23);
 }
 

@@ -92,9 +92,9 @@ BEGIN
             VALUE "CompanyName", "app.dropletmesh" "\0"
             VALUE "FileDescription", "Droplet Drop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "droplet_drop" "\0"
+            VALUE "InternalName", "DropletDrop" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 app.dropletmesh. All rights reserved." "\0"
-            VALUE "OriginalFilename", "droplet_drop.exe" "\0"
+            VALUE "OriginalFilename", "DropletDrop.exe" "\0"
             VALUE "ProductName", "Droplet Drop" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END

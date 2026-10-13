@@ -43,7 +43,9 @@ H → P  Refus {raison} | Attente | Offre
 … puis comme l'envoi direct, H expéditeur.
 ```
 
-Invitation : `dropletdrop://rejoindre#<base64url(JSON)>` avec adresses et
+Invitation : `https://drop.dropletmesh.app/rejoindre/#<base64url(JSON)>`
+(le décodeur accepte tout texte et ne lit que ce qui suit le dernier « # » ;
+les anciens liens `dropletdrop://rejoindre#…` restent valides) avec adresses et
 port de l'hôte, empreinte de l'hôte (épinglée), identifiant de session
 (128 bits), jeton (256 bits), nom, expiration.
 

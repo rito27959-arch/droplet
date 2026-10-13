@@ -7,6 +7,13 @@
 #   android  : APK (arm64, armv7, x86_64)
 #   windows  : build Windows
 #   apple    : build macOS + iOS (sans signature)
+#   publier  : quand tout est vert, la publication « drop-latest » (une
+#              préversion, pour ne jamais devenir la « dernière version »
+#              de Droplet, la messagerie) reçoit les fichiers que
+#              drop.dropletmesh.app propose au téléchargement :
+#              DropletDrop-android-arm64.apk (+ armv7, x86_64),
+#              DropletDrop-windows-x64.zip, DropletDrop-macos.zip,
+#              DropletDrop-linux-x64.tar.gz
 #
 # Chaque tâche publie son journal sur une branche `journal-drop-<tâche>`,
 # et les applications compilées en artefacts téléchargeables.
@@ -83,11 +90,15 @@ jobs:
           rm -rf journal.txt captures; cp -r /tmp/sortie/* .
           git add journal.txt; git add captures 2>/dev/null; git commit -qm journal; git push -fq origin journal-drop-generer
           grep -q "code linux: 0" /tmp/journal.txt
+      - name: Archive Linux
+        run: |
+          mkdir -p /tmp/publier
+          cp -r $APP/build/linux/x64/release/bundle /tmp/publier/DropletDrop
+          tar -C /tmp/publier -czf /tmp/publier/DropletDrop-linux-x64.tar.gz DropletDrop
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: droplet-drop-linux
-          path: ${{ env.APP }}/build/linux/x64/release/bundle
+          path: /tmp/publier/DropletDrop-linux-x64.tar.gz
 
   android:
     needs: generer
@@ -115,7 +126,7 @@ jobs:
         if: always()
         with:
           name: droplet-drop-android
-          path: ${{ env.APP }}/build/app/outputs/flutter-apk/*.apk
+          path: ${{ env.APP }}/build/app/outputs/flutter-apk/app-*-release.apk
 
   windows:
     needs: generer
@@ -138,11 +149,16 @@ jobs:
           git checkout -q --orphan journal-drop-windows; git rm -rfq --cached . >/dev/null
           tail -80 /tmp/journal.txt > journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-drop-windows
           grep -q "code windows: 0" /tmp/journal.txt
+      - name: Archive Windows
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force publier | Out-Null
+          Copy-Item -Recurse "$env:APP/build/windows/x64/runner/Release" "publier/Droplet Drop"
+          Compress-Archive -Path "publier/Droplet Drop" -DestinationPath publier/DropletDrop-windows-x64.zip
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: droplet-drop-windows
-          path: ${{ env.APP }}/build/windows/x64/runner/Release
+          path: publier/DropletDrop-windows-x64.zip
 
   apple:
     needs: generer
@@ -165,8 +181,44 @@ jobs:
           git checkout -q --orphan journal-drop-apple; git rm -rfq --cached . >/dev/null
           cp /tmp/journal.txt journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-drop-apple
           grep -q "code macos: 0" /tmp/journal.txt && grep -q "code ios: 0" /tmp/journal.txt
+      # ditto garde les liens symboliques et les droits du paquet .app
+      # (un zip ordinaire casserait les frameworks).
+      - name: Archive macOS
+        run: |
+          mkdir -p /tmp/publier
+          ditto -c -k --sequesterRsrc --keepParent "$APP/build/macos/Build/Products/Release/Droplet Drop.app" /tmp/publier/DropletDrop-macos.zip
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: droplet-drop-macos
-          path: ${{ env.APP }}/build/macos/Build/Products/Release/*.app
+          path: /tmp/publier/DropletDrop-macos.zip
+
+  publier:
+    needs: [generer, android, windows, apple]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: droplet-drop }
+      - uses: actions/download-artifact@v4
+        with: { path: /tmp/artefacts, pattern: droplet-drop-*, merge-multiple: true }
+      - name: Publication drop-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          cd /tmp/artefacts
+          mv app-arm64-v8a-release.apk DropletDrop-android-arm64.apk
+          mv app-armeabi-v7a-release.apk DropletDrop-android-armv7.apk
+          mv app-x86_64-release.apk DropletDrop-android-x86_64.apk
+          ls -la
+          sha256sum DropletDrop-* > SHA256SUMS.txt
+          cd -
+          # L'étiquette suit le dernier commit vert de la branche.
+          git tag -f drop-latest
+          git push -f origin refs/tags/drop-latest
+          notes="Droplet Drop, compilé depuis la branche droplet-drop ($(git rev-parse --short HEAD)). Applications non signées : voir drop.dropletmesh.app pour les précautions d'ouverture. Empreintes : SHA256SUMS.txt."
+          if gh release view drop-latest >/dev/null 2>&1; then
+            gh release edit drop-latest --prerelease --title "Droplet Drop (dernière compilation)" --notes "$notes"
+          else
+            gh release create drop-latest --prerelease --title "Droplet Drop (dernière compilation)" --notes "$notes"
+          fi
+          gh release upload drop-latest --clobber /tmp/artefacts/DropletDrop-* /tmp/artefacts/SHA256SUMS.txt
