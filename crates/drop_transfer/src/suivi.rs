@@ -123,9 +123,16 @@ impl Suivi {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Evenement {
     /// Quelqu'un propose des fichiers : il faut accepter ou refuser.
-    Offre { offre: String, de: Pair, fichiers: Vec<(String, u64)>, total: u64 },
+    Offre {
+        offre: String,
+        de: Pair,
+        fichiers: Vec<(String, u64)>,
+        total: u64,
+    },
     /// L'offre n'attend plus de réponse (expirée, annulée par l'expéditeur).
-    OffreRetiree { offre: String },
+    OffreRetiree {
+        offre: String,
+    },
     Transfert {
         id: String,
         groupe: String,
@@ -143,6 +150,15 @@ pub enum Evenement {
         fichiers: Vec<(String, u64)>,
     },
     /// La préparation d'un envoi (lecture et empreintes des fichiers).
-    Preparation { groupe: String, octets: u64, total: u64 },
-    Session { session: String, etat: String, participants: usize, termines: usize },
+    Preparation {
+        groupe: String,
+        octets: u64,
+        total: u64,
+    },
+    Session {
+        session: String,
+        etat: String,
+        participants: usize,
+        termines: usize,
+    },
 }

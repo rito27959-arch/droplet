@@ -12,6 +12,7 @@ import '../design/typo.dart';
 import 'choisir.dart';
 import 'group_drop.dart';
 import 'historique.dart';
+import 'pare_feu.dart';
 import 'recevoir.dart';
 import 'reglages.dart';
 import 'transfert.dart';
@@ -88,6 +89,7 @@ class Accueil extends StatelessWidget {
                                 hauteur: 60,
                                 onTap: e.pret ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Recevoir())) : null,
                               ),
+                              const CartePareFeu(),
                               if (enCours.isNotEmpty) ...[
                                 TitreSection(context.t('en_cours')),
                                 for (final g in enCours) _CarteEnCours(groupe: g),

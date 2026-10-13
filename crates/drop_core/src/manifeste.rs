@@ -123,11 +123,7 @@ pub struct SourceFichier {
 
 /// Lit chaque fichier une fois, par tranches, et calcule l'empreinte de
 /// chaque bloc et du fichier entier. [progres] reçoit les octets lus.
-pub fn construire_manifeste(
-    sources: &[SourceFichier],
-    taille_bloc: u32,
-    mut progres: impl FnMut(u64),
-) -> Result<Manifeste, ErreurCoeur> {
+pub fn construire_manifeste(sources: &[SourceFichier], taille_bloc: u32, mut progres: impl FnMut(u64)) -> Result<Manifeste, ErreurCoeur> {
     let mut fichiers = Vec::with_capacity(sources.len());
     let mut tampon = vec![0u8; TAILLE_TRANCHE];
     for (id, s) in sources.iter().enumerate() {
@@ -157,14 +153,7 @@ pub fn construire_manifeste(
         if dans_bloc > 0 {
             blocs.push(Empreinte(*bloc.finalize().as_bytes()));
         }
-        fichiers.push(FichierManifeste {
-            id: id as u32,
-            chemin,
-            taille,
-            taille_bloc,
-            blocs,
-            totale: Empreinte(*total.finalize().as_bytes()),
-        });
+        fichiers.push(FichierManifeste { id: id as u32, chemin, taille, taille_bloc, blocs, totale: Empreinte(*total.finalize().as_bytes()) });
     }
     Ok(Manifeste { fichiers })
 }

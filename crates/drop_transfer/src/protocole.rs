@@ -37,8 +37,14 @@ pub struct Appareil {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum Controle {
-    Bonjour { v: u32, appareil: Appareil },
-    Offre { offre: String, manifeste: Manifeste },
+    Bonjour {
+        v: u32,
+        appareil: Appareil,
+    },
+    Offre {
+        offre: String,
+        manifeste: Manifeste,
+    },
     Reponse {
         acceptee: bool,
         /// Pour chaque fichier du manifeste, dans l'ordre : ce qui est déjà là.
@@ -48,12 +54,24 @@ pub enum Controle {
         raison: Option<String>,
     },
     Fin,
-    Manquants { fichier: u32, blocs: Vec<u32> },
+    Manquants {
+        fichier: u32,
+        blocs: Vec<u32>,
+    },
     Recu,
-    Rejoindre { session: String, jeton: String },
-    Refus { raison: String },
+    Rejoindre {
+        session: String,
+        jeton: String,
+    },
+    Refus {
+        raison: String,
+    },
     /// L'hôte d'une session : « patientez, votre tour arrive ».
     Attente,
     Pause,
     Annuler,
+    /// « Tu voulais m'envoyer quelque chose ? Me voici. » Le destinataire
+    /// se connecte lui-même à l'expéditeur, quand l'expéditeur n'arrive
+    /// pas à le joindre (pare-feu de Windows, réseau qui filtre l'entrant).
+    Tirer,
 }

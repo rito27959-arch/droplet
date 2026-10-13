@@ -26,7 +26,7 @@ use drop_crypto::{config_client, config_serveur, egal_constant, empreinte_du_pai
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, oneshot, Semaphore};
+use tokio::sync::{broadcast, oneshot, watch, Semaphore};
 use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 use crate::envoi;
@@ -44,6 +44,12 @@ const DELAI_POIGNEE: Duration = Duration::from_secs(15);
 /// Une connexion perdue est retentée tant qu'on a progressé il y a moins
 /// de 10 minutes.
 const PATIENCE_REPRISE: Duration = Duration::from_secs(600);
+/// Combien de temps un expéditeur qui n'arrive pas à joindre le
+/// destinataire attend que celui-ci vienne chercher l'envoi (tirage),
+/// avant de compter une tentative ratée.
+const ATTENTE_TIRAGE: Duration = Duration::from_secs(45);
+/// Pas plus d'un tirage tous les quelques instants vers un même appareil.
+const INTERVALLE_TIRAGE: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -154,6 +160,18 @@ struct Session {
     creneaux: Arc<Semaphore>,
 }
 
+type Lecteur = Box<dyn AsyncRead + Unpin + Send>;
+type Ecrivain = Box<dyn AsyncWrite + Unpin + Send>;
+
+/// Une connexion établie et présentée (Bonjour échangé), dans un sens ou
+/// dans l'autre.
+struct Canal {
+    r: Lecteur,
+    w: Ecrivain,
+    fp: EmpreinteAppareil,
+    autre: Appareil,
+}
+
 struct Interne {
     config: RwLock<Config>,
     identite: Identite,
@@ -168,6 +186,15 @@ struct Interne {
     actif: AtomicBool,
     arret: tokio::sync::Notify,
     compteur: AtomicU64,
+    /// Expéditeur : les envois qui attendent que tel appareil (empreinte)
+    /// vienne les chercher.
+    attentes: Mutex<HashMap<String, Vec<oneshot::Sender<Canal>>>>,
+    /// Expéditeur : combien d'envois attendent chaque appareil ; le début
+    /// de ces empreintes est annoncé sur le réseau (voir [Moteur::demandes]).
+    demandeurs: Mutex<HashMap<String, usize>>,
+    demandes: watch::Sender<Vec<String>>,
+    /// Destinataire : les tirages en cours ou récents, par appareil.
+    tirages: Mutex<HashMap<String, (bool, Instant)>>,
 }
 
 #[derive(Clone)]
@@ -199,6 +226,10 @@ impl Moteur {
             actif: AtomicBool::new(true),
             arret: tokio::sync::Notify::new(),
             compteur: AtomicU64::new(0),
+            attentes: Mutex::new(HashMap::new()),
+            demandeurs: Mutex::new(HashMap::new()),
+            demandes: watch::channel(Vec::new()).0,
+            tirages: Mutex::new(HashMap::new()),
         }));
         let m2 = m.clone();
         tokio::spawn(async move { m2.ecouter(ecoute).await });
@@ -443,11 +474,16 @@ impl Moteur {
         let conf = config_client(&self.0.identite, attendue).map_err(|e| Erreur::Tls(e.to_string()))?;
         let connecteur = TlsConnector::from(conf);
         let mut derniere = Erreur::Injoignable;
-        for a in &cible.adresses {
-            let tcp = match tokio::time::timeout(DELAI_CONNEXION, TcpStream::connect(a)).await {
-                Ok(Ok(t)) => t,
-                _ => continue,
+        // Toutes les adresses de l'appareil, en COURSE (la meilleure part
+        // d'abord, les autres 200 ms après chacune) : un ordinateur annonce
+        // souvent des adresses de cartes virtuelles (WSL, VirtualBox,
+        // Hyper-V) injoignables ; on ne perd plus 6 s sur chacune.
+        let mut restantes = trier_adresses(&cible.adresses);
+        while !restantes.is_empty() {
+            let Some((tcp, gagnante)) = course_tcp(&restantes).await else {
+                break;
             };
+            restantes.retain(|x| *x != gagnante);
             let _ = tcp.set_nodelay(true);
             match tokio::time::timeout(DELAI_POIGNEE, connecteur.connect(nom_serveur(), tcp)).await {
                 Ok(Ok(tls)) => {
@@ -455,10 +491,8 @@ impl Moteur {
                     return Ok((tls, fp));
                 }
                 Ok(Err(e)) => {
-                    let certificat = e
-                        .get_ref()
-                        .and_then(|x| x.downcast_ref::<rustls::Error>())
-                        .is_some_and(|r| matches!(r, rustls::Error::InvalidCertificate(_)));
+                    let certificat =
+                        e.get_ref().and_then(|x| x.downcast_ref::<rustls::Error>()).is_some_and(|r| matches!(r, rustls::Error::InvalidCertificate(_)));
                     derniere = if certificat { Erreur::EmpreinteInvalide } else { Erreur::Tls(e.to_string()) };
                     if certificat {
                         return Err(derniere);
@@ -468,6 +502,124 @@ impl Moteur {
             }
         }
         Err(derniere)
+    }
+
+    /// Une connexion directe vers l'appareil, Bonjour compris.
+    async fn canal_direct(&self, cible: &Cible) -> Result<Canal, Erreur> {
+        let (tls, fp) = self.connecter(cible).await?;
+        let (mut r, mut w) = tokio::io::split(tls);
+        let autre = self.bonjour(&mut r, &mut w).await?;
+        Ok(Canal { r: Box::new(r), w: Box::new(w), fp, autre })
+    }
+
+    /// La connexion vers le destinataire : directe si possible. Sinon —
+    /// un pare-feu (celui de Windows, typiquement) refuse les connexions
+    /// entrantes chez lui — on annonce sur le réseau qu'un envoi l'attend,
+    /// et c'est LUI qui se connecte à nous pour le chercher (tirage). Le
+    /// chemin direct reste retenté pendant l'attente.
+    async fn ouvrir_canal(&self, cible: &Cible) -> Result<Canal, Erreur> {
+        let erreur = match self.canal_direct(cible).await {
+            Ok(c) => return Ok(c),
+            Err(e) => e,
+        };
+        let Some(cle) = cible.empreinte.clone().filter(|e| e.len() == 64) else {
+            return Err(erreur);
+        };
+        if !matches!(erreur, Erreur::Injoignable | Erreur::Tls(_) | Erreur::ConnexionInterrompue | Erreur::Io(_)) {
+            return Err(erreur);
+        }
+        let (tx, mut rx) = oneshot::channel();
+        self.0.attentes.lock().unwrap().entry(cle.clone()).or_default().push(tx);
+        let _demande = Demande::poser(self.clone(), cle);
+        let fin = Instant::now() + ATTENTE_TIRAGE;
+        loop {
+            tokio::select! {
+                c = &mut rx => return c.map_err(|_| Erreur::Injoignable),
+                _ = tokio::time::sleep(Duration::from_secs(4)) => {}
+            }
+            if Instant::now() >= fin {
+                return Err(Erreur::Injoignable);
+            }
+            if let Ok(c) = self.canal_direct(cible).await {
+                return Ok(c);
+            }
+        }
+    }
+
+    fn compter_demande(&self, cle: &str, plus: bool) {
+        let mut d = self.0.demandeurs.lock().unwrap();
+        if plus {
+            *d.entry(cle.to_string()).or_insert(0) += 1;
+        } else if let Some(n) = d.get_mut(cle) {
+            *n -= 1;
+            if *n == 0 {
+                d.remove(cle);
+                if let Some(v) = self.0.attentes.lock().unwrap().get_mut(cle) {
+                    v.retain(|t| !t.is_closed());
+                }
+            }
+        }
+        let mut liste: Vec<String> = d.keys().map(|k| k[..16].to_string()).collect();
+        liste.sort();
+        self.0.demandes.send_if_modified(|v| {
+            let change = *v != liste;
+            *v = liste;
+            change
+        });
+    }
+
+    /// Les appareils que nos envois attendent (16 premiers caractères de
+    /// leur empreinte) : à annoncer sur le réseau, pour qu'ils viennent
+    /// chercher ce qu'on leur envoie s'ils ne sont pas joignables.
+    pub fn demandes(&self) -> watch::Receiver<Vec<String>> {
+        self.0.demandes.subscribe()
+    }
+
+    /// Expéditeur : un appareil vient chercher ce qu'on lui envoie.
+    fn livrer_tirage(&self, mut canal: Canal) {
+        let cle = canal.fp.hex();
+        let mut a = self.0.attentes.lock().unwrap();
+        let Some(v) = a.get_mut(&cle) else { return };
+        while let Some(tx) = v.pop() {
+            match tx.send(canal) {
+                Ok(()) => return,
+                Err(c) => canal = c,
+            }
+        }
+    }
+
+    /// Destinataire : cet appareil annonce qu'il a quelque chose pour nous
+    /// mais ne nous joint pas — on va le chercher. Sans effet si un tirage
+    /// vers lui est déjà en cours ou vient d'avoir lieu.
+    pub fn tirer(&self, cible: Cible) {
+        let Some(cle) = cible.empreinte.clone().filter(|e| e.len() == 64) else {
+            return;
+        };
+        {
+            let mut t = self.0.tirages.lock().unwrap();
+            if let Some((en_cours, quand)) = t.get(&cle) {
+                if *en_cours || quand.elapsed() < INTERVALLE_TIRAGE {
+                    return;
+                }
+            }
+            t.insert(cle.clone(), (true, Instant::now()));
+        }
+        let m = self.clone();
+        tokio::spawn(async move {
+            let _ = m.un_tirage(&cible).await;
+            m.0.tirages.lock().unwrap().insert(cle, (false, Instant::now()));
+        });
+    }
+
+    async fn un_tirage(&self, cible: &Cible) -> Result<(), Erreur> {
+        let Canal { mut r, mut w, fp, autre } = self.canal_direct(cible).await?;
+        trame::ecrire_controle(&mut w, &Controle::Tirer).await?;
+        match tokio::time::timeout(DELAI_POIGNEE, trame::lire_controle(&mut r)).await {
+            Ok(Ok(Controle::Offre { offre, manifeste })) => self.recevoir_offre(r, w, offre, manifeste, fp, autre).await,
+            Ok(Ok(_)) => Err(Erreur::Protocole("offre attendue")),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(Erreur::ConnexionInterrompue),
+        }
     }
 
     async fn bonjour<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(&self, r: &mut R, w: &mut W) -> Result<Appareil, Erreur> {
@@ -482,9 +634,7 @@ impl Moteur {
 
     async fn une_tentative_envoi(&self, cible: &Cible, envoi: &EnvoiPrepare, offre: &str, s: &Arc<Suivi>) -> Result<(), Erreur> {
         s.changer(Etat::Connexion);
-        let (tls, fp) = self.connecter(cible).await?;
-        let (mut r, mut w) = tokio::io::split(tls);
-        let autre = self.bonjour(&mut r, &mut w).await?;
+        let Canal { mut r, mut w, fp, autre } = self.ouvrir_canal(cible).await?;
         *s.pair.lock().unwrap() = Pair { nom: autre.nom, plateforme: autre.plateforme, empreinte: fp.hex(), courte: fp.courte() };
         trame::ecrire_controle(&mut w, &Controle::Offre { offre: offre.to_string(), manifeste: envoi.manifeste.clone() }).await?;
         s.changer(Etat::AttenteReponse);
@@ -873,11 +1023,15 @@ impl Moteur {
                 a = ecoute.accept() => a,
                 _ = self.0.arret.notified() => break,
             };
-            let Ok((tcp, adresse)) = accepte else { continue };
+            let Ok((tcp, adresse)) = accepte else {
+                continue;
+            };
             if self.bloque(adresse.ip()) {
                 continue;
             }
-            let Ok(permis) = poignees.clone().try_acquire_owned() else { continue };
+            let Ok(permis) = poignees.clone().try_acquire_owned() else {
+                continue;
+            };
             let m = self.clone();
             tokio::spawn(async move {
                 let _ = tcp.set_nodelay(true);
@@ -889,9 +1043,13 @@ impl Moteur {
                     }
                 };
                 drop(permis);
-                let Some(fp) = empreinte_du_pair(tls.get_ref().1.peer_certificates()) else { return };
+                let Some(fp) = empreinte_du_pair(tls.get_ref().1.peer_certificates()) else {
+                    return;
+                };
                 let (mut r, mut w) = tokio::io::split(tls);
-                let Ok(autre) = m.bonjour(&mut r, &mut w).await else { return };
+                let Ok(autre) = m.bonjour(&mut r, &mut w).await else {
+                    return;
+                };
                 let premier = match tokio::time::timeout(DELAI_POIGNEE, trame::lire_controle(&mut r)).await {
                     Ok(Ok(c)) => c,
                     _ => return,
@@ -903,6 +1061,7 @@ impl Moteur {
                     Controle::Rejoindre { session, jeton } => {
                         let _ = m.heberger(r, w, session, jeton, fp, autre, adresse.ip()).await;
                     }
+                    Controle::Tirer => m.livrer_tirage(Canal { r: Box::new(r), w: Box::new(w), fp, autre }),
                     _ => m.noter_echec(adresse.ip()),
                 }
             });
@@ -1003,7 +1162,15 @@ impl Moteur {
                 let (av, t, moyenne) = precedents.get(&s.id).copied().unwrap_or((octets, maintenant, 0.0));
                 let dt = maintenant.duration_since(t).as_secs_f64();
                 let instant = if dt > 0.0 { octets.saturating_sub(av) as f64 / dt } else { 0.0 };
-                let debit = if matches!(etat, Etat::Transfert) { if moyenne == 0.0 { instant } else { moyenne * 0.7 + instant * 0.3 } } else { 0.0 };
+                let debit = if matches!(etat, Etat::Transfert) {
+                    if moyenne == 0.0 {
+                        instant
+                    } else {
+                        moyenne * 0.7 + instant * 0.3
+                    }
+                } else {
+                    0.0
+                };
                 precedents.insert(s.id.clone(), (octets, maintenant, debit));
                 let restant = (debit > 1024.0 && total > octets).then(|| ((total - octets) as f64 / debit).ceil() as u64);
                 let _ = self.0.evenements.send(Evenement::Transfert {
@@ -1099,7 +1266,16 @@ mod tests_invitation {
     use super::*;
 
     fn exemple() -> Invitation {
-        Invitation { v: 1, h: vec!["192.168.1.12".into()], p: 47321, fp: "ab".repeat(32), s: "0".repeat(32), j: "f".repeat(64), n: "Cours".into(), x: 2_000_000_000 }
+        Invitation {
+            v: 1,
+            h: vec!["192.168.1.12".into()],
+            p: 47321,
+            fp: "ab".repeat(32),
+            s: "0".repeat(32),
+            j: "f".repeat(64),
+            n: "Cours".into(),
+            x: 2_000_000_000,
+        }
     }
 
     /// Le lien web, l'ancien lien, et l'invitation nue : les trois se lisent.
@@ -1114,5 +1290,71 @@ mod tests_invitation {
             assert_eq!(i.p, 47321);
         }
         assert!(Invitation::decoder("https://drop.dropletmesh.app/rejoindre/#abc").is_none());
+    }
+}
+
+/// Les adresses d'un appareil, les plus prometteuses d'abord : celles du
+/// même sous-réseau que l'une des nôtres (mêmes trois premiers octets).
+fn trier_adresses(adresses: &[SocketAddr]) -> Vec<SocketAddr> {
+    let locales: Vec<[u8; 3]> = adresses_locales()
+        .iter()
+        .filter_map(|a| a.parse::<std::net::Ipv4Addr>().ok())
+        .map(|a| {
+            let o = a.octets();
+            [o[0], o[1], o[2]]
+        })
+        .collect();
+    let mut v = adresses.to_vec();
+    v.sort_by_key(|a| match a.ip() {
+        IpAddr::V4(ip) => {
+            let o = ip.octets();
+            if locales.contains(&[o[0], o[1], o[2]]) {
+                0
+            } else if ip.is_private() {
+                1
+            } else {
+                2
+            }
+        }
+        IpAddr::V6(_) => 3,
+    });
+    v
+}
+
+/// Une course de connexions TCP : la première qui aboutit gagne, les
+/// autres sont abandonnées.
+async fn course_tcp(adresses: &[SocketAddr]) -> Option<(TcpStream, SocketAddr)> {
+    let mut taches = tokio::task::JoinSet::new();
+    for (i, a) in adresses.iter().copied().enumerate() {
+        taches.spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200 * i as u64)).await;
+            match tokio::time::timeout(DELAI_CONNEXION, TcpStream::connect(a)).await {
+                Ok(Ok(t)) => Some((t, a)),
+                _ => None,
+            }
+        });
+    }
+    while let Some(r) = taches.join_next().await {
+        if let Ok(Some(gagnant)) = r {
+            taches.abort_all();
+            return Some(gagnant);
+        }
+    }
+    None
+}
+
+/// Tant qu'elle vit, l'appareil [cle] est annoncé comme attendu.
+struct Demande(Moteur, String);
+
+impl Demande {
+    fn poser(m: Moteur, cle: String) -> Self {
+        m.compter_demande(&cle, true);
+        Demande(m, cle)
+    }
+}
+
+impl Drop for Demande {
+    fn drop(&mut self) {
+        self.0.compter_demande(&self.1, false);
     }
 }

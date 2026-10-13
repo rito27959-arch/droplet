@@ -7,7 +7,12 @@
 //! * `fp` — l'empreinte de son certificat : c'est elle qui sera ÉPINGLÉE à
 //!   la connexion. Un appareil qui annoncerait l'empreinte d'un autre ne
 //!   pourrait pas finir la poignée de main TLS sans sa clé privée.
-//! * `v` — la version du protocole.
+//! * `v` — la version du protocole ;
+//! * `t` — (facultatif) les appareils à qui cet appareil essaie d'envoyer
+//!   sans parvenir à les joindre : les 16 premiers caractères de leur
+//!   empreinte, séparés par des virgules. Un appareil qui s'y reconnaît
+//!   vient chercher l'envoi lui-même (son pare-feu bloque l'entrant, pas
+//!   le sortant).
 //!
 //! ⚠️ La découverte n'est pas garantie : beaucoup de réseaux (Wi-Fi
 //! d'entreprise, d'école, « isolation des clients ») bloquent le
@@ -31,6 +36,9 @@ pub struct AppareilVu {
     pub plateforme: String,
     pub empreinte: String,
     pub adresses: Vec<SocketAddr>,
+    /// Les débuts d'empreinte des appareils que celui-ci attend (`t`).
+    #[serde(default)]
+    pub tirage: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -43,6 +51,7 @@ pub enum Decouverte {
 pub struct Annonceur {
     demon: ServiceDaemon,
     nom_complet: String,
+    annonce: Mutex<Annonce>,
     vus: Arc<Mutex<HashMap<String, AppareilVu>>>,
 }
 
@@ -61,25 +70,39 @@ fn err(e: impl std::fmt::Display) -> ErreurDecouverte {
     ErreurDecouverte(e.to_string())
 }
 
+/// De quoi refaire l'annonce quand la liste `t` change.
+struct Annonce {
+    instance: String,
+    hote: String,
+    nom: String,
+    plateforme: String,
+    empreinte: String,
+    port: u16,
+    tirage: String,
+}
+
+impl Annonce {
+    fn info(&self) -> Result<ServiceInfo, ErreurDecouverte> {
+        let mut proprietes = vec![("n", self.nom.as_str()), ("p", self.plateforme.as_str()), ("fp", self.empreinte.as_str()), ("v", "1")];
+        if !self.tirage.is_empty() {
+            proprietes.push(("t", self.tirage.as_str()));
+        }
+        Ok(ServiceInfo::new(TYPE_SERVICE, &self.instance, &self.hote, "", self.port, &proprietes[..]).map_err(err)?.enable_addr_auto())
+    }
+}
+
 impl Annonceur {
     /// S'annonce et commence à chercher les autres. [rappel] reçoit chaque
     /// apparition et disparition (depuis un fil à part).
-    pub fn demarrer(
-        nom: &str,
-        plateforme: &str,
-        empreinte: &str,
-        port: u16,
-        rappel: impl Fn(Decouverte) + Send + 'static,
-    ) -> Result<Self, ErreurDecouverte> {
+    pub fn demarrer(nom: &str, plateforme: &str, empreinte: &str, port: u16, rappel: impl Fn(Decouverte) + Send + 'static) -> Result<Self, ErreurDecouverte> {
         let demon = ServiceDaemon::new().map_err(err)?;
         // Un nom d'instance unique et sans données personnelles inutiles :
         // le début de l'empreinte.
         let instance = format!("droplet-{}", &empreinte[..12.min(empreinte.len())]);
         let hote = format!("{instance}.local.");
-        let proprietes = [("n", nom), ("p", plateforme), ("fp", empreinte), ("v", "1")];
-        let info = ServiceInfo::new(TYPE_SERVICE, &instance, &hote, "", port, &proprietes[..])
-            .map_err(err)?
-            .enable_addr_auto();
+        let annonce =
+            Annonce { instance, hote, nom: nom.to_string(), plateforme: plateforme.to_string(), empreinte: empreinte.to_string(), port, tirage: String::new() };
+        let info = annonce.info()?;
         let nom_complet = info.get_fullname().to_string();
         demon.register(info).map_err(err)?;
 
@@ -115,6 +138,12 @@ impl Annonceur {
                                 plateforme: txt("p").chars().take(24).collect(),
                                 empreinte,
                                 adresses,
+                                tirage: txt("t")
+                                    .split(',')
+                                    .filter(|x| x.len() == 16 && x.chars().all(|c| c.is_ascii_hexdigit()))
+                                    .take(16)
+                                    .map(String::from)
+                                    .collect(),
                             };
                             let nouveau = vus2.lock().unwrap().insert(vu.id.clone(), vu.clone()).as_ref() != Some(&vu);
                             if nouveau {
@@ -131,7 +160,29 @@ impl Annonceur {
                 }
             })
             .map_err(err)?;
-        Ok(Self { demon, nom_complet, vus })
+        Ok(Self { demon, nom_complet, annonce: Mutex::new(annonce), vus })
+    }
+
+    /// Annonce les appareils qu'on attend (débuts d'empreinte, voir `t`).
+    pub fn signaler(&self, tirage: &[String]) {
+        let mut a = self.annonce.lock().unwrap();
+        let t = tirage.iter().take(8).cloned().collect::<Vec<_>>().join(",");
+        if a.tirage == t {
+            return;
+        }
+        a.tirage = t;
+        if let Ok(info) = a.info() {
+            let _ = self.demon.register(info);
+        }
+    }
+
+    /// Change le nom annoncé.
+    pub fn renommer(&self, nom: &str) {
+        let mut a = self.annonce.lock().unwrap();
+        a.nom = nom.to_string();
+        if let Ok(info) = a.info() {
+            let _ = self.demon.register(info);
+        }
     }
 
     pub fn appareils(&self) -> Vec<AppareilVu> {
@@ -177,6 +228,19 @@ mod tests {
         }
         if !trouve {
             println!("MULTICAST INDISPONIBLE ici : découverte non vérifiée (repli QR / adresse)");
+        } else {
+            // A annonce qu'il attend B : B le voit dans `t`.
+            a.signaler(&[fb[..16].to_string()]);
+            let mut vu = false;
+            while let Ok(d) = rx.recv_timeout(Duration::from_secs(8)) {
+                if let Decouverte::Trouve(v) = d {
+                    if v.empreinte == fa && v.tirage == vec![fb[..16].to_string()] {
+                        vu = true;
+                        break;
+                    }
+                }
+            }
+            assert!(vu, "l'annonce `t` n'est pas arrivée");
         }
         a.arreter();
         b.arreter();

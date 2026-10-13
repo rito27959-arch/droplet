@@ -36,11 +36,7 @@ async fn appareil_dans(nom: &str, d: tempfile::TempDir, port: u16) -> Appareil {
 }
 
 fn cible(a: &Appareil) -> Cible {
-    Cible {
-        adresses: vec![SocketAddr::from(([127, 0, 0, 1], a.m.port()))],
-        empreinte: Some(a.m.empreinte().hex()),
-        nom: "test".into(),
-    }
+    Cible { adresses: vec![SocketAddr::from(([127, 0, 0, 1], a.m.port()))], empreinte: Some(a.m.empreinte().hex()), nom: "test".into() }
 }
 
 fn fichier_aleatoire(dossier: &Path, nom: &str, taille: usize) -> PathBuf {
@@ -316,11 +312,7 @@ async fn group_drop_session() {
     let hote = appareil("Professeur").await;
     let src = tempfile::tempdir().unwrap();
     let f = fichier_aleatoire(src.path(), "cours.zip", 30 * 1024 * 1024);
-    let info = hote
-        .m
-        .creer_session(vec![SourceFichier { disque: f.clone(), nom: "cours.zip".into() }], Duration::from_secs(600), false)
-        .await
-        .unwrap();
+    let info = hote.m.creer_session(vec![SourceFichier { disque: f.clone(), nom: "cours.zip".into() }], Duration::from_secs(600), false).await.unwrap();
     let adresse = Some(SocketAddr::from(([127, 0, 0, 1], hote.m.port())));
 
     // Un intrus avec un faux jeton.
@@ -379,4 +371,44 @@ async fn mesures_volumineuses() {
 #[allow(dead_code)]
 fn _donnees(a: &Appareil) -> &Path {
     &a.donnees
+}
+
+/// Le destinataire n'est pas joignable (pare-feu de Windows qui refuse
+/// les connexions entrantes) : l'expéditeur annonce qu'un envoi l'attend,
+/// le destinataire vient le chercher lui-même — et le fichier arrive,
+/// vérifié, comme par le chemin direct.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn tirage_quand_le_destinataire_est_injoignable() {
+    let a = appareil("Android").await;
+    let b = appareil("Windows").await;
+    accepter_tout(&b);
+    let src = tempfile::tempdir().unwrap();
+    let f = fichier_aleatoire(src.path(), "photo.jpg", 3 * 1024 * 1024 + 7);
+    // Une adresse qui ne répond pas : rien n'écoute sur ce port.
+    let fermee = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port_ferme = fermee.local_addr().unwrap().port();
+    drop(fermee);
+    let mut cible_b = cible(&b);
+    cible_b.adresses = vec![SocketAddr::from(([127, 0, 0, 1], port_ferme))];
+
+    // Ce que ferait la découverte : B voit son empreinte dans l'annonce
+    // de A, et va chercher l'envoi.
+    let mut demandes = a.m.demandes();
+    let (mb, cible_a, prefixe) = (b.m.clone(), cible(&a), b.m.empreinte().hex()[..16].to_string());
+    tokio::spawn(async move {
+        while demandes.changed().await.is_ok() {
+            if demandes.borrow_and_update().contains(&prefixe) {
+                mb.tirer(cible_a.clone());
+            }
+        }
+    });
+
+    let mut rx = a.m.abonner();
+    let g = a.m.envoyer(vec![SourceFichier { disque: f.clone(), nom: "photo.jpg".into() }], vec![cible_b]);
+    let r = finals(&mut rx, &g, 1, Duration::from_secs(60)).await;
+    assert_eq!(r[0].0, Etat::Termine, "{:?}", r[0].1);
+    assert!(meme_contenu(&f, &b.reception.join("photo.jpg")));
+    // L'annonce est retirée une fois l'envoi parti.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(a.m.demandes().borrow().is_empty());
 }

@@ -130,11 +130,10 @@ async fn sans_certificat_client_refuse() {
     let id = Identite::nouvelle().unwrap();
     let avec = config_client(&id, Some(m.empreinte())).unwrap();
     let mut sans = (*avec).clone();
-    sans.client_auth_cert_resolver = Arc::new(rustls::client::AlwaysResolvesClientRawPublicKeys::new(Arc::new(
-        rustls::sign::CertifiedKey::new(vec![], fournisseur.key_provider.load_private_key(
-            rustls::pki_types::PrivateKeyDer::Pkcs8(rcgen::KeyPair::generate().unwrap().serialize_der().into()),
-        ).unwrap()),
-    )));
+    sans.client_auth_cert_resolver = Arc::new(rustls::client::AlwaysResolvesClientRawPublicKeys::new(Arc::new(rustls::sign::CertifiedKey::new(
+        vec![],
+        fournisseur.key_provider.load_private_key(rustls::pki_types::PrivateKeyDer::Pkcs8(rcgen::KeyPair::generate().unwrap().serialize_der().into())).unwrap(),
+    ))));
     let tcp = TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], m.port()))).await.unwrap();
     let r = TlsConnector::from(Arc::new(sans)).connect(nom_serveur(), tcp).await;
     let refuse = match r {

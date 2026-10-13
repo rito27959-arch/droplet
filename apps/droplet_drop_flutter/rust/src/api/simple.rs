@@ -110,18 +110,61 @@ pub fn demarrer(nom: String, plateforme: String, donnees: String, reception: Str
 
     // La découverte : facultative (certains réseaux bloquent le multicast).
     let ab = abonnes.clone();
+    let moi = moteur.empreinte().hex()[..16].to_string();
     let annonceur = Annonceur::demarrer(&nom, &plateforme, &moteur.empreinte().hex(), moteur.port(), move |d| {
         let j = match d {
-            Decouverte::Trouve(a) => serde_json::json!({ "type": "appareil_trouve", "appareil": a }),
-            Decouverte::Perdu { id } => serde_json::json!({ "type": "appareil_perdu", "id": id }),
+            Decouverte::Trouve(a) => {
+                // Cet appareil a un envoi pour nous mais ne nous joint pas :
+                // on va le chercher.
+                if a.tirage.contains(&moi) {
+                    tirer(&a);
+                }
+                serde_json::json!({ "type": "appareil_trouve", "appareil": a })
+            }
+            Decouverte::Perdu { id } => {
+                serde_json::json!({ "type": "appareil_perdu", "id": id })
+            }
         };
         diffuser(&ab, j.to_string());
     })
     .ok();
 
+    // Nos envois en attente d'un appareil injoignable → l'annonce `t`.
+    let mut demandes = moteur.demandes();
+    rt.spawn(async move {
+        while demandes.changed().await.is_ok() {
+            let l = demandes.borrow_and_update().clone();
+            if let Some(a) = GLOBAL.get().and_then(|gl| gl.annonceur.lock().ok()) {
+                if let Some(a) = a.as_ref() {
+                    a.signaler(&l);
+                }
+            }
+        }
+    });
+    // Filet de sécurité : une annonce manquée (multicast capricieux) est
+    // rattrapée en relisant régulièrement les appareils vus.
+    let moi = moteur.empreinte().hex()[..16].to_string();
+    rt.spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let Some(gl) = GLOBAL.get() else { continue };
+            let vus = gl.annonceur.lock().unwrap().as_ref().map(|a| a.appareils()).unwrap_or_default();
+            for a in vus.iter().filter(|a| a.tirage.contains(&moi)) {
+                tirer(a);
+            }
+        }
+    });
+
     let i = info(&moteur);
     let _ = GLOBAL.set(Global { rt, moteur, annonceur: Mutex::new(annonceur), historique: Mutex::new(historique), abonnes });
     Ok(i)
+}
+
+fn tirer(a: &drop_discovery::AppareilVu) {
+    if let Some(gl) = GLOBAL.get() {
+        let _guard = gl.rt.enter();
+        gl.moteur.tirer(Cible { adresses: a.adresses.clone(), empreinte: Some(a.empreinte.clone()), nom: a.nom.clone() });
+    }
 }
 
 fn info(m: &Moteur) -> InfoAppareil {
@@ -231,6 +274,9 @@ pub fn lire_invitation(invitation: String) -> anyhow::Result<String> {
 pub fn definir_nom(nom: String) {
     if let Some(gl) = GLOBAL.get() {
         let nom: String = nom.chars().filter(|c| !c.is_control()).take(64).collect();
+        if let Some(a) = gl.annonceur.lock().unwrap().as_ref() {
+            a.renommer(&nom);
+        }
         gl.moteur.modifier(|c| c.nom = nom);
     }
 }

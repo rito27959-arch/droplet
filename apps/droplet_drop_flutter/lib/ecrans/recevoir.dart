@@ -14,6 +14,7 @@ import '../design/couleurs.dart';
 import '../design/marque.dart';
 import '../design/typo.dart';
 import 'group_drop.dart';
+import 'pare_feu.dart';
 import 'reglages.dart';
 
 class Recevoir extends StatelessWidget {
@@ -55,6 +56,7 @@ class Recevoir extends StatelessWidget {
                           child: Text(context.t('changer_nom'), style: Typo.secondaire.copyWith(color: p.accentTexte, fontWeight: FontWeight.w600)),
                         ),
                       ),
+                      const CartePareFeu(),
                       TitreSection(context.t('qr_appareil')),
                       Carte(
                         child: Column(

@@ -130,13 +130,7 @@ struct BlocEnCours {
 
 /// Reçoit les données d'un envoi accepté, jusqu'au bout. Rend les chemins
 /// des fichiers posés dans le dossier de réception.
-pub async fn recevoir<R, W>(
-    lecteur: &mut R,
-    ecrivain: &mut W,
-    mut partiel: Partiel,
-    reception: &Path,
-    suivi: &Arc<Suivi>,
-) -> Result<Vec<PathBuf>, Erreur>
+pub async fn recevoir<R, W>(lecteur: &mut R, ecrivain: &mut W, mut partiel: Partiel, reception: &Path, suivi: &Arc<Suivi>) -> Result<Vec<PathBuf>, Erreur>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
