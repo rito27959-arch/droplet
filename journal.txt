@@ -1,0 +1,138 @@
+8152-            TEMP_ROOT=/Users/runner/Library/Developer/Xcode/DerivedData/Runner-akqonpwnhhinztaudifnsbhufycj/Build/Intermediates.noindex
+8153-            RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY=NO
+8154-            LD_WARN_DUPLICATE_LIBRARIES=NO
+8155-            HEADERMAP_INCLUDES_FRAMEWORK_ENTRIES_FOR_TARGETS_NOT_BEING_BUILT=YES
+8156-            HEADERMAP_INCLUDES_FLAT_ENTRIES_FOR_TARGET_BEING_BUILT=YES
+8157-            FRAMEWORK_VERSION=A
+8158-            ENABLE_RESOURCE_ACCESS_LOCATION=NO
+8159-            ENABLE_INCOMING_NETWORK_CONNECTIONS=NO
+8160-            DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES
+8161-            GITHUB_ACTION=__run
+8162-            SYSTEM_ADMIN_APPS_DIR=/Applications/Utilities
+8163-            SOURCE_ROOT=/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/ios/Pods
+8164-            PLATFORM_FAMILY_NAME=iOS
+8165-            LIBRARY_KEXT_INSTALL_PATH=/Library/Extensions
+8166-            FIXED_FILES_DIR=/Users/runner/Library/Developer/Xcode/DerivedData/Runner-akqonpwnhhinztaudifnsbhufycj/Build/Intermediates.noindex/Pods.build/Debug-iphonesimulator/rust_lib_droplet_drop.build/FixedFiles
+8167-            CLANG_WARN_UNGUARDED_AVAILABILITY=YES_AGGRESSIVE
+8168-            DOTNET_MULTILEVEL_LOOKUP=0
+8169-            USE_HEADERMAP=YES
+8170-            SUPPORTS_TEXT_BASED_API=NO
+8171-            RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION=NO
+8172-            PRODUCT_SETTINGS_PATH=/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/ios/Pods/Target Support Files/rust_lib_droplet_drop/rust_lib_droplet_drop-Info.plist
+8173-            EXECUTABLE_FOLDER_PATH=rust_lib_droplet_drop.framework
+8174-            ENABLE_RESOURCE_ACCESS_AUDIO_INPUT=NO
+8175-            ENABLE_DEFAULT_SEARCH_PATHS=YES
+8176-            BUILD_ROOT=/Users/runner/Library/Developer/Xcode/DerivedData/Runner-akqonpwnhhinztaudifnsbhufycj/Build/Products
+8177-            _=/usr/bin/env
+8178-            Resolving dependencies...
+8179-            Downloading packages...
+8180-            + adaptive_number 1.0.0
+8181-            + args 2.4.2 (2.7.0 available)
+8182-            + async 2.13.1
+8183-            + build_tool 1.0.0 from path /Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/rust_builder/cargokit/build_tool
+8184-            + collection 1.18.0 (1.19.1 available)
+8185-            + convert 3.1.1 (3.1.2 available)
+8186-            + crypto 3.0.3 (3.0.7 available)
+8187-            + ed25519_edwards 0.3.1 (0.3.2 available)
+8188-            + fixnum 1.1.1
+8189-            + github 9.17.0 (9.26.0 available)
+8190-            + hex 0.2.0
+8191-            + http 1.1.0 (1.6.0 available)
+8192-            + http_parser 4.0.2 (4.1.2 available)
+8193-            + json_annotation 4.12.0
+8194-            + logging 1.2.0 (1.3.0 available)
+8195-            + meta 1.19.0
+8196-            + path 1.8.0 (1.9.1 available)
+8197-            + petitparser 5.4.0 (7.1.0 available)
+8198-            + source_span 1.10.0 (1.10.2 available)
+8199-            + string_scanner 1.4.1
+8200-            + term_glyph 1.2.2
+8201-            + toml 0.14.0 (0.18.0 available)
+8202-            + typed_data 1.4.0
+8203-            + version 3.0.0 (3.0.2 available)
+8204-            + yaml 3.1.2 (3.1.4 available)
+8205-            Changed 25 dependencies!
+8206-            15 packages have newer versions incompatible with dependency constraints.
+8207-            Try `dart pub outdated` for more information.
+8208-            Compiling bin/build_tool_runner.dart to kernel file bin/build_tool_runner.dill.
+8209-            INFO: Precompiled binaries are disabled
+8210-            INFO: Building rust_lib_droplet_drop for aarch64-apple-ios-sim
+8211-            SEVERE: ================================================================================
+8212:            SEVERE: Cargokit BuildTool failed with error:
+--
+22100-               TEMP_ROOT=/Users/runner/Library/Developer/Xcode/DerivedData/Runner-akqonpwnhhinztaudifnsbhufycj/Build/Intermediates.noindex
+22101-               RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY=NO
+22102-               LD_WARN_DUPLICATE_LIBRARIES=NO
+22103-               HEADERMAP_INCLUDES_FRAMEWORK_ENTRIES_FOR_TARGETS_NOT_BEING_BUILT=YES
+22104-               HEADERMAP_INCLUDES_FLAT_ENTRIES_FOR_TARGET_BEING_BUILT=YES
+22105-               FRAMEWORK_VERSION=A
+22106-               ENABLE_RESOURCE_ACCESS_LOCATION=NO
+22107-               ENABLE_INCOMING_NETWORK_CONNECTIONS=NO
+22108-               DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES
+22109-               GITHUB_ACTION=__run
+22110-               SYSTEM_ADMIN_APPS_DIR=/Applications/Utilities
+22111-               SOURCE_ROOT=/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/ios/Pods
+22112-               PLATFORM_FAMILY_NAME=iOS
+22113-               LIBRARY_KEXT_INSTALL_PATH=/Library/Extensions
+22114-               FIXED_FILES_DIR=/Users/runner/Library/Developer/Xcode/DerivedData/Runner-akqonpwnhhinztaudifnsbhufycj/Build/Intermediates.noindex/Pods.build/Debug-iphonesimulator/rust_lib_droplet_drop.build/FixedFiles
+22115-               CLANG_WARN_UNGUARDED_AVAILABILITY=YES_AGGRESSIVE
+22116-               DOTNET_MULTILEVEL_LOOKUP=0
+22117-               USE_HEADERMAP=YES
+22118-               SUPPORTS_TEXT_BASED_API=NO
+22119-               RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION=NO
+22120-               PRODUCT_SETTINGS_PATH=/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/ios/Pods/Target Support Files/rust_lib_droplet_drop/rust_lib_droplet_drop-Info.plist
+22121-               EXECUTABLE_FOLDER_PATH=rust_lib_droplet_drop.framework
+22122-               ENABLE_RESOURCE_ACCESS_AUDIO_INPUT=NO
+22123-               ENABLE_DEFAULT_SEARCH_PATHS=YES
+22124-               BUILD_ROOT=/Users/runner/Library/Developer/Xcode/DerivedData/Runner-akqonpwnhhinztaudifnsbhufycj/Build/Products
+22125-               _=/usr/bin/env
+22126-               Resolving dependencies...
+22127-               Downloading packages...
+22128-               + adaptive_number 1.0.0
+22129-               + args 2.4.2 (2.7.0 available)
+22130-               + async 2.13.1
+22131-               + build_tool 1.0.0 from path /Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/rust_builder/cargokit/build_tool
+22132-               + collection 1.18.0 (1.19.1 available)
+22133-               + convert 3.1.1 (3.1.2 available)
+22134-               + crypto 3.0.3 (3.0.7 available)
+22135-               + ed25519_edwards 0.3.1 (0.3.2 available)
+22136-               + fixnum 1.1.1
+22137-               + github 9.17.0 (9.26.0 available)
+22138-               + hex 0.2.0
+22139-               + http 1.1.0 (1.6.0 available)
+22140-               + http_parser 4.0.2 (4.1.2 available)
+22141-               + json_annotation 4.12.0
+22142-               + logging 1.2.0 (1.3.0 available)
+22143-               + meta 1.19.0
+22144-               + path 1.8.0 (1.9.1 available)
+22145-               + petitparser 5.4.0 (7.1.0 available)
+22146-               + source_span 1.10.0 (1.10.2 available)
+22147-               + string_scanner 1.4.1
+22148-               + term_glyph 1.2.2
+22149-               + toml 0.14.0 (0.18.0 available)
+22150-               + typed_data 1.4.0
+22151-               + version 3.0.0 (3.0.2 available)
+22152-               + yaml 3.1.2 (3.1.4 available)
+22153-               Changed 25 dependencies!
+22154-               15 packages have newer versions incompatible with dependency constraints.
+22155-               Try `dart pub outdated` for more information.
+22156-               Compiling bin/build_tool_runner.dart to kernel file bin/build_tool_runner.dill.
+22157-               INFO: Precompiled binaries are disabled
+22158-               INFO: Building rust_lib_droplet_drop for aarch64-apple-ios-sim
+22159-               SEVERE: ================================================================================
+22160:               SEVERE: Cargokit BuildTool failed with error:
+8212:            SEVERE: Cargokit BuildTool failed with error:
+8454:            SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_image_count` in crate `libc`[0m
+8460:            SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_get_image_name` in crate `libc`[0m
+8466:            SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_get_image_header` in crate `libc`[0m
+8472:            SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_get_image_vmaddr_slide` in crate `libc`[0m
+22160:               SEVERE: Cargokit BuildTool failed with error:
+22402:               SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_image_count` in crate `libc`[0m
+22408:               SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_get_image_name` in crate `libc`[0m
+22414:               SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_get_image_header` in crate `libc`[0m
+22420:               SEVERE: [1m[91merror[E0425][0m[1m: cannot find function `_dyld_get_image_vmaddr_slide` in crate `libc`[0m
+
+[        ] Running 3 shutdown hooks
+[        ] Shutdown hooks complete
+[        ] exiting with code 1
+code: 1
