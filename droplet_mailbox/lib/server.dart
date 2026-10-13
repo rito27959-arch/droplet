@@ -93,9 +93,12 @@ Endpoint _endpoint() {
 }
 
 /// Ouvre les connexions de CETTE copie. Postgres accepte 100 connexions :
-/// les copies se partagent 80, il en reste pour l'annuaire.
+/// les copies d'un service se partagent CONNEXIONS_BASE (80 par défaut), il
+/// en reste pour l'annuaire. Avec plusieurs répliques Railway, baisser ce
+/// nombre (ex. 40 pour deux répliques).
 Future<void> _ouvrirBase() async {
-  final reglages = PoolSettings(maxConnectionCount: max(4, 80 ~/ _copies), sslMode: SslMode.disable);
+  final budget = int.tryParse(Platform.environment['CONNEXIONS_BASE'] ?? '') ?? 80;
+  final reglages = PoolSettings(maxConnectionCount: max(4, budget ~/ _copies), sslMode: SslMode.disable);
   _db = Pool.withEndpoints([_endpoint()], settings: reglages);
   // Les dépôts faits sur une AUTRE copie du service réveillent nos attentes.
   final ecoute = await Connection.open(_endpoint(), settings: ConnectionSettings(sslMode: SslMode.disable));
