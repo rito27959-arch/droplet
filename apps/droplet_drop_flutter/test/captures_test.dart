@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:droplet_drop/app/etat_app.dart';
 import 'package:droplet_drop/app/modeles.dart';
+import 'package:droplet_drop/app/theme.dart';
 import 'package:droplet_drop/design/couleurs.dart';
 import 'package:droplet_drop/ecrans/accueil.dart';
 import 'package:droplet_drop/ecrans/choisir.dart';
@@ -99,12 +100,8 @@ Widget _app(Widget ecran, {required bool sombre}) => PorteePalette(
         locale: const Locale('fr'),
         supportedLocales: const [Locale('fr')],
         localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
-        theme: ThemeData(
-          brightness: sombre ? Brightness.dark : Brightness.light,
-          fontFamily: 'Roboto',
-          scaffoldBackgroundColor: Palette.de(sombre: sombre, accent: Accent.bleu).fond,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF168BFF), brightness: sombre ? Brightness.dark : Brightness.light),
-        ),
+        // Le thème de l'application elle-même, police Roboto chargée.
+        theme: themeDroplet(Palette.de(sombre: sombre, accent: Accent.bleu), police: 'Roboto'),
         home: ecran,
       ),
     );
@@ -112,18 +109,26 @@ Widget _app(Widget ecran, {required bool sombre}) => PorteePalette(
 const _tailles = {'mobile': Size(390, 844), 'bureau': Size(1280, 800)};
 
 Future<void> _capture(WidgetTester tester, String nom, Widget ecran, {Future<void> Function(WidgetTester)? apres}) async {
+  // flutter_test dessine les ombres sans flou (des aplats) : on veut les
+  // vraies, celles de l'application — puis on rend la valeur attendue.
+  debugDisableShadows = false;
   for (final sombre in [false, true]) {
     for (final t in _tailles.entries) {
       tester.view.physicalSize = t.value * 2;
       tester.view.devicePixelRatio = 2;
       EtatApp.i.langue = 'fr';
       await tester.pumpWidget(_app(ecran, sombre: sombre));
+      // L'icône est une image : on attend qu'elle soit décodée, sinon la
+      // première capture la montre vide.
+      await tester.runAsync(() => precacheImage(const AssetImage('assets/icone.png'), tester.element(find.byType(MaterialApp))));
       await tester.pump(const Duration(milliseconds: 900));
       if (apres != null) await apres(tester);
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('captures/$nom-${t.key}-${sombre ? 'sombre' : 'clair'}.png'));
     }
   }
   tester.view.resetPhysicalSize();
+  await tester.pumpWidget(const SizedBox.shrink());
+  debugDisableShadows = true;
 }
 
 void main() {
@@ -162,6 +167,16 @@ void main() {
   testWidgets('distribution', (tester) => _capture(tester, '5-distribution', TableauSession(session: EtatApp.i.mesSessions['s1']!)));
 
   testWidgets('recevoir', (tester) => _capture(tester, '6-recevoir', const Recevoir()));
+
+  testWidgets('accueil vide', (tester) async {
+    final gardes = Map.of(EtatApp.i.appareils);
+    final transferts = Map.of(EtatApp.i.transferts);
+    EtatApp.i.appareils.clear();
+    EtatApp.i.transferts.clear();
+    await _capture(tester, '8-accueil-vide', const Accueil());
+    EtatApp.i.appareils.addAll(gardes);
+    EtatApp.i.transferts.addAll(transferts);
+  });
 
   testWidgets('reglages', (tester) async {
     EtatApp.i.pret = false; // pas de moteur dans les tests : réglages sans appel natif

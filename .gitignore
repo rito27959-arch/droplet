@@ -1,3 +1,4 @@
 target/
 **/build/
 .dart_tool/
+__pycache__/

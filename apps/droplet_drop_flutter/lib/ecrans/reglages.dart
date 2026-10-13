@@ -59,82 +59,60 @@ class EcranReglages extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SegmentedButton<Theme3>(
-                            segments: [
-                              ButtonSegment(value: Theme3.systeme, label: Text(context.t('theme_systeme'))),
-                              ButtonSegment(value: Theme3.clair, label: Text(context.t('theme_clair'))),
-                              ButtonSegment(value: Theme3.sombre, label: Text(context.t('theme_sombre'))),
+                          Segments<Theme3>(
+                            options: [
+                              (Theme3.systeme, context.t('theme_systeme'), Icons.brightness_auto_rounded),
+                              (Theme3.clair, context.t('theme_clair'), Icons.light_mode_rounded),
+                              (Theme3.sombre, context.t('theme_sombre'), Icons.dark_mode_rounded),
                             ],
-                            selected: {e.theme},
-                            onSelectionChanged: (s) => e.definirTheme(s.first),
+                            valeur: e.theme,
+                            onChange: e.definirTheme,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 18),
                           Text(context.t('couleur'), style: Typo.secondaire.copyWith(color: p.texte2)),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 12),
                           Wrap(
-                            spacing: 12,
+                            spacing: 14,
+                            runSpacing: 10,
                             children: [
-                              for (final a in Accent.values)
-                                Pressable(
-                                  semantique: context.t('couleur_${a.name}'),
-                                  onTap: () => e.definirAccent(a),
-                                  child: Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: Palette.de(sombre: p.sombre, accent: a).liquide,
-                                      border: Border.all(color: e.accent == a ? p.texte : Colors.transparent, width: 2.5),
-                                    ),
-                                  ),
-                                ),
+                              for (final a in Accent.values) _Pastille(accent: a, choisie: e.accent == a, onTap: () => e.definirAccent(a)),
                             ],
                           ),
                         ],
                       ),
                     ),
-                    TitreSection(context.t('langue')),
-                    Carte(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-                      child: DropdownButton<String?>(
-                        value: e.langue,
-                        isExpanded: true,
-                        underline: const SizedBox.shrink(),
-                        dropdownColor: p.surface,
-                        style: Typo.corps.copyWith(color: p.texte),
-                        items: [
-                          DropdownMenuItem(value: null, child: Text(context.t('langue_systeme'))),
-                          for (final l in langues.entries) DropdownMenuItem(value: l.key, child: Text(l.value)),
-                        ],
-                        onChanged: e.definirLangue,
-                      ),
-                    ),
-                    TitreSection(context.t('reception')),
-                    Carte(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(context.t('dossier_reception'), style: Typo.secondaire.copyWith(color: p.texte2)),
-                          const SizedBox(height: 4),
-                          SelectableText(e.reception, style: Typo.secondaire.copyWith(color: p.texte)),
-                          if (!estMobile) ...[
-                            const SizedBox(height: 10),
-                            Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: BoutonSecondaire(
-                                texte: context.t('changer'),
-                                icone: Icons.folder_rounded,
-                                hauteur: 44,
-                                large: false,
-                                onTap: () async {
+                    TitreSection(context.t('general')),
+                    Groupe(
+                      lignes: [
+                        Ligne(
+                          icone: Icons.translate_rounded,
+                          teinte: const Color(0xFF4855E8),
+                          titre: context.t('langue'),
+                          valeur: e.langue == null ? context.t('langue_systeme') : langues[e.langue],
+                          onTap: () async {
+                            // '' : la langue du système (null voudrait dire « fermé sans choisir »).
+                            final choix = await choisirDansListe<String>(
+                              context,
+                              titre: context.t('langue'),
+                              courant: e.langue ?? '',
+                              options: [('', context.t('langue_systeme')), for (final l in langues.entries) (l.key, l.value)],
+                            );
+                            if (choix != null) e.definirLangue(choix.isEmpty ? null : choix);
+                          },
+                        ),
+                        Ligne(
+                          icone: Icons.folder_rounded,
+                          teinte: const Color(0xFF168BFF),
+                          titre: context.t('reception'),
+                          sousTitre: e.reception,
+                          onTap: estMobile
+                              ? null
+                              : () async {
                                   final d = await FilePicker.platform.getDirectoryPath();
                                   if (d != null) e.definirReception(d);
                                 },
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     TitreSection(context.t('confiance')),
                     Carte(
@@ -221,6 +199,42 @@ class _ChampNomState extends State<_ChampNom> {
         EtatApp.i.definirNom(_c.text);
         FocusScope.of(context).unfocus();
       },
+    );
+  }
+}
+
+/// Une couleur d'accent : la goutte de couleur, et — choisie — un anneau
+/// détaché avec une coche, comme les couleurs d'accent d'iOS.
+class _Pastille extends StatelessWidget {
+  const _Pastille({required this.accent, required this.choisie, required this.onTap});
+
+  final Accent accent;
+  final bool choisie;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    final couleur = Palette.de(sombre: p.sombre, accent: accent);
+    return Pressable(
+      semantique: context.t('couleur_${accent.name}'),
+      enfoncement: 0.9,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: duree(context, 220),
+        width: 44,
+        height: 44,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: choisie ? couleur.accent : Colors.transparent, width: 2)),
+        child: DecoratedBox(
+          decoration: BoxDecoration(shape: BoxShape.circle, gradient: couleur.liquide),
+          child: AnimatedOpacity(
+            opacity: choisie ? 1 : 0,
+            duration: duree(context, 180),
+            child: const Icon(Icons.check_rounded, color: Colors.white, size: 20),
+          ),
+        ),
+      ),
     );
   }
 }

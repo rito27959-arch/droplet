@@ -15,6 +15,7 @@ import 'historique.dart';
 import 'recevoir.dart';
 import 'reglages.dart';
 import 'transfert.dart';
+import 'depot.dart';
 
 class Accueil extends StatelessWidget {
   const Accueil({super.key});
@@ -27,7 +28,9 @@ class Accueil extends StatelessWidget {
         final e = EtatApp.i;
         final p = context.p;
         final enCours = _groupesEnCours(e);
-        return Scaffold(
+        return ZoneDepot(
+          child: Raccourcis(
+            child: Scaffold(
           backgroundColor: p.fond,
           body: Fond(
             child: SafeArea(
@@ -91,14 +94,43 @@ class Accueil extends StatelessWidget {
                               ],
                               TitreSection(
                                 context.t('a_proximite'),
-                                fin: e.appareils.isEmpty ? null : Text('${e.appareils.length}', style: Typo.legende.copyWith(color: p.texte3)),
+                                // La découverte tourne en continu : une pastille qui respire le dit.
+                                fin: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (e.pret) Pulsation(couleur: p.succes, taille: 6),
+                                    if (e.appareils.isNotEmpty) Text('${e.appareils.length}', style: Typo.legende.copyWith(color: p.texte3)),
+                                  ],
+                                ),
                               ),
                               if (e.appareils.isEmpty)
+                                // Personne encore : le radar, comme AirDrop quand il cherche.
                                 Carte(
-                                  child: EtatVide(
-                                    icone: Icons.wifi_tethering_rounded,
-                                    titre: context.t('personne_titre'),
-                                    texte: context.t('personne_texte'),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Column(
+                                      children: [
+                                        Radar(
+                                          taille: 170,
+                                          child: AvatarAppareil(plateforme: EtatApp.plateforme(), empreinte: e.empreinte, taille: 56),
+                                        ),
+                                        Text(context.t('recherche_appareils'), textAlign: TextAlign.center, style: Typo.titreCarte.copyWith(color: p.texte)),
+                                        const SizedBox(height: 6),
+                                        ConstrainedBox(
+                                          constraints: const BoxConstraints(maxWidth: 380),
+                                          child: Text(context.t('personne_texte'), textAlign: TextAlign.center, style: Typo.secondaire.copyWith(color: p.texte2)),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        BoutonSecondaire(
+                                          texte: context.t('recevoir'),
+                                          icone: Icons.qr_code_2_rounded,
+                                          hauteur: 44,
+                                          large: false,
+                                          onTap: e.pret ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Recevoir())) : null,
+                                        ),
+                                        const SizedBox(height: 6),
+                                      ],
+                                    ),
                                   ),
                                 )
                               else
@@ -116,6 +148,8 @@ class Accueil extends StatelessWidget {
                   const _Barre(),
                 ],
               ),
+            ),
+          ),
             ),
           ),
         );
@@ -146,6 +180,7 @@ class CarteAppareil extends StatelessWidget {
     final p = context.p;
     return Carte(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      selectionnee: selectionne ?? false,
       onTap: onTap ?? () => choisirPuisEnvoyer(context, vers: appareil),
       child: Row(
         children: [

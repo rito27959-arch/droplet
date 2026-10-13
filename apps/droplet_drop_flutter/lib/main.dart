@@ -4,12 +4,12 @@
 // historique) est en Rust : `rust/` et `../../crates/`.
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app/etat_app.dart';
+import 'app/theme.dart';
 import 'app/textes.dart';
 import 'design/couleurs.dart';
 import 'ecrans/accueil.dart';
@@ -85,20 +85,7 @@ class _DropletDropState extends State<DropletDrop> with WidgetsBindingObserver {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        theme: ThemeData(
-          brightness: sombre ? Brightness.dark : Brightness.light,
-          scaffoldBackgroundColor: palette.fond,
-          colorScheme: ColorScheme.fromSeed(seedColor: palette.accent, brightness: sombre ? Brightness.dark : Brightness.light),
-          splashFactory: NoSplash.splashFactory,
-          highlightColor: Colors.transparent,
-          pageTransitionsTheme: PageTransitionsTheme(builders: {
-            TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-            TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-            TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-          }),
-          textSelectionTheme: TextSelectionThemeData(cursorColor: palette.accent),
+        theme: themeDroplet(palette),
         ),
         builder: (context, enfant) => AnnotatedRegion<SystemUiOverlayStyle>(
           value: sombre ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,

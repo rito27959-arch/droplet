@@ -28,13 +28,17 @@ Duration duree(BuildContext c, int ms) => reduireAnimations(c) ? Duration.zero :
 
 /// Un élément pressable : enfoncement doux, survol, curseur, focus clavier.
 class Pressable extends StatefulWidget {
-  const Pressable({super.key, required this.child, this.onTap, this.enfoncement = 0.97, this.semantique, this.haptique = true});
+  const Pressable({super.key, required this.child, this.onTap, this.enfoncement = 0.97, this.semantique, this.haptique = true, this.attenuerInactif = true});
 
   final Widget child;
   final VoidCallback? onTap;
   final double enfoncement;
   final String? semantique;
   final bool haptique;
+
+  /// Vrai : inactif, l'élément s'estompe. Faux : il dessine lui-même son
+  /// état inactif (le bouton liquide devient gris, pas délavé).
+  final bool attenuerInactif;
 
   @override
   State<Pressable> createState() => _PressableState();
@@ -80,7 +84,7 @@ class _PressableState extends State<Pressable> {
             duration: duree(context, _presse ? 90 : 260),
             curve: _presse ? Curves.easeOut : kRessort,
             child: AnimatedOpacity(
-              opacity: actif ? (_survol && !_presse ? 0.92 : 1) : 0.45,
+              opacity: actif ? (_survol && !_presse ? 0.92 : 1) : (widget.attenuerInactif ? 0.45 : 1),
               duration: duree(context, 150),
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -111,6 +115,10 @@ class BoutonLiquide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.p;
+    // Inactif (rien à envoyer, personne de choisi) : une surface grise
+    // nette, comme les boutons d'iOS — pas un dégradé délavé illisible.
+    final inactif = onTap == null && !chargement;
+    final encre = inactif ? p.texte3 : Colors.white;
     final contenu = Row(
       mainAxisSize: large ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -118,35 +126,41 @@ class BoutonLiquide extends StatelessWidget {
         if (chargement)
           const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white))
         else if (icone != null)
-          Icon(icone, color: Colors.white, size: 21),
+          Icon(icone, color: encre, size: 21),
         if (chargement || icone != null) const SizedBox(width: 10),
         Flexible(
-          child: Text(texte, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.titreCarte.copyWith(color: Colors.white)),
+          child: Text(texte, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.titreCarte.copyWith(color: encre)),
         ),
       ],
     );
     return Pressable(
       onTap: chargement ? null : onTap,
       semantique: texte,
-      child: Container(
+      attenuerInactif: false,
+      child: AnimatedContainer(
+        duration: duree(context, 240),
+        curve: kSortie,
         height: hauteur,
         padding: const EdgeInsets.symmetric(horizontal: 24),
         decoration: BoxDecoration(
-          gradient: p.liquide,
+          gradient: inactif ? null : p.liquide,
+          color: inactif ? p.surfaceHaute : null,
           borderRadius: BorderRadius.circular(hauteur / 2.8),
-          boxShadow: [
-            BoxShadow(color: p.accent.withValues(alpha: p.sombre ? 0.35 : 0.28), blurRadius: 24, offset: const Offset(0, 10)),
-          ],
+          boxShadow: inactif
+              ? const []
+              : [BoxShadow(color: p.accent.withValues(alpha: p.sombre ? 0.32 : 0.26), blurRadius: 22, spreadRadius: -4, offset: const Offset(0, 10))],
         ),
         // Un reflet en haut : la matière, sans effet gratuit.
-        foregroundDecoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(hauteur / 2.8),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.center,
-            colors: [Colors.white.withValues(alpha: 0.16), Colors.white.withValues(alpha: 0)],
-          ),
-        ),
+        foregroundDecoration: inactif
+            ? null
+            : BoxDecoration(
+                borderRadius: BorderRadius.circular(hauteur / 2.8),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.center,
+                  colors: [Colors.white.withValues(alpha: 0.16), Colors.white.withValues(alpha: 0)],
+                ),
+              ),
         child: contenu,
       ),
     );
@@ -225,22 +239,27 @@ class BoutonIcone extends StatelessWidget {
 
 /// La surface pleine.
 class Carte extends StatelessWidget {
-  const Carte({super.key, required this.child, this.padding = const EdgeInsets.all(18), this.onTap, this.couleur});
+  const Carte({super.key, required this.child, this.padding = const EdgeInsets.all(18), this.onTap, this.couleur, this.selectionnee = false});
 
   final Widget child;
   final EdgeInsets padding;
   final VoidCallback? onTap;
   final Color? couleur;
 
+  /// Choisie (un destinataire) : liseré d'accent et fond teinté.
+  final bool selectionnee;
+
   @override
   Widget build(BuildContext context) {
     final p = context.p;
-    final boite = Container(
+    final boite = AnimatedContainer(
+      duration: duree(context, 220),
+      curve: kSortie,
       padding: padding,
       decoration: BoxDecoration(
-        color: couleur ?? p.surface,
+        color: selectionnee ? Color.alphaBlend(p.accent.withValues(alpha: p.sombre ? 0.12 : 0.07), p.surface) : (couleur ?? p.surface),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: p.trait),
+        border: Border.all(color: selectionnee ? p.accent.withValues(alpha: 0.9) : p.trait, width: selectionnee ? 1.5 : 1),
         boxShadow: p.sombre ? null : [BoxShadow(color: const Color(0xFF0B1220).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
       ),
       // Une surface Material transparente : les ListTile posés dans une
@@ -382,14 +401,25 @@ class BarreProgression extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(child: ColoredBox(color: p.surfaceHaute)),
-            TweenAnimationBuilder<double>(
-              tween: Tween(end: valeur.clamp(0, 1)),
-              duration: duree(context, 420),
-              curve: kSortie,
-              builder: (context, v, _) => FractionallySizedBox(
-                widthFactor: v,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(gradient: couleur == null ? p.liquide : null, color: couleur),
+            // Positioned.fill + heightFactor 1 : la partie pleine prend
+            // toute la hauteur de la barre (sans, elle mesurait 0 px et la
+            // progression restait invisible).
+            Positioned.fill(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: valeur.clamp(0, 1)),
+                duration: duree(context, 420),
+                curve: kSortie,
+                builder: (context, v, _) => FractionallySizedBox(
+                  alignment: AlignmentDirectional.centerStart,
+                  widthFactor: v,
+                  heightFactor: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: couleur == null ? p.liquide : null,
+                      color: couleur,
+                      borderRadius: BorderRadius.circular(hauteur),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -501,4 +531,350 @@ class Colonne extends StatelessWidget {
   Widget build(BuildContext context) => Center(
         child: ConstrainedBox(constraints: BoxConstraints(maxWidth: max), child: child),
       );
+}
+
+
+/// Le sélecteur segmenté d'iOS : une piste, et une pastille qui GLISSE
+/// d'une option à l'autre (au lieu de cases qui s'allument). Les libellés
+/// ne passent jamais à la ligne : ils rétrécissent s'il le faut.
+class Segments<T> extends StatelessWidget {
+  const Segments({super.key, required this.options, required this.valeur, required this.onChange});
+
+  final List<(T, String, IconData?)> options;
+  final T valeur;
+  final ValueChanged<T> onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    final i = options.indexWhere((o) => o.$1 == valeur).clamp(0, options.length - 1);
+    final n = options.length;
+    return Semantics(
+      container: true,
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: p.surfaceHaute, borderRadius: BorderRadius.circular(12)),
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              duration: duree(context, 320),
+              curve: kRessort,
+              alignment: AlignmentDirectional(n == 1 ? 0 : -1 + 2 * i / (n - 1), 0).resolve(Directionality.of(context)),
+              child: FractionallySizedBox(
+                widthFactor: 1 / n,
+                heightFactor: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: p.sombre ? const Color(0xFF3A4556) : Colors.white,
+                    borderRadius: BorderRadius.circular(9),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: p.sombre ? 0.3 : 0.1), blurRadius: 8, offset: const Offset(0, 2))],
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                for (final (k, o) in options.indexed)
+                  Expanded(
+                    child: Semantics(
+                      selected: k == i,
+                      button: true,
+                      label: o.$2,
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (k == i) return;
+                          HapticFeedback.selectionClick();
+                          onChange(o.$1);
+                        },
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (o.$3 != null) ...[Icon(o.$3, size: 16, color: k == i ? p.texte : p.texte2), const SizedBox(width: 6)],
+                                    Text(o.$2, maxLines: 1, style: Typo.secondaire.copyWith(color: k == i ? p.texte : p.texte2, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Une liste groupée à la manière des Réglages d'iOS : des lignes dans une
+/// carte, séparées par un trait qui commence après l'icône.
+class Groupe extends StatelessWidget {
+  const Groupe({super.key, required this.lignes});
+
+  final List<Widget> lignes;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    return Carte(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (final (i, l) in lignes.indexed) ...[
+            if (i > 0) Padding(padding: const EdgeInsetsDirectional.only(start: 60), child: Divider(height: 1, thickness: 1, color: p.trait)),
+            l,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Une ligne de réglage : la tuile colorée, le titre, la valeur, le chevron.
+class Ligne extends StatelessWidget {
+  const Ligne({super.key, required this.icone, required this.titre, this.valeur, this.sousTitre, this.teinte, this.onTap, this.fin});
+
+  final IconData icone;
+  final String titre;
+  final String? valeur;
+  final String? sousTitre;
+  final Color? teinte;
+  final VoidCallback? onTap;
+  final Widget? fin;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    final contenu = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(color: teinte ?? p.accent, borderRadius: BorderRadius.circular(8)),
+            child: Icon(icone, size: 18, color: Colors.white),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(titre, style: Typo.corps.copyWith(color: p.texte)),
+                if (sousTitre != null) Text(sousTitre!, maxLines: 2, overflow: TextOverflow.ellipsis, style: Typo.legende.copyWith(color: p.texte2)),
+              ],
+            ),
+          ),
+          if (valeur != null) ...[
+            const SizedBox(width: 10),
+            Flexible(child: Text(valeur!, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: Typo.corps.copyWith(color: p.texte2))),
+          ],
+          if (fin != null) ...[const SizedBox(width: 8), fin!],
+          if (onTap != null && fin == null) ...[const SizedBox(width: 4), Icon(Icons.chevron_right_rounded, color: p.texte3)],
+        ],
+      ),
+    );
+    return onTap == null ? contenu : Pressable(onTap: onTap, enfoncement: 0.99, semantique: titre, child: contenu);
+  }
+}
+
+/// Le radar : des ondes qui partent doucement d'un centre — on cherche les
+/// appareils autour. Immobile si l'utilisateur réduit les animations.
+class Radar extends StatefulWidget {
+  const Radar({super.key, required this.child, this.taille = 180});
+
+  final Widget child;
+  final double taille;
+
+  @override
+  State<Radar> createState() => _RadarState();
+}
+
+class _RadarState extends State<Radar> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reduireAnimations(context)) {
+      _c.stop();
+      _c.value = 0.5;
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    return SizedBox(
+      width: widget.taille,
+      height: widget.taille,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) => CustomPaint(size: Size.square(widget.taille), painter: _Ondes(_c.value, p.accent)),
+          ),
+          widget.child,
+        ],
+      ),
+    );
+  }
+}
+
+class _Ondes extends CustomPainter {
+  _Ondes(this.t, this.couleur);
+
+  final double t;
+  final Color couleur;
+
+  @override
+  void paint(Canvas canvas, Size s) {
+    final c = s.center(Offset.zero);
+    for (var k = 0; k < 3; k++) {
+      final v = (t + k / 3) % 1;
+      final r = s.width * (0.2 + 0.3 * Curves.easeOut.transform(v));
+      canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..color = couleur.withValues(alpha: 0.28 * (1 - v))
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Ondes o) => o.t != t || o.couleur != couleur;
+}
+
+/// Une pastille qui respire : « en direct », « on cherche ».
+class Pulsation extends StatefulWidget {
+  const Pulsation({super.key, this.couleur, this.taille = 8});
+
+  final Color? couleur;
+  final double taille;
+
+  @override
+  State<Pulsation> createState() => _PulsationState();
+}
+
+class _PulsationState extends State<Pulsation> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reduireAnimations(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final couleur = widget.couleur ?? context.p.succes;
+    return SizedBox(
+      width: widget.taille * 2.4,
+      height: widget.taille * 2.4,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) => Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: widget.taille * (1 + 1.4 * _c.value),
+              height: widget.taille * (1 + 1.4 * _c.value),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: couleur.withValues(alpha: 0.35 * (1 - _c.value))),
+            ),
+            Container(width: widget.taille, height: widget.taille, decoration: BoxDecoration(shape: BoxShape.circle, color: couleur)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Une feuille de choix (langue…) : la liste, la coche sur l'option
+/// courante, comme les listes de choix d'iOS.
+Future<T?> choisirDansListe<T>(BuildContext context, {required String titre, required List<(T, String)> options, required T courant}) {
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (c) {
+      final p = c.p;
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(c).height * 0.75, maxWidth: 560),
+            child: Carte(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+                    child: Text(titre, style: Typo.titreCarte.copyWith(color: p.texte)),
+                  ),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final o in options)
+                          Pressable(
+                            enfoncement: 0.99,
+                            semantique: o.$2,
+                            onTap: () => Navigator.pop(c, o.$1),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+                              child: Row(
+                                children: [
+                                  Expanded(child: Text(o.$2, style: Typo.corps.copyWith(color: p.texte))),
+                                  if (o.$1 == courant) Icon(Icons.check_rounded, color: p.accentTexte),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }

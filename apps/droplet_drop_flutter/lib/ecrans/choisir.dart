@@ -58,7 +58,7 @@ Future<List<Choisi>?> choisirFichiers(BuildContext context) async {
     if (genre == 'dossier') {
       final d = await FilePicker.platform.getDirectoryPath();
       if (d == null) return null;
-      return await _contenuDossier(Directory(d));
+      return await contenuDossier(Directory(d));
     }
     final r = await FilePicker.platform.pickFiles(allowMultiple: true, type: genre == 'medias' ? FileType.media : FileType.any, withData: false);
     if (r == null) return null;
@@ -75,7 +75,7 @@ Future<List<Choisi>?> choisirFichiers(BuildContext context) async {
 }
 
 /// Tout le contenu d'un dossier, avec ses sous-dossiers, sous son nom.
-Future<List<Choisi>> _contenuDossier(Directory d) async {
+Future<List<Choisi>> contenuDossier(Directory d) async {
   final racine = d.path;
   final nomDossier = racine.split(Platform.pathSeparator).where((x) => x.isNotEmpty).last;
   final l = <Choisi>[];
@@ -298,7 +298,7 @@ class _EcranDestinatairesState extends State<EcranDestinataires> {
                                 Expanded(child: BoutonSecondaire(texte: context.t('scanner_code'), icone: Icons.qr_code_scanner_rounded, hauteur: 50, onTap: _scanner)),
                                 const SizedBox(width: 10),
                               ],
-                              Expanded(child: BoutonSecondaire(texte: context.t('adresse'), icone: Icons.lan_rounded, hauteur: 50, onTap: _adresse)),
+                              Expanded(child: BoutonSecondaire(texte: context.t('adresse'), icone: Icons.dialpad_rounded, hauteur: 50, onTap: _adresse)),
                             ],
                           ),
                           const SizedBox(height: 18),
@@ -396,6 +396,7 @@ class _Selection extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(child: Text(f.nom, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.secondaire.copyWith(color: p.texte))),
                   Text(tailleLocale(f.taille), style: Typo.legende.copyWith(color: p.texte3)),
+                  const SizedBox(width: 10),
                   BoutonIcone(icone: Icons.close_rounded, nom: context.t('retirer'), taille: 28, onTap: fichiers.length > 1 ? () => onRetirer(f) : null),
                 ],
               ),
