@@ -1,0 +1,20 @@
+name: Test liaison
+on:
+  push:
+    branches: [serveurs]
+    paths: [outils/test_liaison.py, .github/workflows/test-liaison.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  tester:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          pip install cryptography >/dev/null
+          python outils/test_liaison.py https://droplet-directory-production.up.railway.app > /tmp/r.txt 2>&1; echo "code: $?" >> /tmp/r.txt
+          cat /tmp/r.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-liaison; git rm -rfq . >/dev/null
+          cp /tmp/r.txt journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-liaison
