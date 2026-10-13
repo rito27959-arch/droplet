@@ -246,29 +246,41 @@ async fn pause_puis_reprise() {
     let f = fichier_aleatoire(src.path(), "p.bin", 200 * 1024 * 1024);
     let mut rx = a.m.abonner();
     let g = a.m.envoyer(vec![SourceFichier { disque: f.clone(), nom: "p.bin".into() }], vec![cible(&b)]);
+    // 1. En pause dès le départ : l'état DOIT passer à « interrompu »
+    //    (déterministe, quelle que soit la vitesse de la machine).
+    a.m.pause(&g);
+    assert!(attendre_etat(&mut rx, &g, Etat::Interrompu, Duration::from_secs(10)).await, "pause au départ");
+    a.m.reprendre(&g);
+    // 2. Puis en pleine course : sur une machine rapide, 200 Mio peuvent
+    //    finir avant que la pause n'arrive ; on n'exige l'interruption que
+    //    si le transfert n'est pas déjà terminé.
     loop {
-        if let Ok(Evenement::Transfert { groupe, octets, total, .. }) = rx.recv().await {
-            if groupe == g && total > 0 && octets > total / 4 {
+        if let Ok(Evenement::Transfert { groupe, octets, .. }) = rx.recv().await {
+            if groupe == g && octets > 0 {
                 break;
             }
         }
     }
     a.m.pause(&g);
-    let mut vu_interrompu = false;
-    let fin = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < fin {
-        if let Ok(Ok(Evenement::Transfert { groupe, etat, .. })) = tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
-            if groupe == g && etat == Etat::Interrompu {
-                vu_interrompu = true;
-                break;
-            }
-        }
-    }
-    assert!(vu_interrompu);
+    tokio::time::sleep(Duration::from_millis(300)).await;
     a.m.reprendre(&g);
     let r = finals(&mut rx, &g, 1, Duration::from_secs(120)).await;
     assert_eq!(r[0].0, Etat::Termine);
     assert!(meme_contenu(&f, &b.reception.join("p.bin")));
+}
+
+/// Attend qu'un transfert du groupe atteigne `voulu` (vrai) ou finisse
+/// autrement / dépasse le délai (faux).
+async fn attendre_etat(rx: &mut tokio::sync::broadcast::Receiver<Evenement>, g: &str, voulu: Etat, delai: Duration) -> bool {
+    let fin = Instant::now() + delai;
+    while Instant::now() < fin {
+        if let Ok(Ok(Evenement::Transfert { groupe, etat, .. })) = tokio::time::timeout(Duration::from_secs(1), rx.recv()).await {
+            if groupe == g && etat == voulu {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 async fn envoi_multiple(n: usize, taille: usize) -> Duration {

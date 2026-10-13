@@ -173,8 +173,13 @@ jobs:
         run: |
           set +e
           cd $APP
+          # iOS : sans compte Apple, on vérifie que tout COMPILE (simulateur) ;
+          # la compilation pour iPhone est tentée et son journal gardé, mais
+          # elle exige une équipe de signature pour aboutir.
           { flutter build macos --release 2>&1 | tail -40; echo "code macos: ${PIPESTATUS[0]}"
-            flutter build ios --release --no-codesign 2>&1 | tail -40; echo "code ios: ${PIPESTATUS[0]}"; } > /tmp/journal.txt
+            flutter build ios --release --no-codesign > /tmp/ios.txt 2>&1; echo "code ios appareil: $?"
+            grep -E "error:|Signing|requires a development team" /tmp/ios.txt | sort -u | head -20
+            flutter build ios --simulator --debug 2>&1 | tail -15; echo "code ios: ${PIPESTATUS[0]}"; } > /tmp/journal.txt
           cat /tmp/journal.txt
           cd -
           git config user.name ci; git config user.email ci@users.noreply.github.com

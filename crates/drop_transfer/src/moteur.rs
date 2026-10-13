@@ -384,7 +384,14 @@ impl Moteur {
             }
             if s.pause.load(Ordering::Relaxed) {
                 s.changer(Etat::Interrompu);
-                s.reveil.notified().await;
+                // `notify_waiters` ne réveille que ceux qui attendent DÉJÀ :
+                // une reprise arrivée entre le test ci-dessus et l'attente
+                // serait perdue, et le transfert resterait en pause pour
+                // toujours. On revérifie donc l'état toutes les 500 ms.
+                tokio::select! {
+                    _ = s.reveil.notified() => {}
+                    _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                }
                 continue;
             }
             // Un créneau parmi les transferts simultanés.
