@@ -1,0 +1,36 @@
+# Fabrique le squelette Flutter (5 plateformes) + le pont Rust
+# (flutter_rust_bridge 2.13) et le publie sur la branche drop-amorce-resultat.
+name: Droplet Drop — amorce
+on:
+  push:
+    branches: [drop-amorce]
+permissions:
+  contents: write
+jobs:
+  amorce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - uses: dtolnay/rust-toolchain@stable
+      - run: |
+          set -x
+          cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked > /tmp/journal.txt 2>&1
+          flutter --version >> /tmp/journal.txt 2>&1
+          mkdir sortie && cd sortie
+          flutter create --org app.dropletmesh --project-name droplet_drop --platforms android,ios,linux,macos,windows droplet_drop_flutter >> /tmp/journal.txt 2>&1
+          cd droplet_drop_flutter
+          flutter_rust_bridge_codegen integrate >> /tmp/journal.txt 2>&1
+          echo "code integrate: $?" >> /tmp/journal.txt
+          rm -rf build .dart_tool rust/target
+          cd ../..
+          cp /tmp/journal.txt sortie/journal.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan drop-amorce-resultat
+          git rm -rfq --cached . >/dev/null
+          rm -rf .github
+          git add sortie
+          git commit -qm amorce
+          git push -fq origin drop-amorce-resultat
