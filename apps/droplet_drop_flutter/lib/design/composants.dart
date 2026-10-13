@@ -243,7 +243,9 @@ class Carte extends StatelessWidget {
         border: Border.all(color: p.trait),
         boxShadow: p.sombre ? null : [BoxShadow(color: const Color(0xFF0B1220).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
       ),
-      child: child,
+      // Une surface Material transparente : les ListTile posés dans une
+      // carte y dessinent leur effet de toucher au lieu de le perdre dessous.
+      child: Material(type: MaterialType.transparency, child: child),
     );
     return onTap == null ? boite : Pressable(onTap: onTap, enfoncement: 0.985, child: boite);
   }

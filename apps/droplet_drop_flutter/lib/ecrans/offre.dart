@@ -138,11 +138,16 @@ class _FeuilleOffreState extends State<_FeuilleOffre> {
                   ),
                 ],
                 const SizedBox(height: 6),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: _toujours,
-                  onChanged: (v) => setState(() => _toujours = v),
-                  title: Text(context.t('toujours_accepter'), style: Typo.secondaire.copyWith(color: p.texte)),
+                // Sa propre surface Material : sur le fond peint de la feuille,
+                // l'effet du toucher resterait sinon invisible.
+                Material(
+                  type: MaterialType.transparency,
+                  child: SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _toujours,
+                    onChanged: (v) => setState(() => _toujours = v),
+                    title: Text(context.t('toujours_accepter'), style: Typo.secondaire.copyWith(color: p.texte)),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
