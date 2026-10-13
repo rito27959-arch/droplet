@@ -58,8 +58,15 @@ fn fichier_aleatoire(dossier: &Path, nom: &str, taille: usize) -> PathBuf {
     p
 }
 
+/// Compare deux fichiers par leur empreinte, lus en flux : la mémoire
+/// mesurée reste celle du moteur, pas celle de la vérification du test.
 fn meme_contenu(a: &Path, b: &Path) -> bool {
-    blake3::hash(&std::fs::read(a).unwrap()) == blake3::hash(&std::fs::read(b).unwrap())
+    let h = |p: &Path| {
+        let mut x = blake3::Hasher::new();
+        x.update_reader(std::fs::File::open(p).unwrap()).unwrap();
+        x.finalize()
+    };
+    h(a) == h(b)
 }
 
 /// Accepte automatiquement toutes les offres reçues par [a].

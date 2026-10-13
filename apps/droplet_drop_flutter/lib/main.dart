@@ -90,7 +90,7 @@ class _DropletDropState extends State<DropletDrop> with WidgetsBindingObserver {
           colorScheme: ColorScheme.fromSeed(seedColor: palette.accent, brightness: sombre ? Brightness.dark : Brightness.light),
           splashFactory: NoSplash.splashFactory,
           highlightColor: Colors.transparent,
-          pageTransitionsTheme: const PageTransitionsTheme(builders: {
+          pageTransitionsTheme: PageTransitionsTheme(builders: {
             TargetPlatform.android: CupertinoPageTransitionsBuilder(),
             TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
             TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),

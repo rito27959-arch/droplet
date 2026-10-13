@@ -71,7 +71,7 @@ class _ScannerState extends State<_Scanner> {
               HapticFeedback.mediumImpact();
               Navigator.of(context).pop(v);
             },
-            errorBuilder: (context, error) => Center(
+            errorBuilder: (context, error, _) => Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(context.t('camera_indisponible'), textAlign: TextAlign.center, style: Typo.corps.copyWith(color: Colors.white)),

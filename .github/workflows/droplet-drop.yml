@@ -67,10 +67,10 @@ jobs:
           cd $APP
           {
             flutter pub get 2>&1 | tail -3
-            echo "== codegen"; flutter_rust_bridge_codegen generate 2>&1 | tail -20; echo "code codegen: $?"
+            echo "== codegen"; flutter_rust_bridge_codegen generate > /tmp/frb.txt 2>&1; echo "code codegen: $?"; tail -20 /tmp/frb.txt
             echo "== analyse"; flutter analyze --no-fatal-infos 2>&1 | tail -60
-            echo "== captures"; flutter test --update-goldens test/captures_test.dart 2>&1 | tail -30
-            echo "== build linux"; flutter build linux --release 2>&1 | tail -30; echo "code linux: $?"
+            echo "== captures"; flutter test --update-goldens test/captures_test.dart 2>&1 | grep -vE "^\s*$" | tail -60
+            echo "== build linux"; flutter build linux --release > /tmp/linux.txt 2>&1; echo "code linux: $?"; tail -30 /tmp/linux.txt
           } > /tmp/journal.txt 2>&1
           cd -
           cat /tmp/journal.txt
@@ -81,7 +81,7 @@ jobs:
           mkdir -p /tmp/sortie && cp /tmp/journal.txt /tmp/sortie/ && cp -r $APP/test/captures /tmp/sortie/ 2>/dev/null
           git checkout -q --orphan journal-drop-generer; git rm -rfq --cached . >/dev/null
           rm -rf journal.txt captures; cp -r /tmp/sortie/* .
-          git add journal.txt captures; git commit -qm journal; git push -fq origin journal-drop-generer
+          git add journal.txt; git add captures 2>/dev/null; git commit -qm journal; git push -fq origin journal-drop-generer
           grep -q "code linux: 0" /tmp/journal.txt
       - uses: actions/upload-artifact@v4
         if: always()
