@@ -12,10 +12,11 @@
 //
 // et l'appareil signe chaque requête avec trois en-têtes :
 //
-//     X-Droplet-Id   son identifiant
-//     X-Droplet-Ts   l'heure (secondes Unix)
-//     X-Droplet-Sig  base64url( HMAC-SHA256(K, MÉTHODE \n chemin \n heure \n
-//                                           sha256-hex(corps)) )
+//     X-Droplet-Id     son identifiant
+//     X-Droplet-Ts     l'heure (secondes Unix)
+//     X-Droplet-Nonce  16 octets aléatoires (base64url), neufs à chaque fois
+//     X-Droplet-Sig    base64url( HMAC-SHA256(K, MÉTHODE \n chemin \n heure \n
+//                                             nonce \n sha256-hex(corps)) )
 //
 // Le serveur ne voit jamais la clé privée de personne ; il prouve juste que
 // la requête vient du détenteur de la clé publique ENREGISTRÉE pour cet
@@ -96,8 +97,11 @@ class Securite {
     final id = r.headers['x-droplet-id'];
     final ts = r.headers['x-droplet-ts'];
     final sig = r.headers['x-droplet-sig'];
+    final nonce = r.headers['x-droplet-nonce'];
     if (id == null && ts == null && sig == null) return Verdict.absent;
-    if (id != peerId || ts == null || sig == null) return Verdict.invalide;
+    if (id != peerId || ts == null || sig == null || nonce == null || nonce.length < 16 || nonce.length > 64) {
+      return Verdict.invalide;
+    }
     if (_cleServeur == null || clePublique == null) return Verdict.invalide;
 
     final secondes = int.tryParse(ts);
@@ -107,7 +111,7 @@ class Securite {
 
     final k = await _secret(peerId, clePublique);
     if (k == null) return Verdict.invalide;
-    final canon = '${r.method.toUpperCase()}\n${r.requestedUri.path}\n$ts\n${c.sha256.convert(corps)}';
+    final canon = '${r.method.toUpperCase()}\n${r.requestedUri.path}\n$ts\n$nonce\n${c.sha256.convert(corps)}';
     final attendu = base64Url.encode(c.Hmac(c.sha256, k).convert(utf8.encode(canon)).bytes).replaceAll('=', '');
     if (!_egal(attendu, sig.replaceAll('=', ''))) return Verdict.invalide;
 

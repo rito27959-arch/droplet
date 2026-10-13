@@ -618,6 +618,7 @@ Future<Response> _handleVerifierInterne(Request request) async {
       if (j['ts'] != null) 'x-droplet-id': peerId,
       if (j['ts'] != null) 'x-droplet-ts': '${j['ts']}',
       if (j['sig'] != null) 'x-droplet-sig': '${j['sig']}',
+      if (j['nonce'] != null) 'x-droplet-nonce': '${j['nonce']}',
     },
   );
   final refus = await _controler(simulee, peerId, const []);

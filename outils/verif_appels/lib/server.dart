@@ -212,7 +212,7 @@ Future<Response> _handleTurnCredentials(Request request) async {
 //
 // • IDENTITÉ. Entrer dans une salle, c'est dire « je suis X ». Depuis la
 //   version de l'app qui signe, le message `join` porte `ts` et `sig` :
-//   la signature de X sur « GET /ws/<salle> <heure> » (voir
+//   la signature de X sur « GET /ws/<salle> <heure> <nonce> » (voir
 //   droplet_directory/lib/securite.dart). Le serveur la fait vérifier par
 //   l'annuaire, qui seul connaît la clé de X. Un identifiant qui a déjà
 //   signé une fois ne peut plus entrer sans signature : personne ne peut
@@ -245,7 +245,7 @@ String _adresse(Request r) {
 /// [peerId] a-t-il le droit d'entrer dans [roomId] ? L'annuaire tranche ;
 /// s'il ne répond pas, on laisse passer (un appel vaut mieux qu'un refus
 /// à tort) — sauf signature présente et invalide.
-Future<bool> _identiteValide(String peerId, String roomId, Object? ts, Object? sig) async {
+Future<bool> _identiteValide(String peerId, String roomId, Object? ts, Object? sig, Object? nonce) async {
   final cle = '$peerId|${sig ?? '-'}';
   final deja = _verdicts[cle];
   if (deja != null && DateTime.now().difference(deja.$2) < const Duration(minutes: 2)) return deja.$1;
@@ -254,7 +254,7 @@ Future<bool> _identiteValide(String peerId, String roomId, Object? ts, Object? s
         .post(
           Uri.parse('$_directoryUrl/interne/verifier'),
           headers: {'content-type': 'application/json', 'x-cle-interne': _cleInterne},
-          body: jsonEncode({'peerId': peerId, 'methode': 'GET', 'chemin': '/ws/$roomId', 'ts': ts, 'sig': sig}),
+          body: jsonEncode({'peerId': peerId, 'methode': 'GET', 'chemin': '/ws/$roomId', 'ts': ts, 'sig': sig, 'nonce': nonce}),
         )
         .timeout(const Duration(seconds: 5));
     if (r.statusCode != 200) return true;
@@ -318,7 +318,7 @@ FutureOr<Response> _handleWebSocket(Request request, String roomId) {
             case 'join':
               final candidat = msg['peerId'] as String?;
               if (candidat == null || candidat.isEmpty || candidat.length > 128) return;
-              if (!await _identiteValide(candidat, roomId, msg['ts'], msg['sig'])) {
+              if (!await _identiteValide(candidat, roomId, msg['ts'], msg['sig'], msg['nonce'])) {
                 print('[Server] ⛔ Entrée refusée dans $roomId (identité non prouvée)');
                 channel.sink.add(jsonEncode({'type': 'error', 'error': 'identite'}));
                 channel.sink.close(1008, 'identite');

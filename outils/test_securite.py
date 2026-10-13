@@ -25,10 +25,10 @@ class Appareil:
         s.id = hashlib.sha256((nom + str(time.time())).encode()).hexdigest()
         s.k = HKDF(hashes.SHA256(), 32, salt=b'droplet-mesh', info=b'droplet-auth-v1').derive(s.cle.exchange(SERVEUR_PUB))
     def signer(s, methode, chemin, corps=b''):
-        ts = str(int(time.time()))
-        canon = f"{methode}\n{chemin}\n{ts}\n{hashlib.sha256(corps).hexdigest()}"
+        ts = str(int(time.time())); nonce = base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip('=')
+        canon = f"{methode}\n{chemin}\n{ts}\n{nonce}\n{hashlib.sha256(corps).hexdigest()}"
         sig = base64.urlsafe_b64encode(hmac.new(s.k, canon.encode(), hashlib.sha256).digest()).decode().rstrip('=')
-        return {'x-droplet-id': s.id, 'x-droplet-ts': ts, 'x-droplet-sig': sig}
+        return {'x-droplet-id': s.id, 'x-droplet-ts': ts, 'x-droplet-nonce': nonce, 'x-droplet-sig': sig}
     def inscription(s, signe=False, pub=None):
         corps = {'peerId': s.id, 'pseudo': 'T', 'onion': 'x.onion', 'publicKey': pub or s.pub}
         brut = json.dumps(corps).encode()
