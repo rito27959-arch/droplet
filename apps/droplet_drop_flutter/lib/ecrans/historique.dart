@@ -59,27 +59,32 @@ class _EcranHistoriqueState extends State<EcranHistorique> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (!h.envoi && h.chemins.isNotEmpty) ...[
-                  ListTile(
-                    leading: Icon(estMobile ? Icons.ios_share_rounded : Icons.open_in_new_rounded, color: p.accentTexte),
-                    title: Text(estMobile ? c.t('partager') : c.t('ouvrir'), style: Typo.corps.copyWith(color: p.texte)),
+                  Ligne(
+                    icone: estMobile ? Icons.ios_share_rounded : Icons.open_in_new_rounded,
+                    titre: estMobile ? c.t('partager') : c.t('ouvrir'),
+                    fin: const SizedBox.shrink(),
                     onTap: () {
                       Navigator.pop(c);
                       _ouvrir(h);
                     },
                   ),
                   if (!estMobile)
-                    ListTile(
-                      leading: Icon(Icons.folder_open_rounded, color: p.accentTexte),
-                      title: Text(c.t('afficher_emplacement'), style: Typo.corps.copyWith(color: p.texte)),
+                    Ligne(
+                      icone: Icons.folder_open_rounded,
+                      teinte: const Color(0xFF4855E8),
+                      titre: c.t('afficher_emplacement'),
+                      fin: const SizedBox.shrink(),
                       onTap: () {
                         Navigator.pop(c);
                         _emplacement(h);
                       },
                     ),
                 ],
-                ListTile(
-                  leading: Icon(Icons.delete_outline_rounded, color: p.erreur),
-                  title: Text(c.t('retirer_historique'), style: Typo.corps.copyWith(color: p.erreur)),
+                Ligne(
+                  icone: Icons.delete_outline_rounded,
+                  teinte: p.erreur,
+                  titre: c.t('retirer_historique'),
+                  fin: const SizedBox.shrink(),
                   onTap: () {
                     Navigator.pop(c);
                     EtatApp.i.effacerHistorique(h.id);
@@ -140,20 +145,19 @@ class _EcranHistoriqueState extends State<EcranHistorique> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    SegmentedButton<int>(
-                      segments: [
-                        ButtonSegment(value: 0, label: Text(context.t('tous'))),
-                        ButtonSegment(value: 1, label: Text(context.t('envoyes'))),
-                        ButtonSegment(value: 2, label: Text(context.t('recus'))),
-                      ],
-                      selected: {_filtre},
-                      onSelectionChanged: (s) => setState(() => _filtre = s.first),
+                    Segments<int>(
+                      options: [(0, context.t('tous'), null), (1, context.t('envoyes'), Icons.north_east_rounded), (2, context.t('recus'), Icons.south_west_rounded)],
+                      valeur: _filtre,
+                      onChange: (v) => setState(() => _filtre = v),
                     ),
                     const SizedBox(height: 12),
                     if (liste.isEmpty)
                       EtatVide(icone: Icons.history_rounded, titre: context.t('historique_vide'), texte: context.t('historique_vide_texte'))
                     else
-                      for (final h in liste)
+                      for (final (i, h) in liste.indexed) ...[
+                        // Les jours, comme dans Photos ou Fichiers : « Aujourd'hui »,
+                        // « Hier », puis la date.
+                        if (i == 0 || !_memeJour(liste[i - 1].fin, h.fin)) TitreSection(_jour(context, h.fin)),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Carte(
@@ -174,7 +178,7 @@ class _EcranHistoriqueState extends State<EcranHistorique> {
                                     children: [
                                       Text(h.titre, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.titreCarte.copyWith(color: p.texte)),
                                       Text(
-                                        '${h.envoi ? context.t('vers', {'qui': h.appareil}) : context.t('de', {'qui': h.appareil})} · ${tailleLocale(h.taille)} · ${MaterialLocalizations.of(context).formatShortDate(h.fin)}',
+                                        '${h.envoi ? context.t('vers', {'qui': h.appareil}) : context.t('de', {'qui': h.appareil})} · ${tailleLocale(h.taille)} · ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(h.fin))}',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: Typo.secondaire.copyWith(color: p.texte2),
@@ -191,6 +195,7 @@ class _EcranHistoriqueState extends State<EcranHistorique> {
                             ),
                           ),
                         ),
+                      ],
                   ],
                 ),
               ),
@@ -199,5 +204,14 @@ class _EcranHistoriqueState extends State<EcranHistorique> {
         );
       },
     );
+  }
+
+  static bool _memeJour(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+
+  static String _jour(BuildContext context, DateTime d) {
+    final maintenant = DateTime.now();
+    if (_memeJour(d, maintenant)) return context.t('aujourd_hui');
+    if (_memeJour(d, maintenant.subtract(const Duration(days: 1)))) return context.t('hier');
+    return MaterialLocalizations.of(context).formatMediumDate(d);
   }
 }
