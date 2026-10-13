@@ -669,7 +669,11 @@ class Ligne extends StatelessWidget {
             child: Icon(icone, size: 18, color: Colors.white),
           ),
           const SizedBox(width: 14),
-          Expanded(
+          // Avec une valeur, c'est elle qui prend la place restante : elle
+          // se cale à droite, contre le chevron, comme dans les Réglages.
+          Flexible(
+            flex: valeur == null ? 1 : 0,
+            fit: valeur == null ? FlexFit.tight : FlexFit.loose,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -680,7 +684,7 @@ class Ligne extends StatelessWidget {
           ),
           if (valeur != null) ...[
             const SizedBox(width: 10),
-            Flexible(child: Text(valeur!, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: Typo.corps.copyWith(color: p.texte2))),
+            Expanded(child: Text(valeur!, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.end, style: Typo.corps.copyWith(color: p.texte2))),
           ],
           if (fin != null) ...[const SizedBox(width: 8), fin!],
           if (onTap != null && fin == null) ...[const SizedBox(width: 4), Icon(Icons.chevron_right_rounded, color: p.texte3)],
