@@ -18,3 +18,10 @@ drop_storage = { path = "../../../crates/drop_storage" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+# libc 0.2.190 réserve `_dyld_image_count` & co. à macOS, alors que
+# backtrace (via flutter_rust_bridge › allo-isolate) les appelle aussi sur
+# iOS : la compilation iOS casse. On reste sur 0.2.189 tant que l'un des
+# deux n'est pas corrigé.
+[target.'cfg(target_os = "ios")'.dependencies]
+libc = "=0.2.189"
