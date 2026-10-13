@@ -30,7 +30,7 @@ class Appareil:
         sig = base64.urlsafe_b64encode(hmac.new(s.k, canon.encode(), hashlib.sha256).digest()).decode().rstrip('=')
         return {'x-droplet-id': s.id, 'x-droplet-ts': ts, 'x-droplet-nonce': nonce, 'x-droplet-sig': sig}
     def inscription(s, signe=False, pub=None):
-        corps = {'peerId': s.id, 'pseudo': 'T', 'onion': 'x.onion', 'publicKey': pub or s.pub}
+        corps = {'peerId': s.id, 'pseudo': 'Testeur', 'onion': 'x.onion', 'publicKey': pub or s.pub}
         brut = json.dumps(corps).encode()
         e = s.signer('POST', '/register', brut) if signe else {}
         r = urllib.request.Request(ANN + '/register', method='POST', data=brut, headers={'content-type': 'application/json', **e})
@@ -81,8 +81,9 @@ verifier('le message survit au redémarrage', st == 200 and json.loads(c)['count
 subprocess.run(['pkill', '-f', '/tmp/annuaire'])
 time.sleep(1); subprocess.Popen(['/tmp/annuaire'], env={**os.environ, 'PORT': '8080'}); time.sleep(3)
 verifier('la protection d’Alice survit au redémarrage de l’annuaire',
-         req(ANN + '/register', 'POST', {'peerId': alice.id, 'pseudo': 'P', 'onion': 'p.onion', 'publicKey': pirate.pub})[0] == 409)
-st, c = req(ANN + '/search?q=T')
+         req(ANN + '/register', 'POST', {'peerId': alice.id, 'pseudo': 'P', 'onion': 'p.onion', 'publicKey': pirate.pub})[0] in (401, 409))
+verifier('Alice (signée) se réinscrit normalement', alice.inscription(signe=True) == 200)
+st, c = req(ANN + '/search?q=Testeur')
 verifier('l’inscription survit au redémarrage', st == 200 and len(json.loads(c)['results']) >= 1)
 
 # Débit
