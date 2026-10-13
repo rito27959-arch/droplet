@@ -1,0 +1,10 @@
+[package]
+name = "drop_discovery"
+description = "Droplet Drop — découverte des appareils (mDNS/DNS-SD)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mdns-sd = "0.21"
+serde.workspace = true

@@ -1,0 +1,172 @@
+# DROPLET DROP — vérification et compilation sur les cinq plateformes.
+#
+#   moteur   : tests Rust réels (TLS, reprise, 30 destinataires, pairs
+#              malveillants) + mesures volumineuses (1 Go, 30 × 200 Mo)
+#   generer  : code du pont Rust ↔ Dart (flutter_rust_bridge), recommité
+#              s'il a changé ; analyse ; captures d'écran ; build Linux
+#   android  : APK (arm64, armv7, x86_64)
+#   windows  : build Windows
+#   apple    : build macOS + iOS (sans signature)
+#
+# Chaque tâche publie son journal sur une branche `journal-drop-<tâche>`,
+# et les applications compilées en artefacts téléchargeables.
+name: Droplet Drop
+on:
+  push:
+    branches: [droplet-drop]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: droplet-drop
+  cancel-in-progress: true
+
+env:
+  APP: apps/droplet_drop_flutter
+  FRB: "2.13.0"
+
+jobs:
+  moteur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests du moteur
+        run: |
+          set +e
+          {
+            echo "== tests"; cargo test --release --workspace --exclude rust_lib_droplet_drop 2>&1 | grep -E "^test |test result|MESURE|MULTICAST|panicked|error"
+            echo "code tests: ${PIPESTATUS[0]}"
+            echo "== mesures volumineuses"
+            /usr/bin/time -v env DROP_TEST_GRAND=1 cargo test --release -p drop_transfer --test transferts mesures_volumineuses -- --nocapture 2>&1 | grep -E "MESURE|test result|Maximum resident|Elapsed"
+          } > journal.txt 2>&1
+          cat journal.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-drop-moteur; git rm -rfq --cached . >/dev/null
+          git add journal.txt; git commit -qm journal; git push -fq origin journal-drop-moteur
+          grep -q "code tests: 0" journal.txt
+
+  generer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/flutter_rust_bridge_codegen
+          key: frb-codegen-${{ env.FRB }}
+      - name: Dépendances Linux
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build libgtk-3-dev clang cmake pkg-config liblzma-dev > /dev/null
+      - name: Pont Rust ↔ Dart, analyse, captures, build Linux
+        run: |
+          set +e
+          command -v flutter_rust_bridge_codegen || cargo install flutter_rust_bridge_codegen --version $FRB --locked
+          cd $APP
+          {
+            flutter pub get 2>&1 | tail -3
+            echo "== codegen"; flutter_rust_bridge_codegen generate 2>&1 | tail -20; echo "code codegen: $?"
+            echo "== analyse"; flutter analyze --no-fatal-infos 2>&1 | tail -60
+            echo "== captures"; flutter test --update-goldens test/captures_test.dart 2>&1 | tail -30
+            echo "== build linux"; flutter build linux --release 2>&1 | tail -30; echo "code linux: $?"
+          } > /tmp/journal.txt 2>&1
+          cd -
+          cat /tmp/journal.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          # Le code généré revient dans la branche (pour compiler sans l'outil).
+          git add $APP/lib/src/rust $APP/rust/src/frb_generated.rs
+          if ! git diff --cached --quiet; then git commit -qm "Pont Rust ↔ Dart régénéré [ci]" && git push -q origin HEAD:droplet-drop; fi
+          mkdir -p /tmp/sortie && cp /tmp/journal.txt /tmp/sortie/ && cp -r $APP/test/captures /tmp/sortie/ 2>/dev/null
+          git checkout -q --orphan journal-drop-generer; git rm -rfq --cached . >/dev/null
+          rm -rf journal.txt captures; cp -r /tmp/sortie/* .
+          git add journal.txt captures; git commit -qm journal; git push -fq origin journal-drop-generer
+          grep -q "code linux: 0" /tmp/journal.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: droplet-drop-linux
+          path: ${{ env.APP }}/build/linux/x64/release/bundle
+
+  android:
+    needs: generer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: droplet-drop }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: APK
+        run: |
+          set +e
+          cd $APP
+          flutter build apk --release --split-per-abi > /tmp/journal.txt 2>&1; echo "code android: $?" >> /tmp/journal.txt
+          tail -40 /tmp/journal.txt
+          cd -
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-drop-android; git rm -rfq --cached . >/dev/null
+          tail -80 /tmp/journal.txt > journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-drop-android
+          grep -q "code android: 0" /tmp/journal.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: droplet-drop-android
+          path: ${{ env.APP }}/build/app/outputs/flutter-apk/*.apk
+
+  windows:
+    needs: generer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: droplet-drop }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Windows
+        shell: bash
+        run: |
+          set +e
+          cd $APP
+          flutter build windows --release > /tmp/journal.txt 2>&1; echo "code windows: $?" >> /tmp/journal.txt
+          tail -40 /tmp/journal.txt
+          cd -
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-drop-windows; git rm -rfq --cached . >/dev/null
+          tail -80 /tmp/journal.txt > journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-drop-windows
+          grep -q "code windows: 0" /tmp/journal.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: droplet-drop-windows
+          path: ${{ env.APP }}/build/windows/x64/runner/Release
+
+  apple:
+    needs: generer
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: droplet-drop }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build macOS et iOS
+        run: |
+          set +e
+          cd $APP
+          { flutter build macos --release 2>&1 | tail -40; echo "code macos: ${PIPESTATUS[0]}"
+            flutter build ios --release --no-codesign 2>&1 | tail -40; echo "code ios: ${PIPESTATUS[0]}"; } > /tmp/journal.txt
+          cat /tmp/journal.txt
+          cd -
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-drop-apple; git rm -rfq --cached . >/dev/null
+          cp /tmp/journal.txt journal.txt; git add journal.txt; git commit -qm journal; git push -fq origin journal-drop-apple
+          grep -q "code macos: 0" /tmp/journal.txt && grep -q "code ios: 0" /tmp/journal.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: droplet-drop-macos
+          path: ${{ env.APP }}/build/macos/Build/Products/Release/*.app

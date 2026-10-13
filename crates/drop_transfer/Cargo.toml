@@ -1,0 +1,27 @@
+[package]
+name = "drop_transfer"
+description = "Droplet Drop — protocole et moteur de transfert : direct, multi-destinataires, Group Drop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+drop_core = { path = "../drop_core" }
+drop_crypto = { path = "../drop_crypto" }
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+rustls.workspace = true
+hex.workspace = true
+fs4 = { version = "0.13", features = ["sync"] }
+base64 = "0.22"
+if-addrs = "0.13"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1.47", features = ["rt-multi-thread", "macros", "net", "io-util", "fs", "sync", "time", "test-util"] }
+rand.workspace = true
+rcgen.workspace = true
