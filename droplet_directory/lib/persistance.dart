@@ -102,6 +102,17 @@ class Persistance {
         parameters: {'id': peerId},
       );
 
+  /// Un appareil lié retiré : sa clé disparaît (plus aucune requête signée
+  /// à son nom ne passe), et sa file d'attente dans la boîte aussi.
+  Future<void> oublierAppareil(String appareil) async {
+    await _db.execute(Sql.named('DELETE FROM comptes WHERE peer_id = @id'), parameters: {'id': appareil});
+    try {
+      await _db.execute(Sql.named('DELETE FROM messages WHERE destinataire = @id'), parameters: {'id': appareil});
+    } catch (_) {
+      // La table de la boîte n'existe pas encore : rien à effacer.
+    }
+  }
+
   Future<void> desinscrire(String peerId) =>
       _db.execute(Sql.named('DELETE FROM annuaire WHERE peer_id = @id'), parameters: {'id': peerId});
 

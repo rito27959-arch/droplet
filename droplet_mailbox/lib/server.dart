@@ -340,6 +340,7 @@ Future<void> _copie(int numero) async {
 
 Future<void> _servir(int numero) async {
   final handler = const Pipeline()
+      .addMiddleware(_cors())
       .addMiddleware(journalSobre(numero == 0 ? 'Boîte' : 'Boîte $numero'))
       .addMiddleware(limiteParIp(_limite(120, 600)))
       .addHandler(_routes.call);
@@ -348,4 +349,28 @@ Future<void> _servir(int numero) async {
   final serveur = await io.serve(handler, InternetAddress.anyIPv4, port, shared: true);
   serveur.autoCompress = true;
   serveur.idleTimeout = const Duration(seconds: 40);
+}
+
+/// Droplet Web relève sa file depuis le navigateur (web.dropletmesh.app) :
+/// la boîte répond aux requêtes croisées pour les origines de Droplet
+/// seulement, en-têtes de signature compris.
+Middleware _cors() {
+  const origines = {'https://web.dropletmesh.app', 'https://dropletmesh.app', 'http://localhost:8080'};
+  Map<String, String> entetes(Request r) {
+    final o = r.headers['origin'];
+    if (o == null || !(origines.contains(o) || o.endsWith('.vercel.app'))) return const {};
+    return {
+      'access-control-allow-origin': o,
+      'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
+      'access-control-allow-headers': 'content-type, x-droplet-id, x-droplet-ts, x-droplet-nonce, x-droplet-sig',
+      'access-control-max-age': '86400',
+      'vary': 'origin',
+    };
+  }
+
+  return (Handler suivant) => (Request r) async {
+        if (r.method == 'OPTIONS') return Response(204, headers: entetes(r));
+        final reponse = await suivant(r);
+        return reponse.change(headers: entetes(r));
+      };
 }

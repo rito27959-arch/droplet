@@ -86,6 +86,45 @@ verifier('Alice (signée) se réinscrit normalement', alice.inscription(signe=Tr
 st, c = req(ANN + '/search?q=Testeur')
 verifier('l’inscription survit au redémarrage', st == 200 and len(json.loads(c)['results']) >= 1)
 
+# Appareils liés (Droplet Web)
+def signee(qui, methode, chemin, corps=None, base=BOI, entetes=None):
+    brut = json.dumps(corps).encode() if corps is not None else b''
+    e = {**qui.signer(methode, chemin, brut), **(entetes or {})}
+    r = urllib.request.Request(base + chemin, method=methode, data=brut if corps is not None else None,
+                               headers={'content-type': 'application/json', **e})
+    try:
+        with urllib.request.urlopen(r, timeout=40) as x: return x.status, x.read().decode(), dict(x.headers)
+    except urllib.error.HTTPError as e2: return e2.code, e2.read().decode(), dict(e2.headers)
+nav = Appareil('navigateur'); nav.id = base64.urlsafe_b64encode(os.urandom(9)).decode()
+chemin_cle = f'/appareils/{alice.id}/{nav.id}/cle'
+verifier('déclarer un appareil sans signature : refusé', req(ANN + chemin_cle, 'POST', {'cle': nav.pub})[0] == 401)
+verifier('le pirate ne peut pas attacher un appareil au compte d’Alice',
+         signee(pirate, 'POST', chemin_cle, {'cle': pirate.pub}, base=ANN, entetes={'x-droplet-id': alice.id})[0] == 401)
+verifier('Alice déclare son navigateur', signee(alice, 'POST', chemin_cle, {'cle': nav.pub}, base=ANN)[0] == 200)
+verifier('une autre clé pour le même appareil : refusée', signee(alice, 'POST', chemin_cle, {'cle': pirate.pub}, base=ANN)[0] == 409)
+chemin_nav = '/messages/' + nav.id
+verifier('le navigateur relève sa file, signé', signee(nav, 'GET', chemin_nav)[0] == 200)
+verifier('sa file non signée : refusée', req(BOI + chemin_nav)[0] == 401)
+verifier('le téléphone dépose un lot pour le navigateur', signee(alice, 'POST', '/messages', {'from': alice.id, 'to': nav.id, 'payload': '{"w":1}'})[0] == 200)
+st, c, _ = signee(nav, 'GET', chemin_nav)
+verifier('le navigateur reçoit le lot', st == 200 and json.loads(c)['count'] == 1 and json.loads(c)['messages'][0]['from'] == alice.id)
+verifier('le navigateur dépose une demande pour le téléphone', signee(nav, 'POST', '/messages', {'from': nav.id, 'to': alice.id, 'payload': '{"l":1}'})[0] == 200)
+verifier('personne ne dépose au nom du navigateur', req(BOI + '/messages', 'POST', {'from': nav.id, 'to': alice.id, 'payload': 'x'})[0] == 401)
+o = urllib.request.Request(BOI + '/messages', method='OPTIONS', headers={'origin': 'https://web.dropletmesh.app', 'access-control-request-method': 'POST'})
+with urllib.request.urlopen(o) as x: h = dict(x.headers)
+verifier('la boîte accepte Droplet Web (CORS, en-têtes de signature)', h.get('access-control-allow-origin') == 'https://web.dropletmesh.app' and 'x-droplet-sig' in h.get('access-control-allow-headers', ''))
+_, _, h = signee(alice, 'GET', '/search', base=ANN, entetes={'origin': 'https://web.dropletmesh.app'}) if False else (0, 0, {})
+o = urllib.request.Request(ANN + '/search?q=Te', headers={'origin': 'https://web.dropletmesh.app'})
+with urllib.request.urlopen(o) as x: h = dict(x.headers); trouves = json.loads(x.read().decode())['results']
+verifier('la recherche par pseudo répond à Droplet Web (CORS)', h.get('access-control-allow-origin') == 'https://web.dropletmesh.app' and len(trouves) >= 1)
+verifier('l’appareil n’apparaît pas dans la recherche', all(t['peerId'] != nav.id for t in trouves))
+chemin_rev = f'/appareils/{alice.id}/{nav.id}'
+verifier('déconnexion non signée : refusée', req(ANN + chemin_rev, 'DELETE')[0] == 401)
+verifier('Alice déconnecte son navigateur', signee(alice, 'DELETE', chemin_rev, base=ANN)[0] == 200)
+verifier('le navigateur déconnecté ne relève plus rien', signee(nav, 'GET', chemin_nav)[0] == 401)
+verifier('l’annuaire dit au navigateur qu’il est déconnecté', json.loads(req(ANN + chemin_rev + '/etat')[1])['lie'] is False)
+verifier('on ne relie pas un appareil déconnecté', signee(alice, 'POST', chemin_cle, {'cle': nav.pub}, base=ANN)[0] == 410)
+
 # Débit
 codes = [req(BOI + '/messages', 'POST', {'from': bob.id, 'to': pirate.id, 'payload': 'x'})[0] for _ in range(80)]
 verifier(f'inondation freinée (429 après {codes.index(429) if 429 in codes else "∞"} dépôts)', 429 in codes)

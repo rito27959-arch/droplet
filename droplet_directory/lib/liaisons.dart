@@ -13,6 +13,14 @@
 // quoi. L'enveloppe est remise UNE fois puis effacée, et ne vit de toute
 // façon que 5 minutes. Rien n'est écrit sur le disque.
 //
+// L'appareil lié reçoit ensuite sa propre file dans la boîte aux lettres :
+//
+//   POST   /appareils/<peerId>/<appareil>/cle   — le téléphone (signé)
+//                                                 déclare la clé publique
+//                                                 du navigateur ; celui-ci
+//                                                 peut alors signer ses
+//                                                 requêtes en son nom
+//
 // Et pour retirer un appareil :
 //
 //   DELETE /appareils/<peerId>/<appareil>       — le téléphone révoque
@@ -68,7 +76,7 @@ class Liaisons {
     return {
       'access-control-allow-origin': origine,
       'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
-      'access-control-allow-headers': 'content-type',
+      'access-control-allow-headers': 'content-type, x-droplet-id, x-droplet-ts, x-droplet-nonce, x-droplet-sig',
       'access-control-max-age': '86400',
       'vary': 'origin',
     };
@@ -77,7 +85,7 @@ class Liaisons {
   /// Le middleware : répond aux pré-vérifications OPTIONS et ajoute les
   /// en-têtes CORS aux réponses des routes de liaison.
   static Middleware cors() => (Handler suivant) => (Request r) async {
-        final concerne = r.url.path.startsWith('liaison/') || r.url.path.startsWith('appareils/');
+        final concerne = r.url.path.startsWith('liaison/') || r.url.path.startsWith('appareils/') || r.url.path == 'search';
         if (!concerne) return suivant(r);
         if (r.method == 'OPTIONS') return Response(204, headers: enTetesCors(r));
         final reponse = await suivant(r);
@@ -120,6 +128,10 @@ class Liaisons {
     if (_revoques.add('$peerId/$appareil')) _enregistrer();
     return Response.ok('{"ok":true}', headers: {'content-type': 'application/json'});
   }
+
+  bool estRevoque(String peerId, String appareil) => _revoques.contains('$peerId/$appareil');
+
+  static bool formeValide(String id) => _formeId.hasMatch(id);
 
   Response etat(Request r, String peerId, String appareil) {
     if (!_formeId.hasMatch(peerId) || !_formeId.hasMatch(appareil)) return Response(400);

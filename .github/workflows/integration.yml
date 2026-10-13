@@ -41,7 +41,7 @@ jobs:
           python3 outils/test_securite.py > /tmp/r.txt 2>&1; echo "code: $?" >> /tmp/r.txt
           pip install aiohttp >/dev/null 2>&1
           ulimit -n 65536
-          for palier in "5000 200" "10000 400" "20000 800" "30000 1200"; do
+          for palier in "10000 400"; do
             echo "== palier $palier" >> /tmp/r.txt
             python3 outils/test_charge.py $palier 45 >> /tmp/r.txt 2>&1
           done

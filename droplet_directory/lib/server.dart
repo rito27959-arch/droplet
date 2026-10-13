@@ -362,6 +362,56 @@ Future<Response?> _controler(Request r, String peerId, List<int> corps) async {
   }
 }
 
+// ── Les appareils liés (Droplet Web) ─────────────────────────────────
+
+/// Le téléphone déclare la clé publique d'un navigateur qu'il vient de
+/// lier. L'appareil devient un « compte » à part entière pour la boîte aux
+/// lettres (sa propre file, ses requêtes signées avec SA clé) — mais il
+/// n'apparaît jamais dans la recherche : il n'a pas de fiche d'annuaire.
+///
+/// Signé obligatoirement par le téléphone : personne d'autre ne peut
+/// attacher un appareil à un compte.
+Future<Response> _declarerAppareil(Request r, String peerId, String appareil) async {
+  if (!Liaisons.formeValide(peerId) || !Liaisons.formeValide(appareil) || appareil == peerId) {
+    return json({'error': 'identifiant invalide'}, statut: 400);
+  }
+  final corps = await r.read().fold<List<int>>([], (a, b) => a..addAll(b));
+  final compte = _comptes[peerId];
+  if (await _securite.verifier(r, peerId, corps, compte?.cle) != Verdict.signe) {
+    return json({'error': 'signature du téléphone requise'}, statut: 401);
+  }
+  if (compte != null && !compte.signe) {
+    _comptes[peerId] = (cle: compte.cle, signe: true);
+    await _base?.marquerSigne(peerId);
+  }
+  if (_liaisons.estRevoque(peerId, appareil)) return json({'error': 'appareil déconnecté'}, statut: 410);
+  final String cle;
+  try {
+    cle = (jsonDecode(utf8.decode(corps)) as Map)['cle'] as String;
+    if (base64.decode(base64.normalize(cle.replaceAll('-', '+').replaceAll('_', '/'))).length != 32) throw const FormatException();
+  } catch (_) {
+    return json({'error': 'clé invalide'}, statut: 400);
+  }
+  final deja = _comptes[appareil];
+  if (deja != null && deja.cle != cle) return json({'error': 'appareil déjà lié à une autre clé'}, statut: 409);
+  _comptes[appareil] = (cle: cle, signe: true);
+  await _base?.lierCle(appareil, cle);
+  await _base?.marquerSigne(appareil);
+  return json({'ok': true});
+}
+
+/// Le téléphone retire un appareil : plus de clé, plus de file.
+Future<Response> _revoquerAppareil(Request r, String peerId, String appareil) async {
+  if (!Liaisons.formeValide(peerId) || !Liaisons.formeValide(appareil)) return Response(400);
+  final refus = await _controler(r, peerId, const []);
+  if (refus != null) return refus;
+  final reponse = _liaisons.revoquer(r, peerId, appareil);
+  if (appareil != peerId && _comptes.remove(appareil) != null) {
+    await _base?.oublierAppareil(appareil);
+  }
+  return reponse;
+}
+
 /// Sauvegardes chiffrées des utilisateurs — voir `sauvegardes.dart`.
 /// Initialisé dans [main], sur le volume quand il est monté.
 late final StockSauvegardes _sauvegardes;
@@ -395,7 +445,8 @@ final _router = Router()
   ..get('/cles/<id>', (Request r, String id) => _clesSignal.recuperer(r, id))
   ..post('/liaison/<canal>', (Request r, String canal) => _liaisons.deposer(r, canal))
   ..get('/liaison/<canal>', (Request r, String canal) => _liaisons.relever(r, canal))
-  ..delete('/appareils/<id>/<appareil>', (Request r, String id, String appareil) => _liaisons.revoquer(r, id, appareil))
+  ..post('/appareils/<id>/<appareil>/cle', _declarerAppareil)
+  ..delete('/appareils/<id>/<appareil>', _revoquerAppareil)
   ..get('/appareils/<id>/<appareil>/etat', (Request r, String id, String appareil) => _liaisons.etat(r, id, appareil))
   ..get('/i', _handleInvitation)
   ..get('/i/apercu.jpg', _handleApercuInvitation)
