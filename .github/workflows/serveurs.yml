@@ -1,0 +1,26 @@
+# Compile les serveurs à chaque poussée sur la branche `serveurs`, avant
+# que Railway ne les déploie. Le journal est publié sur `journal-serveurs`.
+name: Serveurs
+on:
+  push:
+    branches: [serveurs]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  compiler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Annuaire
+        run: |
+          set +e
+          cd droplet_directory
+          { dart pub get; echo "pub: $?"; dart analyze lib; echo "analyse: $?"; dart compile exe lib/server.dart -o /tmp/annuaire; echo "compilation: $?"; } > /tmp/journal.txt 2>&1
+          cat /tmp/journal.txt
+          cd ..
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-serveurs; git rm -rfq . >/dev/null
+          cp /tmp/journal.txt journal.txt; git add journal.txt; git commit -qm "journal $GITHUB_SHA"; git push -fq origin journal-serveurs
+          grep -q "compilation: 0" journal.txt
