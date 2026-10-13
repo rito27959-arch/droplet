@@ -60,6 +60,8 @@ import 'apercu_invitation.dart';
 import 'cles_signal.dart';
 import 'fcm.dart';
 import 'liaisons.dart';
+import 'persistance.dart';
+import 'securite.dart';
 import 'sauvegardes.dart';
 
 // ── Modèle de données ──────────────────────────────────────────────
@@ -323,6 +325,43 @@ class DirectoryDb {
 
 final _db = DirectoryDb();
 
+/// Postgres (null en local sans DATABASE_URL). Voir persistance.dart.
+Persistance? _base;
+
+/// Les signatures et la clé interne. Voir securite.dart.
+late final Securite _securite;
+
+/// Identifiant → clé publique attachée, et « a déjà signé ». Copie en
+/// mémoire de la table `comptes` : une recherche par requête, sans base.
+final Map<String, ({String cle, bool signe})> _comptes = {};
+
+final _debitNotify = Debit(capacite: 20, parMinute: 30);
+final _debitRecherche = Debit(capacite: 20, parMinute: 30);
+final _debitInscription = Debit(capacite: 10, parMinute: 20);
+
+/// Contrôle d'identité : null si la requête peut passer, sinon le refus.
+/// Voir securite.dart pour la règle de transition (verrou après la
+/// première signature).
+Future<Response?> _controler(Request r, String peerId, List<int> corps) async {
+  final compte = _comptes[peerId];
+  final verdict = await _securite.verifier(r, peerId, corps, compte?.cle);
+  switch (verdict) {
+    case Verdict.signe:
+      if (compte != null && !compte.signe) {
+        _comptes[peerId] = (cle: compte.cle, signe: true);
+        await _base?.marquerSigne(peerId);
+      }
+      return null;
+    case Verdict.invalide:
+      return json({'error': 'signature invalide'}, statut: 401);
+    case Verdict.absent:
+      if ((compte?.signe ?? false) || _securite.exigerSignature) {
+        return json({'error': 'signature requise'}, statut: 401);
+      }
+      return null;
+  }
+}
+
 /// Sauvegardes chiffrées des utilisateurs — voir `sauvegardes.dart`.
 /// Initialisé dans [main], sur le volume quand il est monté.
 late final StockSauvegardes _sauvegardes;
@@ -360,6 +399,7 @@ final _router = Router()
   ..get('/appareils/<id>/<appareil>/etat', (Request r, String id, String appareil) => _liaisons.etat(r, id, appareil))
   ..get('/i', _handleInvitation)
   ..get('/i/apercu.jpg', _handleApercuInvitation)
+  ..post('/interne/verifier', _handleVerifierInterne)
   ..get('/health', _handleHealth);
 
 /// Version courte et non-sensible d'un identifiant technique, pour les
@@ -491,8 +531,9 @@ Future<Response> _handleAdminWarn(Request request) async {
 
 Future<Response> _handleRegister(Request request) async {
   try {
-    final body = await request.readAsString();
-    final json = jsonDecode(body) as Map<String, dynamic>;
+    final octets = await request.read().fold<List<int>>([], (a, b) => a..addAll(b));
+    if (octets.length > 16 * 1024) return Response(413);
+    final json = jsonDecode(utf8.decode(octets)) as Map<String, dynamic>;
 
     final peerId = json['peerId'] as String?;
     final pseudo = json['pseudo'] as String?;
@@ -512,6 +553,31 @@ Future<Response> _handleRegister(Request request) async {
     if (!onion.endsWith('.onion')) {
       return Response(400, body: jsonEncode({'error': 'Adresse onion invalide'}));
     }
+    if (peerId.length > 128 || pseudo.length > 64 || publicKey.length > 128) {
+      return Response(400, body: jsonEncode({'error': 'Champs trop longs'}));
+    }
+    if (!_debitInscription.autoriser(adresseClient(request))) {
+      return Response(429, body: jsonEncode({'error': 'trop de requêtes'}));
+    }
+
+    // ── L'identifiant appartient à la clé qui l'a enregistré en premier ──
+    final compte = _comptes[peerId];
+    final refus = await _controler(request, peerId, octets);
+    if (refus != null) return refus;
+    if (compte != null && compte.cle != publicKey) {
+      // Changer de clé n'est permis qu'avec la signature de l'ancienne :
+      // sans cela, n'importe qui pourrait détourner un compte.
+      final signe = request.headers.containsKey('x-droplet-sig');
+      if (!signe) {
+        print('[Directory] ⛔ Tentative de remplacer la clé de ${peerId.substring(0, 8)}… refusée');
+        return Response(409, body: jsonEncode({'error': 'Cet identifiant appartient à une autre clé'}));
+      }
+    }
+    if (compte == null || compte.cle != publicKey) {
+      _comptes[peerId] = (cle: publicKey, signe: compte?.signe ?? false);
+      await _base?.lierCle(peerId, publicKey);
+    }
+    await _base?.inscrire(peerId: peerId, pseudo: pseudo, onion: onion, cle: publicKey, fcm: fcmToken);
 
     _db.register(DirectoryEntry(
       peerId: peerId,
@@ -539,7 +605,30 @@ Future<Response> _handleRegister(Request request) async {
 /// ce `peerId`, ou que Firebase n'est pas configuré ici : un push est un
 /// coup de pouce, jamais le seul chemin — la mailbox reste sondée toutes
 /// les 30 secondes de toute façon.
+/// Le serveur d'appels (autre projet Railway) fait vérifier ici qu'une
+/// demande d'entrer dans la boîte d'appel de X vient bien de X.
+Future<Response> _handleVerifierInterne(Request request) async {
+  if (!_securite.estInterne(request)) return Response(403);
+  final j = jsonDecode(await request.readAsString()) as Map<String, dynamic>;
+  final peerId = j['peerId'] as String? ?? '';
+  final simulee = Request(
+    (j['methode'] as String? ?? 'GET').toUpperCase(),
+    Uri.parse('https://interne${j['chemin'] ?? '/'}'),
+    headers: {
+      if (j['ts'] != null) 'x-droplet-id': peerId,
+      if (j['ts'] != null) 'x-droplet-ts': '${j['ts']}',
+      if (j['sig'] != null) 'x-droplet-sig': '${j['sig']}',
+    },
+  );
+  final refus = await _controler(simulee, peerId, const []);
+  return json({'ok': refus == null, 'signeRequis': _comptes[peerId]?.signe ?? false});
+}
+
 Future<Response> _handleNotify(Request request) async {
+  // Seuls nos serveurs (boîte aux lettres, appels) réveillent un téléphone.
+  if (!_securite.estInterne(request)) {
+    return Response(403, body: jsonEncode({'error': 'réservé aux serveurs Droplet'}));
+  }
   try {
     final body = await request.readAsString();
     final json = jsonDecode(body) as Map<String, dynamic>;
@@ -556,6 +645,10 @@ Future<Response> _handleNotify(Request request) async {
           body: jsonEncode({'error': 'Champs manquants: peerId, title, body'}));
     }
 
+    if (!_debitNotify.autoriser(peerId)) {
+      return Response.ok(jsonEncode({'ok': true, 'sent': false, 'limite': true}),
+          headers: {'content-type': 'application/json'});
+    }
     final fcm = _fcm;
     final jetonAppareil = _db.fcmTokenPour(peerId);
     if (fcm == null || jetonAppareil == null) {
@@ -606,6 +699,8 @@ Future<Response> _handlePresenceBattement(Request request) async {
           headers: {'content-type': 'application/json'});
     }
 
+    final refus = await _controler(request, peerId, utf8.encode(body));
+    if (refus != null) return refus;
     _db.battement(peerId);
     return Response.ok(jsonEncode({'ok': true}),
         headers: {'content-type': 'application/json'});
@@ -669,7 +764,10 @@ Future<Response> _handleUnregister(Request request) async {
       return Response(400, body: jsonEncode({'error': 'peerId manquant'}));
     }
 
+    final refus = await _controler(request, peerId, utf8.encode(body));
+    if (refus != null) return refus;
     final removed = _db.unregister(peerId);
+    await _base?.desinscrire(peerId);
     return Response.ok(jsonEncode({'ok': true, 'removed': removed}),
         headers: {'content-type': 'application/json'});
   } catch (e) {
@@ -683,7 +781,13 @@ Future<Response> _handleSearch(Request request) async {
     return Response(400, body: jsonEncode({'error': 'Paramètre q manquant'}));
   }
 
-  final results = _db.search(query);
+  if (query.trim().length < 2) {
+    return Response.ok(jsonEncode({'results': []}), headers: {'content-type': 'application/json'});
+  }
+  if (!_debitRecherche.autoriser(adresseClient(request))) {
+    return Response(429, body: jsonEncode({'error': 'trop de recherches'}));
+  }
+  final results = _db.search(query).take(20).toList();
   return Response.ok(
     jsonEncode({'results': results.map((e) => e.toJson()).toList()}),
     headers: {'content-type': 'application/json'},
@@ -1363,6 +1467,29 @@ Future<void> main(List<String> args) async {
 
   final results = parser.parse(args);
 
+  _securite = await Securite.depuisEnvironnement();
+  try {
+    _base = await Persistance.ouvrir();
+    if (_base != null) {
+      _comptes.addAll(await _base!.comptes());
+      for (final l in await _base!.annuaire()) {
+        _db.register(DirectoryEntry(
+          peerId: l[0] as String,
+          pseudo: l[1] as String,
+          onionAddress: l[2] as String,
+          publicKey: l[3] as String,
+          fcmToken: l[4] as String?,
+        ));
+      }
+      print('[Directory] Postgres : ${_db.count} inscriptions et ${_comptes.length} comptes rechargés');
+    } else {
+      print('[Directory] ⚠️ DATABASE_URL absente — annuaire en mémoire seule');
+    }
+  } catch (e) {
+    print('[Directory] ⚠️ Postgres injoignable ($e) — annuaire en mémoire seule');
+    _base = null;
+  }
+
   // ── Compte de service Firebase, pour /notify ──────────────────────
   //
   // ⚠️ JAMAIS DE FICHIER COMMITÉ — TOUJOURS UNE VARIABLE D'ENVIRONNEMENT.
@@ -1450,10 +1577,12 @@ Future<void> main(List<String> args) async {
   Timer.periodic(const Duration(hours: 1), (_) {
     final cleaned = _db.sweep();
     if (cleaned > 0) print('[Directory] Nettoyé $cleaned entrées expirées');
+    _base?.menage(const Duration(days: 30)).catchError((_) => 0);
   });
 
   final handler = const Pipeline()
       .addMiddleware(logRequests())
+      .addMiddleware(limiteParIp(Debit(capacite: 120, parMinute: 600)))
       .addMiddleware(Liaisons.cors())
       .addHandler(_router.call);
 

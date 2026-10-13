@@ -1,259 +1,323 @@
 // ============================================================================
-// DROPLET MAILBOX SERVER
+// LA BOÎTE AUX LETTRES DROPLET
 // ============================================================================
-// Serveur mailbox .onion pour Droplet.
+// Garde les messages chiffrés pour les destinataires hors ligne, jusqu'à ce
+// qu'ils les relèvent. Le serveur ne peut lire aucun message : il ne voit
+// qu'un expéditeur, un destinataire et un blob chiffré.
 //
-// Stocke les messages chiffrés pour les contacts hors-ligne.
-// TTL : 7 jours, puis nettoyage automatique.
+// Endpoints (les mêmes qu'avant : les apps déjà installées marchent) :
+//   POST   /messages                  — déposer {from, to, payload}
+//   GET    /messages/<peerId>         — relever ses messages
+//          ?attendre=25                 attente longue : la réponse part dès
+//                                       qu'un message arrive (25 s au plus)
+//   DELETE /messages/<peerId>/<id>    — accuser réception d'un message
+//   DELETE /messages/<peerId>         — tout effacer
+//   GET    /health                    — état du service et de la base
 //
-// Endpoints :
-//   POST /messages          — Déposer un message (pour un destinataire)
-//   GET /messages/:peerId   — Récupérer les messages d'un peer
-//   DELETE /messages/:id    — Supprimer un message (après récupération)
-//   GET /health             — Health check
+// ── Ce qui a changé ─────────────────────────────────────────────────
+//
+//   • DURABLE. Les messages vivent dans Postgres, plus en mémoire : un
+//     redémarrage ou un redéploiement n'en perd plus aucun.
+//   • À PLUSIEURS. Le service ne garde plus rien pour lui : on peut en
+//     lancer plusieurs copies derrière Railway. Les attentes longues sont
+//     réveillées entre copies par LISTEN/NOTIFY de Postgres.
+//   • SÉCURISÉ. Relever ou effacer les messages de quelqu'un exige sa
+//     signature dès qu'il a la version qui signe (voir securite.dart) ;
+//     déposer au nom de quelqu'un aussi.
+//   • LIMITÉ. Par adresse IP, par expéditeur et par destinataire : un
+//     client fou ou malveillant ne sature ni le serveur ni la boîte d'un
+//     autre. Taille d'un message et d'une boîte bornées.
+//   • ÉCONOME. L'attente longue remplace l'interrogation toutes les 30 s :
+//     une requête qui attend ne coûte presque rien, et le message arrive
+//     tout de suite au lieu d'attendre le tour suivant.
 // ============================================================================
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 
+import 'package:http/http.dart' as http;
+import 'package:postgres/postgres.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
-import 'package:args/args.dart';
 
-// ── Modèle de données ──────────────────────────────────────────────
+import 'securite.dart';
 
-class MailboxMessage {
-  MailboxMessage({
-    required this.id,
-    required this.fromPeerId,
-    required this.toPeerId,
-    required this.encryptedPayload,
-    required this.timestamp,
+const _tailleMaxMessage = 2 * 1024 * 1024;
+const _maxParBoite = 5000;
+const _duree = Duration(days: 30);
+final _formeId = RegExp(r'^[A-Za-z0-9_-]{4,128}$');
+
+late final Pool _db;
+late final Securite _securite;
+final _hasard = Random.secure();
+final _http = http.Client();
+final _annuaire = Platform.environment['DIRECTORY_URL'] ?? 'https://droplet-directory-production.up.railway.app';
+
+final _depotsParExpediteur = Debit(capacite: 60, parMinute: 120);
+final _depotsParDestinataire = Debit(capacite: 200, parMinute: 300);
+
+/// Les relèves en attente sur cette copie du service, par destinataire.
+final _attentes = <String, List<Completer<void>>>{};
+
+// ── Base ──────────────────────────────────────────────────────────────
+
+Endpoint _endpoint() {
+  final u = Uri.parse(Platform.environment['DATABASE_URL']!);
+  final infos = u.userInfo.split(':');
+  return Endpoint(
+    host: u.host,
+    port: u.hasPort ? u.port : 5432,
+    database: u.path.replaceFirst('/', ''),
+    username: Uri.decodeComponent(infos.first),
+    password: infos.length > 1 ? Uri.decodeComponent(infos.sublist(1).join(':')) : null,
+  );
+}
+
+Future<void> _preparerBase() async {
+  final reglages = PoolSettings(maxConnectionCount: 20, sslMode: SslMode.disable);
+  _db = Pool.withEndpoints([_endpoint()], settings: reglages);
+  await _db.execute('''
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      destinataire TEXT NOT NULL,
+      expediteur TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      cree TIMESTAMPTZ NOT NULL DEFAULT now()
+    )''');
+  await _db.execute('CREATE INDEX IF NOT EXISTS messages_destinataire ON messages (destinataire, cree)');
+  await _db.execute('CREATE INDEX IF NOT EXISTS messages_cree ON messages (cree)');
+  // La table des comptes est tenue par l'annuaire ; la boîte la lit pour
+  // vérifier les signatures. On la crée si l'annuaire ne l'a pas encore fait.
+  await _db.execute('''
+    CREATE TABLE IF NOT EXISTS comptes (
+      peer_id TEXT PRIMARY KEY,
+      cle TEXT NOT NULL,
+      signe BOOLEAN NOT NULL DEFAULT false,
+      cree TIMESTAMPTZ NOT NULL DEFAULT now(),
+      vu TIMESTAMPTZ NOT NULL DEFAULT now()
+    )''');
+
+  // Les dépôts faits sur une AUTRE copie du service réveillent nos attentes.
+  final ecoute = await Connection.open(_endpoint(), settings: ConnectionSettings(sslMode: SslMode.disable));
+  ecoute.channels['boite'].listen(_reveiller);
+}
+
+Future<({String? cle, bool signe})> _compte(String peerId) async {
+  final r = await _db.execute(Sql.named('SELECT cle, signe FROM comptes WHERE peer_id = @id'), parameters: {'id': peerId});
+  if (r.isEmpty) return (cle: null, signe: false);
+  return (cle: r.first[0] as String, signe: r.first[1] as bool);
+}
+
+/// Contrôle d'identité commun : rend une réponse d'erreur, ou null si la
+/// requête peut passer.
+Future<Response?> _controler(Request r, String peerId, List<int> corps) async {
+  final compte = await _compte(peerId);
+  final verdict = await _securite.verifier(r, peerId, corps, compte.cle);
+  switch (verdict) {
+    case Verdict.signe:
+      if (!compte.signe) {
+        await _db.execute(Sql.named('UPDATE comptes SET signe = true WHERE peer_id = @id'), parameters: {'id': peerId});
+      }
+      return null;
+    case Verdict.invalide:
+      return json({'error': 'signature invalide'}, statut: 401);
+    case Verdict.absent:
+      if (compte.signe || _securite.exigerSignature) return json({'error': 'signature requise'}, statut: 401);
+      return null;
+  }
+}
+
+String _nouvelId() => List.generate(16, (_) => _hasard.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+
+// ── Attente longue ────────────────────────────────────────────────────
+
+void _reveiller(String destinataire) {
+  final liste = _attentes.remove(destinataire);
+  if (liste == null) return;
+  for (final c in liste) {
+    if (!c.isCompleted) c.complete();
+  }
+}
+
+Future<void> _attendre(String peerId, Duration duree) {
+  final c = Completer<void>();
+  (_attentes[peerId] ??= []).add(c);
+  return c.future.timeout(duree, onTimeout: () {
+    _attentes[peerId]?.remove(c);
+    if (_attentes[peerId]?.isEmpty ?? false) _attentes.remove(peerId);
+  });
+}
+
+// ── Routes ────────────────────────────────────────────────────────────
+
+Future<Response> _deposer(Request r) async {
+  final octets = await r.read().fold<List<int>>([], (a, b) => a..addAll(b));
+  if (octets.length > _tailleMaxMessage) return json({'error': 'message trop grand'}, statut: 413);
+  final Map<String, dynamic> j;
+  try {
+    j = jsonDecode(utf8.decode(octets)) as Map<String, dynamic>;
+  } catch (_) {
+    return json({'error': 'corps illisible'}, statut: 400);
+  }
+  final de = j['from'], a = j['to'], payload = j['payload'];
+  if (de is! String || a is! String || payload is! String || !_formeId.hasMatch(de) || !_formeId.hasMatch(a)) {
+    return json({'error': 'Champs manquants: from, to, payload'}, statut: 400);
+  }
+  final refus = await _controler(r, de, octets);
+  if (refus != null) return refus;
+  if (!_depotsParExpediteur.autoriser(de) || !_depotsParDestinataire.autoriser(a)) {
+    return json({'error': 'trop de messages, réessayez dans un instant'}, statut: 429, enTetes: {'retry-after': '20'});
+  }
+
+  final plein = await _db.execute(Sql.named('SELECT count(*) FROM messages WHERE destinataire = @a'), parameters: {'a': a});
+  if ((plein.first[0] as int) >= _maxParBoite) return json({'error': 'boîte du destinataire pleine'}, statut: 507);
+
+  final id = _nouvelId();
+  await _db.execute(
+    Sql.named('INSERT INTO messages (id, destinataire, expediteur, payload) VALUES (@id, @a, @de, @p)'),
+    parameters: {'id': id, 'a': a, 'de': de, 'p': payload},
+  );
+  // Réveille les attentes, ici et sur les autres copies.
+  _reveiller(a);
+  unawaited(() async {
+    try {
+      await _db.execute(Sql.named("SELECT pg_notify('boite', @a)"), parameters: {'a': a});
+    } catch (_) {}
+  }());
+  _notifier(de, a);
+  return json({'ok': true, 'id': id});
+}
+
+/// Réveille le destinataire par notification push (via l'annuaire, seul
+/// à connaître Firebase). Jamais attendu : un push raté n'empêche pas le
+/// dépôt, le message attend sagement dans la boîte.
+void _notifier(String de, String a) {
+  unawaited(() async {
+    try {
+      await _http
+          .post(
+            Uri.parse('$_annuaire/notify'),
+            headers: {'content-type': 'application/json', 'x-cle-interne': _securite.cleInterne},
+            body: jsonEncode({
+              'peerId': a,
+              'title': 'Droplet',
+              'body': 'Nouveau message',
+              'data': {'type': 'mailbox', 'from': de},
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (_) {}
+  }());
+}
+
+Future<Response> _relever(Request r, String peerId) async {
+  if (!_formeId.hasMatch(peerId)) return json({'error': 'identifiant invalide'}, statut: 400);
+  final refus = await _controler(r, peerId, const []);
+  if (refus != null) return refus;
+
+  Future<Result> lire() => _db.execute(
+        Sql.named('SELECT id, expediteur, payload, cree FROM messages WHERE destinataire = @p ORDER BY cree LIMIT 500'),
+        parameters: {'p': peerId},
+      );
+
+  var lignes = await lire();
+  final attente = int.tryParse(r.url.queryParameters['attendre'] ?? '') ?? 0;
+  if (lignes.isEmpty && attente > 0) {
+    await _attendre(peerId, Duration(seconds: attente.clamp(1, 25)));
+    lignes = await lire();
+  }
+  final messages = [
+    for (final l in lignes)
+      {
+        'id': l[0],
+        'from': l[1],
+        'to': peerId,
+        'payload': l[2],
+        'timestamp': (l[3] as DateTime).toUtc().toIso8601String(),
+      },
+  ];
+  return json({'messages': messages, 'count': messages.length});
+}
+
+Future<Response> _accuser(Request r, String peerId, String id) async {
+  if (!_formeId.hasMatch(peerId)) return json({'error': 'identifiant invalide'}, statut: 400);
+  final refus = await _controler(r, peerId, const []);
+  if (refus != null) return refus;
+  final res = await _db.execute(
+    Sql.named('DELETE FROM messages WHERE destinataire = @p AND id = @id'),
+    parameters: {'p': peerId, 'id': id},
+  );
+  return json({'ok': true, 'removed': res.affectedRows > 0});
+}
+
+Future<Response> _toutEffacer(Request r, String peerId) async {
+  if (!_formeId.hasMatch(peerId)) return json({'error': 'identifiant invalide'}, statut: 400);
+  final refus = await _controler(r, peerId, const []);
+  if (refus != null) return refus;
+  final res = await _db.execute(Sql.named('DELETE FROM messages WHERE destinataire = @p'), parameters: {'p': peerId});
+  return json({'ok': true, 'removed': res.affectedRows});
+}
+
+Future<Response> _sante(Request r) async {
+  try {
+    final n = await _db.execute('SELECT count(*), count(DISTINCT destinataire) FROM messages');
+    return json({
+      'status': 'ok',
+      'totalMessages': n.first[0],
+      'totalRecipients': n.first[1],
+      'attentes': _attentes.values.fold<int>(0, (s, l) => s + l.length),
+    });
+  } catch (e) {
+    return json({'status': 'base injoignable'}, statut: 503);
+  }
+}
+
+final _routes = Router()
+  ..post('/messages', _deposer)
+  ..get('/messages/<peerId>', _relever)
+  ..delete('/messages/<peerId>/<id>', _accuser)
+  ..delete('/messages/<peerId>', _toutEffacer)
+  ..get('/health', _sante);
+
+Future<void> main() async {
+  _securite = await Securite.depuisEnvironnement();
+  await _preparerBase();
+
+  // Le ménage : les messages jamais relevés au bout de 30 jours.
+  Timer.periodic(const Duration(hours: 1), (_) async {
+    try {
+      final r = await _db.execute(
+        Sql.named('DELETE FROM messages WHERE cree < @limite'),
+        parameters: {'limite': DateTime.now().toUtc().subtract(_duree)},
+      );
+      if (r.affectedRows > 0) print('[Boîte] ${r.affectedRows} messages expirés effacés');
+    } catch (e) {
+      print('[Boîte] Ménage impossible : $e');
+    }
   });
 
-  final String id;
-  final String fromPeerId;
-  final String toPeerId;
-  final String encryptedPayload;
-  final DateTime timestamp;
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'from': fromPeerId,
-        'to': toPeerId,
-        'payload': encryptedPayload,
-        'timestamp': timestamp.toIso8601String(),
-      };
-
-  factory MailboxMessage.fromJson(Map<String, dynamic> json) {
-    return MailboxMessage(
-      id: json['id'] as String,
-      fromPeerId: json['from'] as String,
-      toPeerId: json['to'] as String,
-      encryptedPayload: json['payload'] as String,
-      timestamp: DateTime.parse(json['timestamp'] as String),
-    );
-  }
-}
-
-// ── Base de données en mémoire ─────────────────────────────────────
-
-class MailboxDb {
-  /// Messages par destinataire : toPeerId → [MailboxMessage].
-  final Map<String, List<MailboxMessage>> _messages = {};
-
-  /// TTL d'un message : 7 jours.
-  static const _ttl = Duration(days: 7);
-
-  String _nextId() {
-    return DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-  }
-
-  /// Dépose un message dans la boîte aux lettres.
-  MailboxMessage store({
-    required String fromPeerId,
-    required String toPeerId,
-    required String encryptedPayload,
-  }) {
-    final msg = MailboxMessage(
-      id: _nextId(),
-      fromPeerId: fromPeerId,
-      toPeerId: toPeerId,
-      encryptedPayload: encryptedPayload,
-      timestamp: DateTime.now(),
-    );
-
-    _messages.putIfAbsent(toPeerId, () => []).add(msg);
-    return msg;
-  }
-
-  /// Récupère tous les messages d'un destinataire.
-  List<MailboxMessage> fetchAll(String peerId) {
-    return _messages[peerId] ?? [];
-  }
-
-  /// Supprime un message par son ID.
-  bool delete(String peerId, String messageId) {
-    final msgs = _messages[peerId];
-    if (msgs == null) return false;
-    final before = msgs.length;
-    msgs.removeWhere((m) => m.id == messageId);
-    if (msgs.isEmpty) _messages.remove(peerId);
-    return msgs.length < before;
-  }
-
-  /// Supprime tous les messages d'un peer (après récupération).
-  int deleteAll(String peerId) {
-    final msgs = _messages.remove(peerId);
-    return msgs?.length ?? 0;
-  }
-
-  /// Nettoie les messages expirés.
-  int sweep() {
-    final now = DateTime.now();
-    int cleaned = 0;
-    _messages.removeWhere((peerId, msgs) {
-      final before = msgs.length;
-      msgs.removeWhere((m) => now.difference(m.timestamp) > _ttl);
-      cleaned += before - msgs.length;
-      return msgs.isEmpty;
-    });
-    return cleaned;
-  }
-
-  int get totalMessages =>
-      _messages.values.fold(0, (sum, msgs) => sum + msgs.length);
-  int get totalRecipients => _messages.length;
-}
-
-// ── Serveur ────────────────────────────────────────────────────────
-
-final _db = MailboxDb();
-final _router = Router()
-  ..post('/messages', _handleStore)
-  ..get('/messages/<peerId>', _handleFetch)
-  ..delete('/messages/<peerId>/<messageId>', _handleDelete)
-  ..delete('/messages/<peerId>', _handleDeleteAll)
-  ..get('/health', _handleHealth);
-
-Future<Response> _handleStore(Request request) async {
-  try {
-    final body = await request.readAsString();
-    final json = jsonDecode(body) as Map<String, dynamic>;
-
-    final from = json['from'] as String?;
-    final to = json['to'] as String?;
-    final payload = json['payload'] as String?;
-
-    if (from == null || to == null || payload == null) {
-      return Response(400,
-          body: jsonEncode({'error': 'Champs manquants: from, to, payload'}));
-    }
-
-    final msg = _db.store(
-      fromPeerId: from,
-      toPeerId: to,
-      encryptedPayload: payload,
-    );
-
-    print('[Mailbox] Message déposé: $from → ${to.substring(0, 8)}… (id: ${msg.id})');
-
-    return Response.ok(
-      jsonEncode({'ok': true, 'id': msg.id}),
-      headers: {'content-type': 'application/json'},
-    );
-  } catch (e) {
-    return Response(500, body: jsonEncode({'error': e.toString()}));
-  }
-}
-
-Future<Response> _handleFetch(Request request) async {
-  final peerId = request.params['peerId'];
-  if (peerId == null) {
-    return Response(400, body: jsonEncode({'error': 'peerId manquant'}));
-  }
-
-  final messages = _db.fetchAll(peerId);
-  return Response.ok(
-    jsonEncode({
-      'messages': messages.map((m) => m.toJson()).toList(),
-      'count': messages.length,
-    }),
-    headers: {'content-type': 'application/json'},
-  );
-}
-
-Future<Response> _handleDelete(Request request) async {
-  final peerId = request.params['peerId'];
-  final messageId = request.params['messageId'];
-
-  if (peerId == null || messageId == null) {
-    return Response(400, body: jsonEncode({'error': 'Paramètres manquants'}));
-  }
-
-  final removed = _db.delete(peerId, messageId);
-  return Response.ok(
-    jsonEncode({'ok': true, 'removed': removed}),
-    headers: {'content-type': 'application/json'},
-  );
-}
-
-Future<Response> _handleDeleteAll(Request request) async {
-  final peerId = request.params['peerId'];
-  if (peerId == null) {
-    return Response(400, body: jsonEncode({'error': 'peerId manquant'}));
-  }
-
-  final count = _db.deleteAll(peerId);
-  return Response.ok(
-    jsonEncode({'ok': true, 'removed': count}),
-    headers: {'content-type': 'application/json'},
-  );
-}
-
-Response _handleHealth(Request request) {
-  return Response.ok(
-    jsonEncode({
-      'status': 'ok',
-      'totalMessages': _db.totalMessages,
-      'totalRecipients': _db.totalRecipients,
-      'uptime': DateTime.now().toIso8601String(),
-    }),
-    headers: {'content-type': 'application/json'},
-  );
-}
-
-// ── Main ───────────────────────────────────────────────────────────
-
-Future<void> main(List<String> args) async {
-  final parser = ArgParser()
-    ..addOption('port', abbr: 'p', defaultsTo: '8081', help: 'Port d\'écoute')
-    ..addOption('host', abbr: 'h', defaultsTo: '127.0.0.1', help: 'Adresse d\'écoute');
-
-  final results = parser.parse(args);
-  final port = int.parse(results['port'] as String);
-  final host = results['host'] as String;
-
-  // Nettoyage périodique (toutes les heures).
-  _startSweepTimer();
-
   final handler = const Pipeline()
-      .addMiddleware(logRequests())
-      .addHandler(_router.call);
+      .addMiddleware(_journal())
+      .addMiddleware(limiteParIp(Debit(capacite: 120, parMinute: 600)))
+      .addHandler(_routes.call);
 
-  final server = await io.serve(handler, host, port);
-  print('[Mailbox] Serveur mailbox démarré sur http://${server.address.host}:${server.port}');
-  print('[Mailbox] Endpoints:');
-  print('  POST /messages          — Déposer un message');
-  print('  GET /messages/:peerId   — Récupérer les messages');
-  print('  DELETE /messages/:id    — Supprimer un message');
-  print('  GET /health             — Health check');
+  final port = int.parse(Platform.environment['PORT'] ?? '8081');
+  final serveur = await io.serve(handler, InternetAddress.anyIPv4, port);
+  serveur.autoCompress = true;
+  serveur.idleTimeout = const Duration(seconds: 40);
+  print('[Boîte] Prête sur le port ${serveur.port} — stockage Postgres');
 }
 
-void _startSweepTimer() async {
-  while (true) {
-    await Future.delayed(const Duration(hours: 1));
-    final cleaned = _db.sweep();
-    if (cleaned > 0) print('[Mailbox] Nettoyé $cleaned messages expirés');
-  }
-}
+/// Un journal sobre : pas d'identifiant complet, jamais de contenu.
+Middleware _journal() => (Handler suivant) => (Request r) async {
+      final debut = DateTime.now();
+      final rep = await suivant(r);
+      if (rep.statusCode >= 400 || r.method != 'GET') {
+        final chemin = r.url.path.length > 24 ? '${r.url.path.substring(0, 24)}…' : r.url.path;
+        print('[Boîte] ${r.method} /$chemin → ${rep.statusCode} (${DateTime.now().difference(debut).inMilliseconds} ms)');
+      }
+      return rep;
+    };

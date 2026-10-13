@@ -3,7 +3,7 @@
 name: Serveurs
 on:
   push:
-    branches: [serveurs]
+    branches: [serveurs, verif-serveurs]
   workflow_dispatch:
 permissions:
   contents: write
@@ -13,14 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
-      - name: Annuaire
+      - name: Compiler les serveurs
         run: |
           set +e
-          cd droplet_directory
-          { dart pub get; echo "pub: $?"; dart analyze lib; echo "analyse: $?"; dart compile exe lib/server.dart -o /tmp/annuaire; echo "compilation: $?"; } > /tmp/journal.txt 2>&1
+          : > /tmp/journal.txt
+          for d in droplet_directory droplet_mailbox outils/verif_appels; do
+            [ -d "$d" ] || continue
+            ( cd $d; echo "== $d"; dart pub get >/dev/null 2>&1; echo "pub: $?"; dart analyze lib; echo "analyse: $?"; dart compile exe lib/server.dart -o /tmp/srv; echo "compilation: $?" ) >> /tmp/journal.txt 2>&1
+          done
           cat /tmp/journal.txt
-          cd ..
           git config user.name ci; git config user.email ci@users.noreply.github.com
           git checkout -q --orphan journal-serveurs; git rm -rfq . >/dev/null
           cp /tmp/journal.txt journal.txt; git add journal.txt; git commit -qm "journal $GITHUB_SHA"; git push -fq origin journal-serveurs
-          grep -q "compilation: 0" journal.txt
+          ! grep -q "compilation: [1-9]" journal.txt

@@ -1,35 +1,20 @@
-# ── DropletMailbox (.onion) ──────────────────────────────────────────
-# Serveur mailbox .onion pour Droplet.
-# Exécuté comme service caché Tor sur un VPS.
-# ─────────────────────────────────────────────────────────────────────
-
-FROM dart:stable-sdk AS build
-
+# ── La boîte aux lettres Droplet sur Railway ────────────────────────────────────
+# Compilé en un seul binaire natif, posé sur une Debian minimale avec
+# les certificats (pour parler à Firebase). Railway fournit PORT ; le
+# volume est monté sur /data.
+FROM dart:stable AS build
 WORKDIR /app
-
 COPY pubspec.yaml ./
 RUN dart pub get
-
 COPY . .
-
+RUN dart pub get --offline
 RUN mkdir -p bin && dart compile exe lib/server.dart -o bin/server
 
-# ── Image finale avec Tor ───────────────────────────────────────────
 FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tor \
-    && rm -rf /var/lib/apt/lists/*
-
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
 COPY --from=build /app/bin/server /app/server
-
-COPY torrc /etc/tor/torrc
-
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh
-
 EXPOSE 8081
-
-CMD ["/app/start.sh"]
+CMD ["/app/server"]

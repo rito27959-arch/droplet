@@ -13,3 +13,6 @@ dependencies:
   http: ^1.2.0
   dart_jsonwebtoken: ^2.14.0
   libsignal_protocol_dart: ^0.7.1
+  postgres: ^3.5.0
+  cryptography: ^2.7.0
+  crypto: ^3.0.3
