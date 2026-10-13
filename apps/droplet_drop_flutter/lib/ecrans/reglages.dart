@@ -193,7 +193,7 @@ class _ChampNomState extends State<_ChampNom> {
       controller: _c,
       maxLength: 40,
       style: Typo.titreCarte.copyWith(color: p.texte),
-      decoration: InputDecoration(counterText: '', labelText: context.t('nom_appareil'), border: InputBorder.none),
+      decoration: InputDecoration(counterText: '', labelText: context.t('nom_appareil'), border: InputBorder.none, focusedBorder: InputBorder.none, filled: false, contentPadding: EdgeInsets.zero),
       onSubmitted: EtatApp.i.definirNom,
       onTapOutside: (_) {
         EtatApp.i.definirNom(_c.text);

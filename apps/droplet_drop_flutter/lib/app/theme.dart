@@ -37,7 +37,7 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: palette.sombre ? const Color(0xFF2A3445) : const Color(0xFF1C2333),
-      contentTextStyle: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+      contentTextStyle: TextStyle(fontFamily: police, color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       elevation: 0,
@@ -46,12 +46,12 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
       backgroundColor: palette.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-      titleTextStyle: TextStyle(color: palette.texte, fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -0.3),
-      contentTextStyle: TextStyle(color: palette.texte2, fontSize: 15, height: 1.4),
+      titleTextStyle: TextStyle(fontFamily: police, color: palette.texte, fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+      contentTextStyle: TextStyle(fontFamily: police, color: palette.texte2, fontSize: 15, height: 1.4),
     ),
     bottomSheetTheme: const BottomSheetThemeData(backgroundColor: Colors.transparent, elevation: 0, modalElevation: 0),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: palette.accentTexte, textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      style: TextButton.styleFrom(foregroundColor: palette.accentTexte, textStyle: TextStyle(fontFamily: police, fontSize: 16, fontWeight: FontWeight.w600)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -70,7 +70,7 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
     dividerTheme: DividerThemeData(color: palette.trait, thickness: 1, space: 1),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(color: palette.sombre ? const Color(0xFF2A3445) : const Color(0xFF1C2333), borderRadius: BorderRadius.circular(8)),
-      textStyle: const TextStyle(color: Colors.white, fontSize: 13),
+      textStyle: TextStyle(fontFamily: police, color: Colors.white, fontSize: 13),
       waitDuration: const Duration(milliseconds: 500),
     ),
     scrollbarTheme: ScrollbarThemeData(
