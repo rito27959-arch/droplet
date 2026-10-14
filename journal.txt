@@ -1,0 +1,37 @@
+Changed 64 dependencies!
+19 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+== codegen
+code codegen: 0
+[2026-10-14T22:44:17.615Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/fvm.rs:28] Has .fvmrc but no fvm binary installation, thus skip using fvm.
+[2026-10-14T22:44:17.740Z WARN /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/command_runner.rs:217] command=cd "/home/runner/work/droplet/droplet/apps/droplet_drop_flutter/rust" && RUSTFLAGS="--cfg frb_expand" "cargo" "expand" "--lib" "--theme=none" "--ugly" stdout= stderr=[1m[91merror[0m: no such command: `expand`
+
+help: view all installed commands with `cargo --list`
+help: find a package to install `expand` with `cargo search cargo-expand`
+
+[2026-10-14T22:44:17.740Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/commands/cargo_expand/real.rs:115] Cargo expand is not installed. Automatically install and re-run.
+[2026-10-14T22:45:48.013Z INFO /home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/flutter_rust_bridge_codegen-2.13.0/src/library/codegen/parser/mir/parser/ty/lifetimeable.rs:52] To handle some types, `enable_lifetime: true` may need to be set. Please visit https://fzyzcjy.github.io/flutter_rust_bridge/guides/lifetimes for more details
+Done!
+== analyse
+Analyzing droplet_drop_flutter...                               
+
+   info • Unnecessary use of string interpolation. Try replacing the string literal with the variable name • lib/app/textes.dart:65:58 • unnecessary_string_interpolations
+   info • Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check • lib/main.dart:49:35 • use_build_context_synchronously
+
+2 issues found. (ran in 12.8s)
+== captures
+::group::✅ Passing tests
+✅ accueil
+✅ destinataires
+✅ transfert
+✅ offre
+✅ distribution
+✅ recevoir
+✅ accueil vide
+✅ reglages
+::endgroup::
+🎉 8 tests passed.
+== build linux
+code linux: 0
+Building Linux application...                                   
+✓ Built build/linux/x64/release/bundle/droplet_drop
