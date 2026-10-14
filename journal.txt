@@ -1,0 +1,51 @@
++ shared_preferences_platform_interface 2.4.2
++ shared_preferences_web 2.4.3
++ shared_preferences_windows 2.4.1
+  test_api 0.7.12 (0.7.15 available)
++ typed_data 1.4.0
++ url_launcher 6.3.3
++ url_launcher_android 6.3.33
++ url_launcher_ios 6.4.2
++ url_launcher_linux 3.2.3
++ url_launcher_macos 3.2.6
++ url_launcher_platform_interface 2.3.2
++ url_launcher_web 2.4.3
++ url_launcher_windows 3.1.6
++ uuid 4.6.0
+  vector_math 2.4.0 (2.4.3 available)
++ win32 5.15.0 (6.4.0 available)
++ xdg_directories 1.1.0
++ yaml 3.1.4
+These packages are no longer being depended on:
+- flutter_driver 0.0.0 from sdk flutter
+- fuchsia_remote_debug_protocol 0.0.0 from sdk flutter
+- integration_test 0.0.0 from sdk flutter
+- process 5.0.6
+- sync_http 0.3.1
+- webdriver 3.2.0
+Changed 64 dependencies!
+19 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+The following plugins do not support Swift Package Manager for macos:
+  - desktop_drop
+  - rust_lib_droplet_drop
+This will become an error in a future version of Flutter. Please contact the plugin maintainers to request Swift Package Manager adoption.
+Running pod install...                                           1,224ms
+Building macOS application...                                   
+/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/macos/Pods/Pods.xcodeproj: desktop_drop: ld: warning: search path '/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.yy6HNa/Metal.xctoolchain/usr/lib/swift/macosx' not found
+/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/macos/Pods/Pods.xcodeproj: desktop_drop: ld: warning: search path '/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.yy6HNa/Metal.xctoolchain/usr/lib/swift/macosx' not found
+/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/macos/Runner.xcodeproj: Runner: ld: warning: search path '/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.yy6HNa/Metal.xctoolchain/usr/lib/swift/macosx' not found
+/Users/runner/work/droplet/droplet/apps/droplet_drop_flutter/macos/Runner.xcodeproj: Runner: ld: warning: search path '/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.yy6HNa/Metal.xctoolchain/usr/lib/swift/macosx' not found
+warning: Run script build phase 'Run Script' will be run during every build because it does not specify any outputs. To address this issue, either add output dependencies to the script phase, or configure it to run in every build by unchecking "Based on dependency analysis" in the script phase. (in target 'Flutter Assemble' from project 'Runner')
+✓ Built build/macos/Build/Products/Release/Droplet Drop.app (73.3MB)
+code macos: 0
+code ios appareil: 0
+  - MLKitVision (transitive dependency of Flutter plugin mobile_scanner)
+  - mobile_scanner (Flutter plugin)
+  - mobile_scanner-mobile_scanner_privacy
+
+Please contact plugin maintainers to request arm64 support to continue to be able to use the plugin on a simulator.
+Running Xcode build...                                          
+Xcode build done.                                           278.5s
+✓ Built build/ios/iphonesimulator/Runner.app
+code ios: 0
