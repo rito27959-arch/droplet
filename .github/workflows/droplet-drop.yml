@@ -117,13 +117,22 @@ jobs:
       - name: Clé de signature
         env:
           CLE: ${{ secrets.DROP_ANDROID_CLE }}
+          MDP: ${{ secrets.DROP_ANDROID_MDP }}
         run: |
-          if [ -n "$CLE" ]; then
+          if [ -n "$CLE" ] && [ -n "$MDP" ]; then
             printf '%s' "$CLE" | base64 -d > "$RUNNER_TEMP/droplet-drop.jks"
-            echo "DROP_KEYSTORE=$RUNNER_TEMP/droplet-drop.jks" >> "$GITHUB_ENV"
-            echo "Signature : clé de publication"
+            # Vérifier que le mot de passe ouvre bien le keystore avant de
+            # l'utiliser pour le build : un mauvais mot de passe ne doit pas
+            # faire échouer le build, juste retomber sur la clé de débogage.
+            if keytool -list -keystore "$RUNNER_TEMP/droplet-drop.jks" -storepass "$MDP" -storetype PKCS12 > /dev/null 2>&1; then
+              echo "DROP_KEYSTORE=$RUNNER_TEMP/droplet-drop.jks" >> "$GITHUB_ENV"
+              echo "Signature : clé de publication"
+            else
+              rm -f "$RUNNER_TEMP/droplet-drop.jks"
+              echo "::warning::Le mot de passe du keystore est incorrect : APK signés avec une clé de débogage. Vérifiez le secret DROP_ANDROID_MDP."
+            fi
           else
-            echo "::warning::Secret DROP_ANDROID_CLE absent : APK signés avec une clé de débogage (les mises à jour ne s'installeront pas par-dessus)."
+            echo "::warning::Secrets DROP_ANDROID_CLE ou DROP_ANDROID_MDP absents : APK signés avec une clé de débogage (les mises à jour ne s'installeront pas par-dessus)."
           fi
       - name: APK
         env:
