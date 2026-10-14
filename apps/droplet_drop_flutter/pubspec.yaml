@@ -75,6 +75,29 @@ flutter:
   assets:
     - assets/icone.png
 
+  # Droplet Design : Inter Tight pour les titres, Inter pour le texte, les
+  # mêmes que sur les sites et dans Droplet. Embarquées (pas téléchargées) :
+  # l'app doit marcher sans Internet. Licence SIL OFL 1.1 (assets/polices).
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/polices/Inter_400Regular.ttf
+          weight: 400
+        - asset: assets/polices/Inter_500Medium.ttf
+          weight: 500
+        - asset: assets/polices/Inter_600SemiBold.ttf
+          weight: 600
+        - asset: assets/polices/Inter_700Bold.ttf
+          weight: 700
+    - family: Inter Tight
+      fonts:
+        - asset: assets/polices/InterTight_600SemiBold.ttf
+          weight: 600
+        - asset: assets/polices/InterTight_700Bold.ttf
+          weight: 700
+        - asset: assets/polices/InterTight_800ExtraBold.ttf
+          weight: 800
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

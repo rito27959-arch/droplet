@@ -5,12 +5,15 @@ import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import '../design/couleurs.dart';
+import '../design/droplet_design.dart';
 
-/// `police` : seulement pour les captures (Roboto chargée à la main) ; dans
-/// l'application, la police du système.
+/// La police de la famille (Inter, embarquée) ; `police` permet de la
+/// remplacer, par exemple pour comparer à la police du système.
 ThemeData themeDroplet(Palette palette, {String? police}) {
+  final f = police ?? DDTypo.texte;
   return ThemeData(
-    fontFamily: police,
+    fontFamily: f,
+    fontFamilyFallback: DDTypo.secours,
     brightness: palette.sombre ? Brightness.dark : Brightness.light,
     scaffoldBackgroundColor: palette.fond,
     colorScheme: ColorScheme.fromSeed(seedColor: palette.accent, brightness: palette.sombre ? Brightness.dark : Brightness.light),
@@ -37,7 +40,7 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: palette.sombre ? const Color(0xFF2A3445) : const Color(0xFF1C2333),
-      contentTextStyle: TextStyle(fontFamily: police, color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+      contentTextStyle: TextStyle(fontFamily: f, color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       elevation: 0,
@@ -46,12 +49,12 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
       backgroundColor: palette.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
-      titleTextStyle: TextStyle(fontFamily: police, color: palette.texte, fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -0.3),
-      contentTextStyle: TextStyle(fontFamily: police, color: palette.texte2, fontSize: 15, height: 1.4),
+      titleTextStyle: DDTypo.titre3.copyWith(color: palette.texte),
+      contentTextStyle: TextStyle(fontFamily: f, color: palette.texte2, fontSize: 15, height: 1.4),
     ),
     bottomSheetTheme: const BottomSheetThemeData(backgroundColor: Colors.transparent, elevation: 0, modalElevation: 0),
     textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(foregroundColor: palette.accentTexte, textStyle: TextStyle(fontFamily: police, fontSize: 16, fontWeight: FontWeight.w600)),
+      style: TextButton.styleFrom(foregroundColor: palette.accentTexte, textStyle: TextStyle(fontFamily: f, fontSize: 16, fontWeight: FontWeight.w600)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -70,7 +73,7 @@ ThemeData themeDroplet(Palette palette, {String? police}) {
     dividerTheme: DividerThemeData(color: palette.trait, thickness: 1, space: 1),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(color: palette.sombre ? const Color(0xFF2A3445) : const Color(0xFF1C2333), borderRadius: BorderRadius.circular(8)),
-      textStyle: TextStyle(fontFamily: police, color: Colors.white, fontSize: 13),
+      textStyle: TextStyle(fontFamily: f, color: Colors.white, fontSize: 13),
       waitDuration: const Duration(milliseconds: 500),
     ),
     scrollbarTheme: ScrollbarThemeData(

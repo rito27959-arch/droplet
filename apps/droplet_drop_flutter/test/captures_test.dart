@@ -36,6 +36,15 @@ Future<void> _polices() async {
   }
   await roboto.load();
   await icones.load();
+  // Les polices de la famille (Droplet Design), celles que l'app embarque.
+  for (final (famille, prefixe) in [('Inter', 'Inter_'), ('Inter Tight', 'InterTight_')]) {
+    final chargeur = FontLoader(famille);
+    for (final f in Directory('assets/polices').listSync().whereType<File>()) {
+      final nom = f.path.split('/').last;
+      if (nom.startsWith(prefixe) && nom.endsWith('.ttf')) chargeur.addFont(f.readAsBytes().then((b) => b.buffer.asByteData()));
+    }
+    await chargeur.load();
+  }
 }
 
 Pair _pair(String nom, String p, String fp) => Pair(nom: nom, plateforme: p, empreinte: fp, courte: '${fp.substring(0, 4)}-${fp.substring(4, 8)}'.toUpperCase());
@@ -100,8 +109,8 @@ Widget _app(Widget ecran, {required bool sombre}) => PorteePalette(
         locale: const Locale('fr'),
         supportedLocales: const [Locale('fr')],
         localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
-        // Le thème de l'application elle-même, police Roboto chargée.
-        theme: themeDroplet(Palette.de(sombre: sombre, accent: Accent.bleu), police: 'Roboto'),
+        // Le thème de l'application elle-même, polices de la famille chargées.
+        theme: themeDroplet(Palette.de(sombre: sombre, accent: Accent.bleu)),
         home: ecran,
       ),
     );

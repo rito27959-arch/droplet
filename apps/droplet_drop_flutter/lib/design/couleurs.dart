@@ -1,9 +1,15 @@
 // DROPLET LIQUID — les couleurs.
 //
+// Les neutres et les états viennent de Droplet Design (droplet_design.dart,
+// commun à toute la famille) : la nuit de la couche « scène » en sombre, les
+// gris d'Apple en clair. Seul l'accent est propre à Drop : son bleu liquide.
+//
 // Deux thèmes travaillés chacun pour lui-même (le clair n'est pas le sombre
 // inversé) et une couleur d'accent au choix. Toutes les nuances d'état
 // (succès, attention, erreur) gardent un contraste AA sur leur fond.
 import 'package:flutter/material.dart';
+
+import 'droplet_design.dart';
 
 enum Accent { bleu, cyan, indigo, violet, vert }
 
@@ -62,7 +68,7 @@ class Palette {
 
   static (Color, Color, Color, Color) _accent(Accent a, bool sombre) => switch (a) {
         // (accent, second ton, accent texte sombre, accent texte clair)
-        Accent.bleu => (const Color(0xFF168BFF), const Color(0xFF34D8FF), const Color(0xFF4DA8FF), const Color(0xFF0864CC)),
+        Accent.bleu => (DDMarque.drop, DDMarque.drop2, const Color(0xFF4DA8FF), const Color(0xFF0864CC)),
         Accent.cyan => (const Color(0xFF12B8E0), const Color(0xFF5CF0D4), const Color(0xFF34D8FF), const Color(0xFF007A99)),
         Accent.indigo => (const Color(0xFF4855E8), const Color(0xFF168BFF), const Color(0xFF8C95FF), const Color(0xFF3540C9)),
         Accent.violet => (const Color(0xFF8B5CF6), const Color(0xFFD06BFF), const Color(0xFFB79CFF), const Color(0xFF6D3FD9)),
@@ -76,38 +82,38 @@ class Palette {
         sombre: true,
         // La nuit du site (drop.dropletmesh.app) : un noir bleuté profond,
         // des cartes de verre fumé à peine plus claires.
-        fond: const Color(0xFF05070C),
-        fondEleve: const Color(0xFF0A0E17),
-        surface: const Color(0xFF10151F),
-        surfaceHaute: const Color(0xFF1A2130),
-        trait: const Color(0x14FFFFFF),
-        texte: const Color(0xFFF7F9FC),
-        texte2: const Color(0xFFA5B0C1),
-        texte3: const Color(0xFF6E7A8E),
+        fond: DDScene.nuit,
+        fondEleve: DDScene.nuitEleve,
+        surface: DDScene.verre,
+        surfaceHaute: DDScene.verreHaut,
+        trait: DDScene.trait,
+        texte: DDScene.texte,
+        texte2: DDScene.texte2,
+        texte3: DDScene.texte3,
         accent: a,
         accent2: a2,
         accentTexte: texteSombre,
-        succes: const Color(0xFF34D27B),
-        attention: const Color(0xFFFFB340),
-        erreur: const Color(0xFFFF5D55),
+        succes: DDEtatsSombre.succes,
+        attention: DDEtatsSombre.attention,
+        erreur: DDEtatsSombre.erreur,
       );
     }
     return Palette(
       sombre: false,
-      fond: const Color(0xFFF5F5F7),
+      fond: DDClair.fondGroupe,
       fondEleve: const Color(0xFFFBFBFD),
-      surface: const Color(0xFFFFFFFF),
-      surfaceHaute: const Color(0xFFEEF0F4),
-      trait: const Color(0x140B1220),
-      texte: const Color(0xFF0B1220),
-      texte2: const Color(0xFF55607A),
-      texte3: const Color(0xFF8A94A8),
+      surface: DDClair.surface,
+      surfaceHaute: DDClair.surfaceHaute,
+      trait: DDClair.trait,
+      texte: DDClair.texte,
+      texte2: DDClair.texte2,
+      texte3: DDClair.texte3,
       accent: a,
       accent2: a2,
       accentTexte: texteClair,
-      succes: const Color(0xFF138A4D),
-      attention: const Color(0xFFB25E00),
-      erreur: const Color(0xFFD12B21),
+      succes: DDEtatsClair.succes,
+      attention: DDEtatsClair.attention,
+      erreur: DDEtatsClair.erreur,
     );
   }
 }
