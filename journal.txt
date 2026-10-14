@@ -1,0 +1,48 @@
+== tests
+test bitmap::tests::marquer_et_compter ... ok
+test chemins::tests::noms_difficiles ... ok
+test chemins::tests::refuse_les_evasions ... ok
+test chemins::tests::ne_jamais_ecraser ... ok
+test manifeste::tests::refuse_un_manifeste_incoherent ... ok
+test manifeste::tests::manifeste_et_verification ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test tests::identite_persistante ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test tests::deux_appareils_se_trouvent ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+test tests::enregistrer_chercher_effacer ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test moteur::tests_invitation::liens_web_et_anciens ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test sans_certificat_client_refuse ... ok
+test trames_demesurees_et_manifeste_absurde ... ok
+test chemin_piege_reste_dans_le_dossier ... ok
+test donnees_fausses_jamais_livrees ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+test appareil_de_confiance_sans_question ... ok
+test mesures_volumineuses ... ok
+test envoi_direct_avec_dossier ... ok
+test refus_et_empreinte_epinglee ... ok
+test rejoindre_avec_le_code ... ok
+test dix_destinataires ... ok
+test pause_puis_reprise ... ok
+test session_expiree ... ok
+test tirage_quand_le_destinataire_est_injoignable ... ok
+test group_drop_session ... ok
+test reprise_apres_coupure_reelle_et_bloc_abime ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.52s
+test tests::page_telechargement_depot_et_jeton ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+code tests: 0
+== mesures volumineuses
+MESURE 1 Go → 2 appareils : 13.3 s (154 Mo/s cumulés)
+MESURE 200 Mo → 30 appareils : 31.0 s (193 Mo/s cumulés)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 49.24s
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:04.54
+	Maximum resident set size (kbytes): 552540
