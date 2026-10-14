@@ -115,6 +115,25 @@ void effacerHistorique({String? id}) =>
 /// Les états finaux, pour l'interface.
 String version() => RustLib.instance.api.crateApiSimpleVersion();
 
+/// Ouvre la page pour les navigateurs : [chemins]/[noms] à télécharger, et
+/// si [recevoir], le dépôt de fichiers vers le dossier de réception.
+/// [textes] : JSON des textes de la page (dans la langue de l'app).
+/// Rend `{"port":…,"jeton":"…","adresses":[…]}`.
+Future<String> partageWebDemarrer({
+  required List<String> chemins,
+  required List<String> noms,
+  required bool recevoir,
+  required String textes,
+}) => RustLib.instance.api.crateApiSimplePartageWebDemarrer(
+  chemins: chemins,
+  noms: noms,
+  recevoir: recevoir,
+  textes: textes,
+);
+
+void partageWebArreter() =>
+    RustLib.instance.api.crateApiSimplePartageWebArreter();
+
 /// Ce que l'appareil sait de lui-même.
 class InfoAppareil {
   final String empreinte;
