@@ -57,7 +57,7 @@ class Accueil extends StatelessWidget {
                                 ],
                               ),
                               const SizedBox(height: 22),
-                              Text(context.t('hero_accueil'), style: Typo.hero.copyWith(color: p.texte)),
+                              Text(context.t('hero_accueil'), style: Typo.hero.copyWith(color: p.texte, fontSize: MediaQuery.sizeOf(context).width < 420 ? 30 : 38)),
                               const SizedBox(height: 8),
                               if (e.erreurDemarrage != null)
                                 Padding(

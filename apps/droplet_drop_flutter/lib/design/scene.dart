@@ -109,7 +109,7 @@ class _Tuile extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (photo)
-              Image.file(File(chemin!), fit: BoxFit.cover, cacheWidth: (taille * 3).round(), errorBuilder: (_, __, ___) => const SizedBox())
+              Image.file(File(chemin!), fit: BoxFit.cover, cacheWidth: (taille * 3).round(), errorBuilder: (_, _, _) => const SizedBox())
             else
               Icon(_icone(type), color: Colors.white.withValues(alpha: 0.92), size: taille * 0.42),
             if (plus != null)
@@ -232,6 +232,9 @@ class _ConstellationState extends State<Constellation> with SingleTickerProvider
         final s = Size(cs.maxWidth, widget.hauteur);
         final pos = _positions(s, widget.noeuds.length);
         final t = widget.tailleNoeud;
+        // Au-delà de 8 appareils, les noms se chevaucheraient : on ne garde
+        // que les tuiles (la liste détaillée est dessous).
+        final etiquettes = widget.noeuds.length <= 8;
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -258,8 +261,9 @@ class _ConstellationState extends State<Constellation> with SingleTickerProvider
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _TuileAppareil(noeud: n, taille: t),
-                          const SizedBox(height: 6),
-                          Text(n.nom, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: Typo.legende.copyWith(color: p.texte, fontWeight: FontWeight.w600)),
+                          if (etiquettes) const SizedBox(height: 6),
+                          if (etiquettes)
+                            Text(n.nom, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: Typo.legende.copyWith(color: p.texte, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),

@@ -251,7 +251,7 @@ class _EcranRecusState extends State<EcranRecus> {
                                     onTap: () => ouvrirRecu(context, r),
                                     onLongPress: () => _actions(r),
                                     child: r.genre == Genre.photos
-                                        ? Image.file(File(r.chemin), fit: BoxFit.cover, cacheWidth: 320, errorBuilder: (_, __, ___) => ColoredBox(color: p.surfaceHaute, child: Icon(Icons.image_rounded, color: p.texte3)))
+                                        ? Image.file(File(r.chemin), fit: BoxFit.cover, cacheWidth: 320, errorBuilder: (_, _, _) => ColoredBox(color: p.surfaceHaute, child: Icon(Icons.image_rounded, color: p.texte3)))
                                         : ColoredBox(color: p.surfaceHaute, child: Icon(Icons.play_circle_fill_rounded, color: p.texte2, size: 36)),
                                   );
                                 },
@@ -276,7 +276,7 @@ class _EcranRecusState extends State<EcranRecus> {
                                                 width: 46,
                                                 height: 46,
                                                 child: r.genre == Genre.photos
-                                                    ? Image.file(File(r.chemin), fit: BoxFit.cover, cacheWidth: 120, errorBuilder: (_, __, ___) => const SizedBox())
+                                                    ? Image.file(File(r.chemin), fit: BoxFit.cover, cacheWidth: 120, errorBuilder: (_, _, _) => const SizedBox())
                                                     : DecoratedBox(
                                                         decoration: BoxDecoration(gradient: r.genre == Genre.apps ? p.liquide : null, color: r.genre == Genre.apps ? null : p.surfaceHaute),
                                                         child: Icon(r.genre == Genre.apps ? Icons.android_rounded : iconeFichier(r.nom), color: r.genre == Genre.apps ? Colors.white : p.texte2),
