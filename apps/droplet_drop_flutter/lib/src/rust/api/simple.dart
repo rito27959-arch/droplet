@@ -7,7 +7,7 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `diffuser`, `g`, `info`, `sources`, `tirer`
+// These functions are ignored because they are not marked as `pub`: `annoncer_distributions`, `diffuser`, `g`, `info`, `sources`, `tirer`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `Global`
 
 /// Démarre le moteur (une seule fois), la découverte et l'historique.
@@ -78,6 +78,20 @@ Future<String> creerSession({
   noms: noms,
   minutes: minutes,
   demarrer: demarrer,
+);
+
+/// Obtient l'invitation d'une distribution vue à proximité (`appareil` :
+/// son identifiant de découverte ; `session` : les 8 caractères de
+/// l'annonce) avec le code à six chiffres affiché chez l'hôte. L'erreur
+/// est un code stable (`code_incorrect`, `injoignable`…).
+Future<String> invitationParCode({
+  required String appareil,
+  required String session,
+  required String code,
+}) => RustLib.instance.api.crateApiSimpleInvitationParCode(
+  appareil: appareil,
+  session: session,
+  code: code,
 );
 
 /// Rejoint une session à partir de son invitation (QR code ou lien).
