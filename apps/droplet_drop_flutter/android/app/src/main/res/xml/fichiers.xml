@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ce que Droplet Drop peut ouvrir dans une autre app (ou installer) :
+     ses fichiers reçus, où qu'ils soient. -->
+<paths>
+    <external-path name="externe" path="." />
+    <external-files-path name="appli_externe" path="." />
+    <files-path name="appli" path="." />
+    <cache-path name="cache" path="." />
+</paths>

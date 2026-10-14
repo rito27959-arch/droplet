@@ -47,3 +47,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider : ouvrir un fichier reçu dans une autre app.
+    implementation("androidx.core:core-ktx:1.13.1")
+}

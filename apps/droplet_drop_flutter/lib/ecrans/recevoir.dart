@@ -8,11 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../app/etat_app.dart';
+import '../app/natif.dart';
 import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
 import '../design/marque.dart';
 import '../design/typo.dart';
+import 'connexion_directe.dart';
 import 'group_drop.dart';
 import 'pare_feu.dart';
 import 'reglages.dart';
@@ -27,7 +29,15 @@ class Recevoir extends StatelessWidget {
       listenable: EtatApp.i,
       builder: (context, _) {
         final e = EtatApp.i;
-        final code = jsonEncode({'t': 'droplet_drop_appareil', 'a': e.adresses, 'p': e.port, 'fp': e.empreinte, 'n': e.nom});
+        final code = jsonEncode({
+          't': 'droplet_drop_appareil',
+          'a': e.adresses,
+          'p': e.port,
+          'fp': e.empreinte,
+          'n': e.nom,
+          // La connexion directe : l'autre téléphone la rejoint tout seul.
+          if (e.pointAcces != null) 'w': e.pointAcces!.json(),
+        });
         return Scaffold(
           backgroundColor: p.fond,
           appBar: AppBar(
@@ -57,6 +67,7 @@ class Recevoir extends StatelessWidget {
                         ),
                       ),
                       const CartePareFeu(),
+                      if (Natif.android) ...[const SizedBox(height: 18), const CarteConnexionDirecte()],
                       TitreSection(context.t('qr_appareil')),
                       Carte(
                         child: Column(

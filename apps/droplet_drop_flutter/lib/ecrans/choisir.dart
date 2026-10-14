@@ -11,14 +11,17 @@ import 'package:flutter/material.dart';
 
 import '../app/etat_app.dart';
 import '../app/modeles.dart';
+import '../app/natif.dart';
 import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
 import '../design/typo.dart';
 import '../src/rust/api/simple.dart' as moteur;
 import 'accueil.dart';
+import 'connexion_directe.dart';
 import 'group_drop.dart';
 import 'scanner.dart';
+import 'selection.dart';
 import 'transfert.dart';
 
 bool get estMobile => Platform.isAndroid || Platform.isIOS;
@@ -32,6 +35,8 @@ Future<void> choisirPuisEnvoyer(BuildContext context, {AppareilVu? vers}) async 
 
 /// Fichiers, photos et vidéos, ou un dossier entier (ordinateur).
 Future<List<Choisi>?> choisirFichiers(BuildContext context) async {
+  // Sur téléphone : l'écran à onglets (Photos, Vidéos, Musique, Apps…).
+  if (estMobile) return choisirSurTelephone(context);
   final p = context.p;
   final genre = await showModalBottomSheet<String>(
     context: context,
@@ -183,6 +188,14 @@ class _EcranDestinatairesState extends State<EcranDestinataires> {
     try {
       final j = (jsonDecode(brut) as Map).cast<String, dynamic>();
       if (j['t'] != 'droplet_drop_appareil') throw const FormatException();
+      // L'autre appareil a ouvert une connexion directe : on la rejoint
+      // d'abord (pas besoin de box ni d'Internet).
+      final pa = PointAcces.depuis(j['w']);
+      if (pa != null && Natif.android) {
+        if (!mounted) return;
+        final ok = await rejoindreConnexion(context, pa, j['n'] as String? ?? '');
+        if (!ok || !mounted) return;
+      }
       final port = j['p'] as int;
       final cible = {
         'adresses': [for (final a in (j['a'] as List)) '$a:$port'],
@@ -301,6 +314,7 @@ class _EcranDestinatairesState extends State<EcranDestinataires> {
                               Expanded(child: BoutonSecondaire(texte: context.t('adresse'), icone: Icons.dialpad_rounded, hauteur: 50, onTap: _adresse)),
                             ],
                           ),
+                          if (Natif.android) ...[const SizedBox(height: 14), const CarteConnexionDirecte()],
                           const SizedBox(height: 18),
                           Carte(
                             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CreerDistribution(choisis: _fichiers))),

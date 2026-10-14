@@ -14,6 +14,7 @@ import 'group_drop.dart';
 import 'historique.dart';
 import 'pare_feu.dart';
 import 'recevoir.dart';
+import 'recus.dart';
 import 'reglages.dart';
 import 'transfert.dart';
 import 'depot.dart';
@@ -325,6 +326,7 @@ class _Barre extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Row(
               children: [
+                entree(Icons.inbox_rounded, context.t('recus'), () => const EcranRecus()),
                 entree(Icons.history_rounded, context.t('historique'), () => const EcranHistorique()),
                 entree(Icons.groups_2_rounded, context.t('group_drop'), () => const EcranGroupDrop()),
                 entree(Icons.tune_rounded, context.t('reglages'), () => const EcranReglages()),

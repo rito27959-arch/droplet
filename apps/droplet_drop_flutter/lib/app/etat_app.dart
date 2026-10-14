@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../design/couleurs.dart';
 import '../src/rust/api/simple.dart' as moteur;
 import 'modeles.dart';
+import 'natif.dart';
 
 enum Theme3 { systeme, clair, sombre }
 
@@ -29,6 +30,10 @@ class EtatApp extends ChangeNotifier {
   String reception = '';
   bool pret = false;
   String? erreurDemarrage;
+
+  /// La connexion directe ouverte par cet appareil (Android) : un point
+  /// d'accès local que les autres rejoignent, sans box ni Internet.
+  PointAcces? pointAcces;
 
   // ── Réglages ─────────────────────────────────────────────────────────
   Theme3 theme = Theme3.systeme;
@@ -77,6 +82,15 @@ class EtatApp extends ChangeNotifier {
     try {
       final donnees = (await getApplicationSupportDirectory()).path;
       reception = _prefs.getString('reception') ?? await _receptionParDefaut();
+      // L'ancien dossier par défaut d'Android (privé à l'app) cède la place
+      // au dossier public, s'il est utilisable.
+      if (Platform.isAndroid && reception.contains('/Android/data/') && _prefs.getBool('reception_choisie') != true) {
+        final nouveau = await _receptionParDefaut();
+        if (!nouveau.contains('/Android/data/')) {
+          reception = nouveau;
+          _prefs.setString('reception', nouveau);
+        }
+      }
       await Directory(reception).create(recursive: true);
       final info = await moteur.demarrer(nom: nom, plateforme: plateforme(), donnees: donnees, reception: reception);
       empreinte = info.empreinte;
@@ -99,6 +113,21 @@ class EtatApp extends ChangeNotifier {
   /// ordinateur ; le dossier de l'app sur mobile (visible dans Fichiers
   /// sur iOS, et partageable depuis l'historique).
   static Future<String> _receptionParDefaut() async {
+    // Android : « Téléchargements/Droplet Drop », visible dans la galerie et
+    // l'app Fichiers — comme Xender. Si on ne peut pas y écrire (Android 9
+    // et avant sans l'autorisation), le dossier de l'app.
+    if (Platform.isAndroid) {
+      final public = await Natif.dossierPublic();
+      if (public != null) {
+        try {
+          await Directory(public).create(recursive: true);
+          final essai = File('$public${Platform.pathSeparator}.essai');
+          await essai.writeAsString('');
+          await essai.delete();
+          return public;
+        } catch (_) {}
+      }
+    }
     if (Platform.isAndroid || Platform.isIOS) {
       final d = Platform.isAndroid ? (await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory()) : await getApplicationDocumentsDirectory();
       return '${d.path}${Platform.pathSeparator}Droplet Drop';
@@ -233,11 +262,42 @@ class EtatApp extends ChangeNotifier {
   void definirReception(String dossier) {
     reception = dossier;
     _prefs.setString('reception', dossier);
+    _prefs.setBool('reception_choisie', true);
     moteur.definirReception(dossier: dossier);
     notifyListeners();
   }
 
   List<String> confiance() => moteur.confiance();
+
+  /// Relit les adresses de l'appareil (un point d'accès vient de s'ouvrir).
+  Future<void> rafraichirAdresses() async {
+    try {
+      final donnees = (await getApplicationSupportDirectory()).path;
+      final info = await moteur.demarrer(nom: nom, plateforme: plateforme(), donnees: donnees, reception: reception);
+      adresses = info.adresses;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Ouvre la connexion directe. Rend null si tout va bien, sinon la raison.
+  Future<EchecPointAcces?> ouvrirPointAcces() async {
+    final (pa, echec) = await Natif.ouvrirPointAcces();
+    if (pa == null) return echec ?? EchecPointAcces.autre;
+    pointAcces = pa;
+    notifyListeners();
+    // L'interface du point d'accès reçoit son adresse un instant après.
+    for (final attente in const [300, 900, 2000]) {
+      await Future<void>.delayed(Duration(milliseconds: attente));
+      await rafraichirAdresses();
+    }
+    return null;
+  }
+
+  Future<void> fermerPointAcces() async {
+    await Natif.fermerPointAcces();
+    pointAcces = null;
+    await rafraichirAdresses();
+  }
 
   void retirerConfiance(String fp) {
     moteur.definirConfiance(empreinte: fp, confiance: false);
