@@ -56,6 +56,10 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
   _Camera _etat = _Camera.verification;
   bool _fini = false;
 
+  /// La cause technique d'un échec, affichée en petit sous l'explication :
+  /// c'est ce qu'il faut nous envoyer quand la caméra refuse de démarrer.
+  String? _detail;
+
   @override
   void initState() {
     super.initState();
@@ -116,9 +120,11 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
     try {
       await _camera.start();
     } on MobileScannerException catch (e) {
+      _detail = [e.errorCode.name, e.errorDetails?.message].whereType<String>().join(' · ');
       _echec(e.errorCode);
       return;
-    } catch (_) {
+    } catch (e) {
+      _detail = '$e';
       if (mounted) setState(() => _etat = _Camera.erreur);
       return;
     }
@@ -127,6 +133,7 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
     if (erreur.errorCode == MobileScannerErrorCode.controllerAlreadyInitialized && !deuxiemeEssai) {
       return _demarrer(deuxiemeEssai: true);
     }
+    _detail = [erreur.errorCode.name, erreur.errorDetails?.code, erreur.errorDetails?.message].whereType<String>().where((x) => x.isNotEmpty).join(' · ');
     _echec(erreur.errorCode);
   }
 
@@ -136,7 +143,10 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
   }
 
   Future<void> _reessayer() async {
-    setState(() => _etat = _Camera.verification);
+    setState(() {
+      _etat = _Camera.verification;
+      _detail = null;
+    });
     try {
       await _camera.stop();
       await MobileScannerPlatform.instance.stop();
@@ -172,6 +182,7 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
                   if (error.errorCode == MobileScannerErrorCode.controllerAlreadyInitialized) return const ColoredBox(color: Colors.black);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!mounted) return;
+                    _detail ??= [error.errorCode.name, error.errorDetails?.message].whereType<String>().join(' · ');
                     setState(() => _etat = error.errorCode == MobileScannerErrorCode.permissionDenied ? _Camera.refuseeDefinitivement : _Camera.erreur);
                   });
                   return const ColoredBox(color: Colors.black);
@@ -200,7 +211,7 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
           ] else if (_etat == _Camera.verification)
             const Center(child: SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white)))
           else
-            _Explication(etat: _etat, accent: p.accent, onAutoriser: _reessayer),
+            _Explication(etat: _etat, accent: p.accent, detail: _detail, onAutoriser: _reessayer),
           Positioned(
             left: 24,
             right: 24,
@@ -226,10 +237,11 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
 
 /// Pas de caméra : pourquoi, et comment y remédier — en une action.
 class _Explication extends StatelessWidget {
-  const _Explication({required this.etat, required this.accent, required this.onAutoriser});
+  const _Explication({required this.etat, required this.accent, required this.onAutoriser, this.detail});
 
   final _Camera etat;
   final Color accent;
+  final String? detail;
   final VoidCallback onAutoriser;
 
   @override
@@ -267,6 +279,10 @@ class _Explication extends StatelessWidget {
               hauteur: 52,
               onTap: definitif ? () => openAppSettings() : onAutoriser,
             ),
+            if (erreur && (detail ?? '').isNotEmpty) ...[
+              const SizedBox(height: 16),
+              SelectableText(detail!, textAlign: TextAlign.center, style: Typo.legende.copyWith(color: Colors.white.withValues(alpha: 0.45), fontWeight: FontWeight.w400)),
+            ],
           ],
         ),
       ),

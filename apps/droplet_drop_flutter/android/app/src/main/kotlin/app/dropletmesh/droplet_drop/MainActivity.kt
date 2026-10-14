@@ -1,6 +1,7 @@
 package app.dropletmesh.droplet_drop
 
 import android.content.Context
+import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
@@ -16,12 +17,19 @@ import io.flutter.plugin.common.MethodChannel
  * Le canal « droplet_drop/natif » donne à Flutter ce qu'Android seul sait
  * faire : le point d'accès local, les applications installées, ouvrir et
  * installer un fichier reçu (voir Natif.kt).
+ *
+ * Il apporte aussi les liens d'invitation ouverts depuis une autre app
+ * (WhatsApp, SMS…) : celui qui a lancé l'app (« lienInitial ») et ceux qui
+ * arrivent pendant qu'elle tourne (« lien », envoyé à Flutter).
  */
 class MainActivity : FlutterActivity() {
     private var verrou: WifiManager.MulticastLock? = null
     private var natif: Natif? = null
+    private var canal: MethodChannel? = null
+    private var lienInitial: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        lienInitial = lien(intent)
         super.onCreate(savedInstanceState)
         val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         verrou = wifi?.createMulticastLock("droplet-drop")?.apply {
@@ -34,8 +42,26 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         val n = Natif(this)
         natif = n
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "droplet_drop/natif").setMethodCallHandler(n)
+        val c = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "droplet_drop/natif")
+        canal = c
+        c.setMethodCallHandler { call, result ->
+            if (call.method == "lienInitial") {
+                result.success(lienInitial)
+                lienInitial = null
+            } else {
+                n.onMethodCall(call, result)
+            }
+        }
     }
+
+    /** Un lien d'invitation ouvert pendant que l'app tourne. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        lien(intent)?.let { canal?.invokeMethod("lien", it) }
+    }
+
+    private fun lien(intent: Intent?): String? =
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.takeIf { it.contains("rejoindre") }
 
     override fun onDestroy() {
         natif?.liberer()

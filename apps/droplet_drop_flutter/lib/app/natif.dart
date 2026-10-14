@@ -46,6 +46,25 @@ enum EchecPointAcces { autorisation, localisation, partageActif, nonSupporte, au
 class Natif {
   static bool get android => Platform.isAndroid;
 
+  /// Le lien d'invitation qui a lancé l'app (ouvert depuis WhatsApp, un
+  /// SMS…), une seule fois.
+  static Future<String?> lienInitial() async {
+    if (!android) return null;
+    try {
+      return await _canal.invokeMethod<String>('lienInitial');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Les liens d'invitation ouverts pendant que l'app tourne.
+  static void ecouterLiens(void Function(String lien) f) {
+    if (!android) return;
+    _canal.setMethodCallHandler((c) async {
+      if (c.method == 'lien' && c.arguments is String) f(c.arguments as String);
+    });
+  }
+
   static int? _version;
   static Future<int> versionAndroid() async => _version ??= (await _canal.invokeMethod<int>('versionAndroid')) ?? 0;
 

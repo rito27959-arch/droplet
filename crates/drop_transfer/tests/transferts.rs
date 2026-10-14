@@ -412,3 +412,34 @@ async fn tirage_quand_le_destinataire_est_injoignable() {
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(a.m.demandes().borrow().is_empty());
 }
+
+/// Rejoindre une distribution vue à proximité, avec le code à six chiffres
+/// de l'hôte : un code faux est refusé, le bon donne l'invitation du QR
+/// code, et l'élève reçoit le fichier. L'annonce ne porte que le début de
+/// l'identifiant, et se retire quand la distribution se termine.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rejoindre_avec_le_code() {
+    let hote = appareil("Professeur").await;
+    let src = tempfile::tempdir().unwrap();
+    let f = fichier_aleatoire(src.path(), "cours.pdf", 2 * 1024 * 1024 + 3);
+    let info = hote.m.creer_session(vec![SourceFichier { disque: f.clone(), nom: "cours.pdf".into() }], Duration::from_secs(600), true).await.unwrap();
+    assert_eq!(info.code.len(), 6);
+    assert!(info.code.chars().all(|c| c.is_ascii_digit()));
+    let ouvertes = hote.m.distributions_ouvertes();
+    assert_eq!(ouvertes, vec![info.id[..8].to_string()]);
+
+    let eleve = appareil("Élève").await;
+    let c = cible(&hote);
+    let faux = if info.code == "000000" { "111111" } else { "000000" };
+    assert!(matches!(eleve.m.invitation_par_code(c.clone(), &ouvertes[0], faux).await, Err(drop_transfer::Erreur::CodeIncorrect)));
+    assert!(matches!(eleve.m.invitation_par_code(c.clone(), &ouvertes[0], "12").await, Err(drop_transfer::Erreur::CodeIncorrect)));
+    let code_espace = format!("{} {}", &info.code[..3], &info.code[3..]);
+    let invitation = eleve.m.invitation_par_code(c, &ouvertes[0], &code_espace).await.unwrap();
+    assert_eq!(invitation, info.invitation);
+
+    let mut rx = eleve.m.abonner();
+    let id = eleve.m.rejoindre(&invitation, Some(SocketAddr::from(([127, 0, 0, 1], hote.m.port())))).unwrap();
+    let r = finals(&mut rx, &id, 1, Duration::from_secs(60)).await;
+    assert_eq!(r[0].0, Etat::Termine, "{:?}", r[0]);
+    assert!(meme_contenu(&f, &eleve.reception.join("cours.pdf")));
+}

@@ -7,7 +7,6 @@
 //
 // Les noms ci-dessous sont ceux des écrans de Drop ; chacun pointe sur un
 // cran de l'échelle commune, pour qu'aucun écran n'invente sa taille.
-import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 

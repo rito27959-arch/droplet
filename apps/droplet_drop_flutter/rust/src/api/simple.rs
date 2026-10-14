@@ -150,6 +150,7 @@ pub fn demarrer(nom: String, plateforme: String, donnees: String, reception: Str
         loop {
             tokio::time::sleep(Duration::from_secs(3)).await;
             let Some(gl) = GLOBAL.get() else { continue };
+            annoncer_distributions(gl);
             let vus = gl.annonceur.lock().unwrap().as_ref().map(|a| a.appareils()).unwrap_or_default();
             for a in vus.iter().filter(|a| a.tirage.contains(&moi)) {
                 tirer(a);
@@ -160,6 +161,16 @@ pub fn demarrer(nom: String, plateforme: String, donnees: String, reception: Str
     let i = info(&moteur);
     let _ = GLOBAL.set(Global { rt, moteur, annonceur: Mutex::new(annonceur), historique: Mutex::new(historique), abonnes, web: Mutex::new(None) });
     Ok(i)
+}
+
+/// Les distributions Group Drop ouvertes → l'annonce `g` : les voisins
+/// les voient, et les rejoignent avec le code à six chiffres. Retirées
+/// d'elles-mêmes quand elles se terminent ou expirent.
+fn annoncer_distributions(gl: &Global) {
+    let ouvertes = gl.moteur.distributions_ouvertes();
+    if let Some(a) = gl.annonceur.lock().unwrap().as_ref() {
+        a.distributions(&ouvertes);
+    }
 }
 
 fn tirer(a: &drop_discovery::AppareilVu) {
@@ -249,7 +260,20 @@ pub fn creer_session(chemins: Vec<String>, noms: Vec<String>, minutes: u32, dema
     let gl = g()?;
     let s = sources(chemins, noms)?;
     let info = gl.rt.block_on(gl.moteur.creer_session(s, Duration::from_secs(minutes.clamp(1, 24 * 60) as u64 * 60), demarrer))?;
+    annoncer_distributions(gl);
     Ok(serde_json::to_string(&info)?)
+}
+
+/// Obtient l'invitation d'une distribution vue à proximité (`appareil` :
+/// son identifiant de découverte ; `session` : les 8 caractères de
+/// l'annonce) avec le code à six chiffres affiché chez l'hôte. L'erreur
+/// est un code stable (`code_incorrect`, `injoignable`…).
+pub fn invitation_par_code(appareil: String, session: String, code: String) -> anyhow::Result<String> {
+    let gl = g()?;
+    let vu = gl.annonceur.lock().unwrap().as_ref().and_then(|a| a.appareils().into_iter().find(|x| x.id == appareil));
+    let Some(a) = vu else { anyhow::bail!("injoignable") };
+    let cible = Cible { adresses: a.adresses.clone(), empreinte: Some(a.empreinte.clone()), nom: a.nom.clone() };
+    gl.rt.block_on(gl.moteur.invitation_par_code(cible, &session, &code)).map_err(|e| anyhow::anyhow!(e.code()))
 }
 
 /// Rejoint une session à partir de son invitation (QR code ou lien).

@@ -100,7 +100,7 @@ class Transfert {
 }
 
 class AppareilVu {
-  const AppareilVu({required this.id, required this.nom, required this.plateforme, required this.empreinte, required this.adresses});
+  const AppareilVu({required this.id, required this.nom, required this.plateforme, required this.empreinte, required this.adresses, this.distributions = const []});
 
   final String id;
   final String nom;
@@ -108,12 +108,18 @@ class AppareilVu {
   final String empreinte;
   final List<String> adresses;
 
+  /// Les distributions Group Drop que cet appareil ouvre à ses voisins
+  /// (les 8 premiers caractères de leur identifiant) : on les rejoint avec
+  /// le code à six chiffres affiché sur son écran.
+  final List<String> distributions;
+
   factory AppareilVu.json(Map<String, dynamic> j) => AppareilVu(
         id: j['id'] as String,
         nom: j['nom'] as String? ?? '',
         plateforme: j['plateforme'] as String? ?? '',
         empreinte: j['empreinte'] as String? ?? '',
         adresses: (j['adresses'] as List? ?? const []).cast<String>(),
+        distributions: (j['distributions'] as List? ?? const []).cast<String>(),
       );
 
   Map<String, dynamic> cible() => {'adresses': adresses, 'empreinte': empreinte, 'nom': nom};
@@ -142,10 +148,13 @@ class EtatSession {
 }
 
 class Session {
-  const Session({required this.id, required this.invitation, required this.expire, required this.total, required this.fichiers});
+  const Session({required this.id, required this.invitation, this.code = '', required this.expire, required this.total, required this.fichiers});
 
   final String id;
   final String invitation;
+
+  /// Le code à six chiffres pour rejoindre depuis la liste « à proximité ».
+  final String code;
   final DateTime expire;
   final int total;
   final List<Fichier> fichiers;
@@ -153,6 +162,7 @@ class Session {
   factory Session.json(Map<String, dynamic> j) => Session(
         id: j['id'] as String,
         invitation: j['invitation'] as String,
+        code: j['code'] as String? ?? '',
         expire: DateTime.fromMillisecondsSinceEpoch(((j['expire'] as num).toInt()) * 1000),
         total: (j['total'] as num).toInt(),
         fichiers: Fichier.liste(j['fichiers']),

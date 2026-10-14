@@ -205,3 +205,53 @@ _HERO = {
 }
 for _l, (_h, _t) in _HERO.items():
     AJOUTS[_l].update({'hero_accueil': _h, 'toucher_appareil': _t})
+
+# Rejoindre un Group Drop sans QR code : les distributions à proximité et
+# le code à six chiffres ; partager l'invitation.
+_K3 = ['distributions_proches', 'aucune_distribution', 'aucune_distribution_texte', 'distribution_de', 'toucher_code', 'scanner_qr',
+       'code_titre', 'code_texte', 'err_code_incorrect', 'ou_code', 'invitation_message']
+_V3 = {
+ 'fr': ["À proximité", "Aucune distribution à proximité", "Elles apparaissent ici quand vous êtes sur le même Wi‑Fi que l’hôte, ou sur sa connexion directe. Sinon, scannez son QR code.",
+        "Distribution de {qui}", "Touchez pour entrer son code", "Scanner le QR code",
+        "Le code de {qui}", "Entrez les six chiffres affichés sur l’écran de l’hôte.", "Ce code n’est pas le bon. Vérifiez-le sur l’écran de l’hôte.", "ou entrez le code",
+        "{qui} vous invite à une distribution Droplet Drop.\nOuvrez ce lien sur votre téléphone : {lien}\nSur le même Wi‑Fi, vous pouvez aussi la choisir dans « Rejoindre » et entrer le code {code}."],
+ 'en': ["Nearby", "No distributions nearby", "They show up here when you’re on the same Wi‑Fi as the host, or on their direct connection. Otherwise, scan their QR code.",
+        "{qui}’s distribution", "Tap to enter its code", "Scan the QR code",
+        "{qui}’s code", "Enter the six digits shown on the host’s screen.", "That code isn’t right. Check it on the host’s screen.", "or enter the code",
+        "{qui} is inviting you to a Droplet Drop distribution.\nOpen this link on your phone: {lien}\nOn the same Wi‑Fi, you can also pick it in “Join” and enter the code {code}."],
+ 'es': ["Cerca", "No hay distribuciones cerca", "Aparecen aquí cuando estás en la misma Wi‑Fi que el anfitrión o en su conexión directa. Si no, escanea su código QR.",
+        "Distribución de {qui}", "Toca para introducir su código", "Escanear el código QR",
+        "El código de {qui}", "Introduce los seis dígitos que aparecen en la pantalla del anfitrión.", "Ese código no es correcto. Compruébalo en la pantalla del anfitrión.", "o introduce el código",
+        "{qui} te invita a una distribución de Droplet Drop.\nAbre este enlace en tu teléfono: {lien}\nEn la misma Wi‑Fi, también puedes elegirla en «Unirse» e introducir el código {code}."],
+ 'de': ["In der Nähe", "Keine Verteilungen in der Nähe", "Sie erscheinen hier, wenn du im selben WLAN wie der Gastgeber bist oder in seiner Direktverbindung. Sonst scanne seinen QR‑Code.",
+        "Verteilung von {qui}", "Tippen, um den Code einzugeben", "QR‑Code scannen",
+        "Code von {qui}", "Gib die sechs Ziffern ein, die auf dem Bildschirm des Gastgebers stehen.", "Dieser Code stimmt nicht. Prüfe ihn auf dem Bildschirm des Gastgebers.", "oder Code eingeben",
+        "{qui} lädt dich zu einer Droplet‑Drop‑Verteilung ein.\nÖffne diesen Link auf deinem Handy: {lien}\nIm selben WLAN kannst du sie auch unter „Beitreten“ wählen und den Code {code} eingeben."],
+ 'it': ["Nelle vicinanze", "Nessuna distribuzione nelle vicinanze", "Compaiono qui quando sei sulla stessa Wi‑Fi dell’host o sulla sua connessione diretta. Altrimenti, scansiona il suo codice QR.",
+        "Distribuzione di {qui}", "Tocca per inserire il codice", "Scansiona il codice QR",
+        "Il codice di {qui}", "Inserisci le sei cifre mostrate sullo schermo dell’host.", "Il codice non è corretto. Controllalo sullo schermo dell’host.", "o inserisci il codice",
+        "{qui} ti invita a una distribuzione Droplet Drop.\nApri questo link sul telefono: {lien}\nSulla stessa Wi‑Fi puoi anche sceglierla in «Partecipa» e inserire il codice {code}."],
+ 'pt': ["Por perto", "Nenhuma distribuição por perto", "Aparecem aqui quando está na mesma Wi‑Fi do anfitrião ou na ligação direta dele. Caso contrário, leia o código QR.",
+        "Distribuição de {qui}", "Toque para introduzir o código", "Ler o código QR",
+        "O código de {qui}", "Introduza os seis dígitos mostrados no ecrã do anfitrião.", "Esse código não está correto. Confirme-o no ecrã do anfitrião.", "ou introduza o código",
+        "{qui} convida-o para uma distribuição Droplet Drop.\nAbra este link no telemóvel: {lien}\nNa mesma Wi‑Fi, também pode escolhê-la em «Juntar-se» e introduzir o código {code}."],
+ 'ru': ["Рядом", "Рядом нет раздач", "Они появляются здесь, когда вы в той же сети Wi‑Fi, что и организатор, или в его прямом подключении. Иначе отсканируйте его QR‑код.",
+        "Раздача: {qui}", "Нажмите, чтобы ввести код", "Сканировать QR‑код",
+        "Код устройства {qui}", "Введите шесть цифр с экрана организатора.", "Неверный код. Проверьте его на экране организатора.", "или введите код",
+        "{qui} приглашает вас на раздачу Droplet Drop.\nОткройте эту ссылку на телефоне: {lien}\nВ той же сети Wi‑Fi её можно выбрать в разделе «Присоединиться» и ввести код {code}."],
+ 'ar': ["بالقرب منك", "لا توجد توزيعات بالقرب منك", "تظهر هنا عندما تكون على شبكة Wi‑Fi نفسها التي يستخدمها المضيف، أو على اتصاله المباشر. وإلا فامسح رمز QR الخاص به.",
+        "توزيع {qui}", "المس لإدخال الرمز", "مسح رمز QR",
+        "رمز {qui}", "أدخل الأرقام الستة الظاهرة على شاشة المضيف.", "هذا الرمز غير صحيح. تحقّق منه على شاشة المضيف.", "أو أدخل الرمز",
+        "يدعوك {qui} إلى توزيع عبر Droplet Drop.\nافتح هذا الرابط على هاتفك: {lien}\nعلى شبكة Wi‑Fi نفسها، يمكنك أيضًا اختياره من «انضمام» وإدخال الرمز {code}."],
+ 'hi': ["आस-पास", "आस-पास कोई वितरण नहीं", "जब आप होस्ट वाले Wi‑Fi पर या उसके डायरेक्ट कनेक्शन पर होते हैं, तो वे यहाँ दिखते हैं। नहीं तो उसका QR कोड स्कैन करें।",
+        "{qui} का वितरण", "कोड डालने के लिए टैप करें", "QR कोड स्कैन करें",
+        "{qui} का कोड", "होस्ट की स्क्रीन पर दिख रहे छह अंक डालें।", "यह कोड सही नहीं है। होस्ट की स्क्रीन पर जाँचें।", "या कोड डालें",
+        "{qui} आपको Droplet Drop वितरण में बुला रहे हैं।\nयह लिंक अपने फ़ोन पर खोलें: {lien}\nउसी Wi‑Fi पर आप इसे «जुड़ें» में चुनकर कोड {code} भी डाल सकते हैं।"],
+ 'zh': ["附近", "附近没有分发", "当你与主持人在同一 Wi‑Fi 或其直连网络上时，分发会显示在这里。否则请扫描其二维码。",
+        "{qui} 的分发", "轻点输入代码", "扫描二维码",
+        "{qui} 的代码", "输入主持人屏幕上显示的六位数字。", "代码不正确。请在主持人屏幕上核对。", "或输入代码",
+        "{qui} 邀请你加入 Droplet Drop 分发。\n在手机上打开此链接：{lien}\n在同一 Wi‑Fi 上，也可以在“加入”中选择它并输入代码 {code}。"],
+}
+for _l, _v in _V3.items():
+    assert len(_v) == len(_K3), (_l, len(_v))
+    AJOUTS[_l].update(dict(zip(_K3, _v)))

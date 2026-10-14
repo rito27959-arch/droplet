@@ -39,6 +39,12 @@ pub struct AppareilVu {
     /// Les débuts d'empreinte des appareils que celui-ci attend (`t`).
     #[serde(default)]
     pub tirage: Vec<String>,
+    /// Les distributions Group Drop que cet appareil ouvre à ses voisins
+    /// (`g`) : les huit premiers caractères de leur identifiant, rien de
+    /// secret. Pour en obtenir l'invitation, il faut le code à six
+    /// chiffres affiché sur l'écran de l'hôte.
+    #[serde(default)]
+    pub distributions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -79,6 +85,7 @@ struct Annonce {
     empreinte: String,
     port: u16,
     tirage: String,
+    distributions: String,
 }
 
 impl Annonce {
@@ -86,6 +93,9 @@ impl Annonce {
         let mut proprietes = vec![("n", self.nom.as_str()), ("p", self.plateforme.as_str()), ("fp", self.empreinte.as_str()), ("v", "1")];
         if !self.tirage.is_empty() {
             proprietes.push(("t", self.tirage.as_str()));
+        }
+        if !self.distributions.is_empty() {
+            proprietes.push(("g", self.distributions.as_str()));
         }
         Ok(ServiceInfo::new(TYPE_SERVICE, &self.instance, &self.hote, "", self.port, &proprietes[..]).map_err(err)?.enable_addr_auto())
     }
@@ -100,8 +110,16 @@ impl Annonceur {
         // le début de l'empreinte.
         let instance = format!("droplet-{}", &empreinte[..12.min(empreinte.len())]);
         let hote = format!("{instance}.local.");
-        let annonce =
-            Annonce { instance, hote, nom: nom.to_string(), plateforme: plateforme.to_string(), empreinte: empreinte.to_string(), port, tirage: String::new() };
+        let annonce = Annonce {
+            instance,
+            hote,
+            nom: nom.to_string(),
+            plateforme: plateforme.to_string(),
+            empreinte: empreinte.to_string(),
+            port,
+            tirage: String::new(),
+            distributions: String::new(),
+        };
         let info = annonce.info()?;
         let nom_complet = info.get_fullname().to_string();
         demon.register(info).map_err(err)?;
@@ -144,6 +162,12 @@ impl Annonceur {
                                     .take(16)
                                     .map(String::from)
                                     .collect(),
+                                distributions: txt("g")
+                                    .split(',')
+                                    .filter(|x| x.len() == 8 && x.chars().all(|c| c.is_ascii_hexdigit()))
+                                    .take(8)
+                                    .map(String::from)
+                                    .collect(),
                             };
                             let nouveau = vus2.lock().unwrap().insert(vu.id.clone(), vu.clone()).as_ref() != Some(&vu);
                             if nouveau {
@@ -177,6 +201,20 @@ impl Annonceur {
     }
 
     /// Change le nom annoncé.
+    /// Les distributions ouvertes aux voisins (débuts d'identifiant, 8
+    /// caractères hexadécimaux) ; une liste vide les retire de l'annonce.
+    pub fn distributions(&self, ids: &[String]) {
+        let mut a = self.annonce.lock().unwrap();
+        let g = ids.iter().filter(|x| x.len() == 8).take(8).cloned().collect::<Vec<_>>().join(",");
+        if a.distributions == g {
+            return;
+        }
+        a.distributions = g;
+        if let Ok(info) = a.info() {
+            let _ = self.demon.register(info);
+        }
+    }
+
     pub fn renommer(&self, nom: &str) {
         let mut a = self.annonce.lock().unwrap();
         a.nom = nom.to_string();

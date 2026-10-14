@@ -36,6 +36,8 @@ pub enum Erreur {
     SessionInvalide,
     #[error("session expirée")]
     SessionExpiree,
+    #[error("code incorrect")]
+    CodeIncorrect,
     #[error("fichier introuvable")]
     FichierIntrouvable,
     #[error("vérification échouée")]
@@ -66,6 +68,7 @@ impl Erreur {
             Erreur::EspaceInsuffisant => "espace_insuffisant",
             Erreur::SessionInvalide => "session_invalide",
             Erreur::SessionExpiree => "session_expiree",
+            Erreur::CodeIncorrect => "code_incorrect",
             Erreur::FichierIntrouvable => "fichier_introuvable",
             Erreur::Verification => "verification",
             Erreur::Annule | Erreur::AnnuleParLAutre => "annule",

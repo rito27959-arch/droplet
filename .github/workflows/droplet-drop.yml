@@ -111,7 +111,23 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - uses: dtolnay/rust-toolchain@stable
+      # La clé de signature des versions publiées (secrets du dépôt) : la
+      # même à chaque version, pour que les mises à jour s'installent par-
+      # dessus et que les liens d'invitation ouvrent l'app directement.
+      - name: Clé de signature
+        env:
+          CLE: ${{ secrets.DROP_ANDROID_CLE }}
+        run: |
+          if [ -n "$CLE" ]; then
+            printf '%s' "$CLE" | base64 -d > "$RUNNER_TEMP/droplet-drop.jks"
+            echo "DROP_KEYSTORE=$RUNNER_TEMP/droplet-drop.jks" >> "$GITHUB_ENV"
+            echo "Signature : clé de publication"
+          else
+            echo "::warning::Secret DROP_ANDROID_CLE absent : APK signés avec une clé de débogage (les mises à jour ne s'installeront pas par-dessus)."
+          fi
       - name: APK
+        env:
+          DROP_KEYSTORE_MDP: ${{ secrets.DROP_ANDROID_MDP }}
         run: |
           set +e
           cd $APP

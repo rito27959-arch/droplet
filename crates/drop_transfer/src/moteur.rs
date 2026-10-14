@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -41,6 +41,9 @@ pub const PORT_DEFAUT: u16 = 47321;
 
 const DELAI_CONNEXION: Duration = Duration::from_secs(6);
 const DELAI_POIGNEE: Duration = Duration::from_secs(15);
+/// Les codes faux qu'une distribution accepte avant de fermer l'entrée
+/// par code.
+const ESSAIS_CODE: u32 = 50;
 /// Une connexion perdue est retentée tant qu'on a progressé il y a moins
 /// de 10 minutes.
 const PATIENCE_REPRISE: Duration = Duration::from_secs(600);
@@ -138,6 +141,9 @@ impl Invitation {
 pub struct InfoSession {
     pub id: String,
     pub invitation: String,
+    /// Le code à six chiffres pour rejoindre depuis la liste des
+    /// distributions à proximité.
+    pub code: String,
     pub expire: u64,
     pub total: u64,
     pub fichiers: Vec<(String, u64)>,
@@ -151,6 +157,16 @@ struct EnvoiPrepare {
 struct Session {
     id: String,
     jeton: String,
+    /// Le code à six chiffres affiché sur l'écran de l'hôte : il donne
+    /// l'invitation à un voisin qui voit la distribution sans pouvoir
+    /// scanner son QR code.
+    code: String,
+    /// Les codes faux reçus. Au-delà de [ESSAIS_CODE], le code ne sert
+    /// plus (le QR code et le lien, si) : deviner un code parmi un million
+    /// à 20 essais par minute et par adresse ne mène nulle part, mais on
+    /// ne laisse pas non plus essayer indéfiniment.
+    essais: AtomicU32,
+    invitation: String,
     expire: SystemTime,
     envoi: Arc<EnvoiPrepare>,
     demarree: AtomicBool,
@@ -686,9 +702,27 @@ impl Moteur {
         let jeton = secret_aleatoire(32);
         let expire = SystemTime::now() + duree;
         let max = self.0.config.read().unwrap().max_simultanes;
+        let x = expire.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let invitation = Invitation {
+            v: 1,
+            h: adresses_locales(),
+            p: self.0.port,
+            fp: self.0.identite.empreinte.hex(),
+            s: id.clone(),
+            j: jeton.clone(),
+            n: self.0.config.read().unwrap().nom.clone(),
+            x,
+        }
+        .encoder();
+        // Six chiffres tirés de 32 bits aléatoires (le biais du modulo est
+        // de l'ordre d'un millionième : sans effet).
+        let code = format!("{:06}", u32::from_str_radix(&secret_aleatoire(4), 16).unwrap_or(0) % 1_000_000);
         let session = Arc::new(Session {
             id: id.clone(),
-            jeton: jeton.clone(),
+            jeton,
+            code: code.clone(),
+            essais: AtomicU32::new(0),
+            invitation: invitation.clone(),
             expire,
             envoi: envoi.clone(),
             demarree: AtomicBool::new(demarrer),
@@ -698,20 +732,10 @@ impl Moteur {
             creneaux: Arc::new(Semaphore::new(max.max(1))),
         });
         self.0.sessions.lock().unwrap().insert(id.clone(), session);
-        let x = expire.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        let invitation = Invitation {
-            v: 1,
-            h: adresses_locales(),
-            p: self.0.port,
-            fp: self.0.identite.empreinte.hex(),
-            s: id.clone(),
-            j: jeton,
-            n: self.0.config.read().unwrap().nom.clone(),
-            x,
-        };
         Ok(InfoSession {
             id,
-            invitation: invitation.encoder(),
+            invitation,
+            code,
             expire: x,
             total: envoi.manifeste.taille_totale(),
             fichiers: envoi.manifeste.fichiers.iter().map(|f| (f.chemin.clone(), f.taille)).collect(),
@@ -1001,6 +1025,66 @@ impl Moteur {
 
     // ══ ÉCOUTER ═══════════════════════════════════════════════════════════
 
+    // ══ GROUP DROP : REJOINDRE AVEC LE CODE ═══════════════════════════════
+
+    /// Les distributions ouvertes aux voisins (ni terminées ni expirées) :
+    /// les 8 premiers caractères de leur identifiant, pour l'annonce mDNS.
+    pub fn distributions_ouvertes(&self) -> Vec<String> {
+        let maintenant = SystemTime::now();
+        self.0
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| !s.terminee.load(Ordering::Relaxed) && s.expire > maintenant && s.essais.load(Ordering::Relaxed) < ESSAIS_CODE)
+            .map(|s| s.id[..8].to_string())
+            .collect()
+    }
+
+    /// Côté hôte : un voisin donne le code affiché sur l'écran ; s'il est
+    /// juste, il reçoit l'invitation (la même que celle du QR code).
+    async fn donner_invitation<W: AsyncWrite + Unpin>(&self, w: &mut W, session: &str, code: &str, ip: IpAddr) -> Result<(), Erreur> {
+        let s = self.0.sessions.lock().unwrap().values().find(|s| session.len() == 8 && s.id.starts_with(session)).cloned();
+        let ouverte = s.filter(|s| !s.terminee.load(Ordering::Relaxed) && SystemTime::now() < s.expire && s.essais.load(Ordering::Relaxed) < ESSAIS_CODE);
+        match ouverte {
+            Some(s) if egal_constant(&s.code, code) => trame::ecrire_controle(w, &Controle::Invitation { invitation: s.invitation.clone() }).await,
+            Some(s) => {
+                s.essais.fetch_add(1, Ordering::Relaxed);
+                self.noter_echec(ip);
+                trame::ecrire_controle(w, &Controle::Refus { raison: "code_incorrect".into() }).await
+            }
+            None => trame::ecrire_controle(w, &Controle::Refus { raison: "session_invalide".into() }).await,
+        }
+    }
+
+    /// Côté participant : obtenir l'invitation d'une distribution vue à
+    /// proximité, avec le code à six chiffres de l'hôte. L'invitation
+    /// rendue se donne ensuite à [rejoindre], comme celle d'un QR code.
+    pub async fn invitation_par_code(&self, cible: Cible, session: &str, code: &str) -> Result<String, Erreur> {
+        let code: String = code.chars().filter(|c| c.is_ascii_digit()).collect();
+        if code.len() != 6 {
+            return Err(Erreur::CodeIncorrect);
+        }
+        let (tls, _) = self.connecter(&cible).await?;
+        let (mut r, mut w) = tokio::io::split(tls);
+        self.bonjour(&mut r, &mut w).await?;
+        trame::ecrire_controle(&mut w, &Controle::DemanderInvitation { session: session.to_string(), code }).await?;
+        match tokio::time::timeout(DELAI_POIGNEE, trame::lire_controle(&mut r)).await {
+            Ok(Ok(Controle::Invitation { invitation })) => {
+                // L'invitation doit venir de l'appareil qu'on a joint.
+                let inv = Invitation::decoder(&invitation).ok_or(Erreur::SessionInvalide)?;
+                if cible.empreinte.as_deref().is_some_and(|fp| !fp.eq_ignore_ascii_case(&inv.fp)) {
+                    return Err(Erreur::EmpreinteInvalide);
+                }
+                Ok(invitation)
+            }
+            Ok(Ok(Controle::Refus { raison })) if raison == "code_incorrect" => Err(Erreur::CodeIncorrect),
+            Ok(Ok(_)) => Err(Erreur::SessionInvalide),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(Erreur::Injoignable),
+        }
+    }
+
     fn noter_echec(&self, ip: IpAddr) {
         let mut e = self.0.echecs.lock().unwrap();
         let x = e.entry(ip).or_insert((0, Instant::now()));
@@ -1062,6 +1146,9 @@ impl Moteur {
                         let _ = m.heberger(r, w, session, jeton, fp, autre, adresse.ip()).await;
                     }
                     Controle::Tirer => m.livrer_tirage(Canal { r: Box::new(r), w: Box::new(w), fp, autre }),
+                    Controle::DemanderInvitation { session, code } => {
+                        let _ = m.donner_invitation(&mut w, &session, &code, adresse.ip()).await;
+                    }
                     _ => m.noter_echec(adresse.ip()),
                 }
             });

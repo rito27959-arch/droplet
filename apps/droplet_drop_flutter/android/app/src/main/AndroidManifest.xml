@@ -53,6 +53,29 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Les liens d'invitation Group Drop s'ouvrent DANS l'app, sans
+                 passer par le site : il n'y a pas besoin d'Internet pour
+                 rejoindre. « autoVerify » : Android vérifie (une fois, à
+                 l'installation) que drop.dropletmesh.app reconnaît l'app
+                 (/.well-known/assetlinks.json) ; ensuite le lien ouvre l'app
+                 directement, même hors ligne. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="drop.dropletmesh.app" android:pathPrefix="/rejoindre"/>
+            </intent-filter>
+            <!-- L'ancien lien « dropletdrop://rejoindre#… », et le bouton
+                 « Ouvrir dans l'app » de la page du site. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="dropletdrop" android:host="rejoindre"/>
+            </intent-filter>
+            <!-- Flutter n'interprète pas ces liens comme des routes : l'app
+                 les reçoit elle-même (MainActivity → « lien »). -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
         </activity>
         <provider
             android:name="androidx.core.content.FileProvider"

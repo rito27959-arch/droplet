@@ -9,10 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app/etat_app.dart';
+import 'app/natif.dart';
 import 'app/theme.dart';
 import 'app/textes.dart';
 import 'design/couleurs.dart';
 import 'ecrans/accueil.dart';
+import 'ecrans/group_drop.dart';
 import 'ecrans/offre.dart';
 import 'src/rust/frb_generated.dart';
 
@@ -46,6 +48,12 @@ class _DropletDropState extends State<DropletDrop> with WidgetsBindingObserver {
       final c = cleNavigation.currentContext;
       if (c != null) montrerOffre(c, o);
     });
+    // Un lien d'invitation Group Drop ouvert depuis une autre app : on
+    // rejoint, sans passer par le site (donc sans Internet).
+    Natif.ecouterLiens(_ouvrirLien);
+    Natif.lienInitial().then((l) {
+      if (l != null) _ouvrirLien(l);
+    });
     // La fin d'un transfert se sent, discrètement.
     _finis = EtatApp.i.finis.stream.listen((t) {
       if (t.etat.name == 'termine') HapticFeedback.mediumImpact();
@@ -53,6 +61,16 @@ class _DropletDropState extends State<DropletDrop> with WidgetsBindingObserver {
   }
 
   void _rafraichir() => setState(() {});
+
+  Future<void> _ouvrirLien(String lien) async {
+    // Le moteur démarre peut-être encore (app lancée par le lien).
+    for (var i = 0; i < 50 && !EtatApp.i.pret; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    await WidgetsBinding.instance.endOfFrame;
+    final c = cleNavigation.currentContext;
+    if (c != null && c.mounted && EtatApp.i.pret) await rejoindreAvecInvitation(c, lien);
+  }
 
   @override
   void didChangePlatformBrightness() => setState(() {});

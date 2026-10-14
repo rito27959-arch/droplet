@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../app/etat_app.dart';
 import '../app/modeles.dart';
@@ -64,7 +65,7 @@ class EcranGroupDrop extends StatelessWidget {
                       },
                     ),
                     const SizedBox(height: 12),
-                    BoutonSecondaire(texte: context.t('rejoindre_distribution'), icone: Icons.qr_code_scanner_rounded, onTap: () => rejoindreDistribution(context)),
+                    BoutonSecondaire(texte: context.t('rejoindre_distribution'), icone: Icons.group_add_rounded, onTap: () => rejoindreDistribution(context)),
                     if (sessions.isNotEmpty) ...[
                       TitreSection(context.t('mes_distributions')),
                       for (final s in sessions)
@@ -112,24 +113,202 @@ class EcranGroupDrop extends StatelessWidget {
   }
 }
 
-/// Rejoindre : scanner le QR code (ou coller le lien), puis suivre la
-/// réception.
-Future<void> rejoindreDistribution(BuildContext context) async {
-  final code = await scannerCode(context);
-  if (code == null || !context.mounted) return;
+/// Rejoindre une distribution : l'écran qui propose les trois chemins.
+Future<void> rejoindreDistribution(BuildContext context) =>
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const EcranRejoindre()));
+
+/// Rejoint avec une invitation (QR code, lien, code à six chiffres, lien
+/// ouvert depuis une autre app), puis suit la réception.
+Future<void> rejoindreAvecInvitation(BuildContext context, String invitation, {bool demander = true}) async {
   try {
-    final apercu = jsonDecode(moteur.lireInvitation(invitation: code)) as Map;
+    final apercu = jsonDecode(moteur.lireInvitation(invitation: invitation)) as Map;
     final hote = apercu['nom'] as String? ?? '';
     if (!context.mounted) return;
-    final ok = await confirmer(context, context.t('rejoindre_titre', {'qui': hote}), context.t('rejoindre_texte'), oui: context.t('rejoindre'));
-    if (!ok || !context.mounted) return;
-    final id = await EtatApp.i.rejoindre(code);
+    if (demander) {
+      final ok = await confirmer(context, context.t('rejoindre_titre', {'qui': hote}), context.t('rejoindre_texte'), oui: context.t('rejoindre'));
+      if (!ok || !context.mounted) return;
+    }
+    final id = await EtatApp.i.rejoindre(invitation);
     if (!context.mounted) return;
     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => EcranTransfert(groupe: id)));
   } catch (e) {
     if (!context.mounted) return;
     final expiree = '$e'.contains('expir');
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(expiree ? context.t('err_session_expiree') : context.t('err_session_invalide'))));
+  }
+}
+
+/// REJOINDRE — sans QR code s'il le faut.
+///
+/// 1. Les distributions À PROXIMITÉ : un hôte sur le même Wi‑Fi (ou sur
+///    sa connexion directe) annonce les siennes ; on touche la bonne et on
+///    tape le code à six chiffres affiché sur son écran. Rien ne passe par
+///    Internet.
+/// 2. Scanner le QR code.
+/// 3. Coller le lien reçu par message.
+class EcranRejoindre extends StatelessWidget {
+  const EcranRejoindre({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    return ListenableBuilder(
+      listenable: EtatApp.i,
+      builder: (context, _) {
+        final proches = [
+          for (final a in EtatApp.i.appareils.values)
+            for (final d in a.distributions) (a, d),
+        ];
+        return Scaffold(
+          backgroundColor: p.fond,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
+            iconTheme: IconThemeData(color: p.accentTexte),
+            title: Text(context.t('rejoindre_distribution'), style: Typo.titreCarte.copyWith(color: p.texte)),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            children: [
+              Colonne(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TitreSection(context.t('distributions_proches')),
+                    if (proches.isEmpty)
+                      Carte(
+                        child: EtatVide(
+                          icone: Icons.wifi_tethering_rounded,
+                          titre: context.t('aucune_distribution'),
+                          texte: context.t('aucune_distribution_texte'),
+                        ),
+                      )
+                    else
+                      for (final (a, d) in proches)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Carte(
+                            onTap: () => _avecCode(context, a, d),
+                            child: Row(
+                              children: [
+                                AvatarAppareil(plateforme: a.plateforme, empreinte: a.empreinte, taille: 44),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(context.t('distribution_de', {'qui': a.nom}), maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.titreCarte.copyWith(color: p.texte)),
+                                      const SizedBox(height: 2),
+                                      Text(context.t('toucher_code'), style: Typo.secondaire.copyWith(color: p.texte2)),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right_rounded, color: p.texte3),
+                              ],
+                            ),
+                          ),
+                        ),
+                    const SizedBox(height: 20),
+                    if (cameraDisponible) ...[
+                      BoutonLiquide(
+                        texte: context.t('scanner_qr'),
+                        icone: Icons.qr_code_scanner_rounded,
+                        onTap: () async {
+                          final code = await scannerCode(context);
+                          if (code != null && context.mounted) await rejoindreAvecInvitation(context, code);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    BoutonSecondaire(
+                      texte: context.t('coller_lien'),
+                      icone: Icons.content_paste_rounded,
+                      onTap: () async {
+                        final code = await collerCode(context);
+                        if (code != null && context.mounted) await rejoindreAvecInvitation(context, code);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Le code à six chiffres, puis l'invitation demandée à l'hôte.
+  Future<void> _avecCode(BuildContext context, AppareilVu a, String session) async {
+    final code = await showDialog<String>(context: context, builder: (_) => _SaisieCode(hote: a.nom));
+    if (code == null || !context.mounted) return;
+    try {
+      final invitation = await moteur.invitationParCode(appareil: a.id, session: session, code: code);
+      if (!context.mounted) return;
+      // On a choisi la distribution ET tapé son code : pas de seconde question.
+      await rejoindreAvecInvitation(context, invitation, demander: false);
+    } catch (e) {
+      if (!context.mounted) return;
+      final m = '$e';
+      final cle = m.contains('code_incorrect') ? 'err_code_incorrect' : (m.contains('session') ? 'err_session_invalide' : 'err_injoignable');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.t(cle))));
+    }
+  }
+}
+
+/// La saisie du code : six chiffres, le clavier numérique, et « Rejoindre »
+/// qui ne s'allume qu'au sixième.
+class _SaisieCode extends StatefulWidget {
+  const _SaisieCode({required this.hote});
+
+  final String hote;
+
+  @override
+  State<_SaisieCode> createState() => _SaisieCodeState();
+}
+
+class _SaisieCodeState extends State<_SaisieCode> {
+  final _champ = TextEditingController();
+
+  @override
+  void dispose() {
+    _champ.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.p;
+    final pret = _champ.text.length == 6;
+    return AlertDialog(
+      title: Text(context.t('code_titre', {'qui': widget.hote})),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(context.t('code_texte'), style: Typo.secondaire.copyWith(color: p.texte2)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _champ,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: Typo.grandChiffre.copyWith(color: p.texte, fontSize: 32, letterSpacing: 8),
+            decoration: const InputDecoration(counterText: '', hintText: '000000'),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (v) {
+              if (v.length == 6) Navigator.pop(context, v);
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(context.t('annuler'))),
+        TextButton(onPressed: pret ? () => Navigator.pop(context, _champ.text) : null, child: Text(context.t('rejoindre'))),
+      ],
+    );
   }
 }
 
@@ -284,14 +463,38 @@ class _TableauSessionState extends State<TableauSession> {
               ),
               const SizedBox(height: 12),
               Text(context.t('scanner_pour_rejoindre'), textAlign: TextAlign.center, style: Typo.secondaire.copyWith(color: p.texte2)),
+              if (s.code.length == 6) ...[
+                // Le code : pour les voisins qui voient la distribution
+                // dans leur liste « À proximité », sans QR code ni Internet.
+                const SizedBox(height: 14),
+                Text(context.t('ou_code'), style: Typo.legende.copyWith(color: p.texte3)),
+                const SizedBox(height: 4),
+                Semantics(
+                  label: s.code.split('').join(' '),
+                  excludeSemantics: true,
+                  child: Text('${s.code.substring(0, 3)} ${s.code.substring(3)}', style: Typo.grandChiffre.copyWith(color: p.texte, letterSpacing: 4)),
+                ),
+              ],
               const SizedBox(height: 6),
-              TextButton.icon(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: s.invitation));
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.t('copie'))));
-                },
-                icon: Icon(Icons.link_rounded, color: p.accentTexte),
-                label: Text(context.t('copier_lien'), style: Typo.secondaire.copyWith(color: p.accentTexte, fontWeight: FontWeight.w600)),
+              Wrap(
+                alignment: WrapAlignment.center,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: s.invitation));
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.t('copie'))));
+                    },
+                    icon: Icon(Icons.link_rounded, color: p.accentTexte),
+                    label: Text(context.t('copier_lien'), style: Typo.secondaire.copyWith(color: p.accentTexte, fontWeight: FontWeight.w600)),
+                  ),
+                  // Partager l'invitation : WhatsApp, SMS, Bluetooth, Quick
+                  // Share… tout ce que le téléphone propose.
+                  TextButton.icon(
+                    onPressed: () => Share.share(context.t('invitation_message', {'qui': EtatApp.i.nom, 'lien': s.invitation, 'code': s.code})),
+                    icon: Icon(Icons.ios_share_rounded, color: p.accentTexte),
+                    label: Text(context.t('partager'), style: Typo.secondaire.copyWith(color: p.accentTexte, fontWeight: FontWeight.w600)),
+                  ),
+                ],
               ),
               Text(context.t('expire_a', {'h': TimeOfDay.fromDateTime(s.expire).format(context)}), style: Typo.legende.copyWith(color: p.texte3)),
             ],

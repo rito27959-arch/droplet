@@ -74,4 +74,16 @@ pub enum Controle {
     /// se connecte lui-même à l'expéditeur, quand l'expéditeur n'arrive
     /// pas à le joindre (pare-feu de Windows, réseau qui filtre l'entrant).
     Tirer,
+    /// « Je vois ta distribution près de moi ; voici le code affiché sur
+    /// ton écran. » `session` : les 8 premiers caractères de son
+    /// identifiant, tels que l'annonce mDNS les donne.
+    DemanderInvitation {
+        session: String,
+        code: String,
+    },
+    /// La réponse à un code juste : l'invitation complète, comme celle du
+    /// QR code.
+    Invitation {
+        invitation: String,
+    },
 }
