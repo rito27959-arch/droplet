@@ -8,6 +8,7 @@ import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
 import '../design/marque.dart';
+import '../design/scene.dart';
 import '../design/typo.dart';
 import 'choisir.dart';
 import 'group_drop.dart';
@@ -47,25 +48,20 @@ class Accueil extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              // La marque, discrète ; puis le titre du site.
                               Row(
                                 children: [
-                                  const Goutte(taille: 44),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Semantics(header: true, child: Text('Droplet Drop', style: Typo.grandTitre.copyWith(color: p.texte))),
-                                        Text(context.t('slogan'), style: Typo.corps.copyWith(color: p.texte2)),
-                                      ],
-                                    ),
-                                  ),
+                                  const Goutte(taille: 30),
+                                  const SizedBox(width: 10),
+                                  Semantics(header: true, child: Text('Droplet Drop', style: Typo.titreCarte.copyWith(color: p.texte, fontWeight: FontWeight.w700))),
                                 ],
                               ),
-                              const SizedBox(height: 28),
+                              const SizedBox(height: 22),
+                              Text(context.t('hero_accueil'), style: Typo.hero.copyWith(color: p.texte)),
+                              const SizedBox(height: 8),
                               if (e.erreurDemarrage != null)
                                 Padding(
-                                  padding: const EdgeInsets.only(bottom: 16),
+                                  padding: const EdgeInsets.only(top: 12),
                                   child: Carte(
                                     child: Row(
                                       children: [
@@ -76,72 +72,77 @@ class Accueil extends StatelessWidget {
                                     ),
                                   ),
                                 ),
-                              BoutonLiquide(
-                                texte: context.t('envoyer'),
-                                icone: Icons.arrow_upward_rounded,
-                                hauteur: 64,
-                                onTap: e.pret ? () => choisirPuisEnvoyer(context) : null,
-                                chargement: !e.pret && e.erreurDemarrage == null,
+                              // Les appareils autour de vous : la constellation du site.
+                              Constellation(
+                                hauteur: MediaQuery.sizeOf(context).width > 700 ? 340 : 300,
+                                centre: const CentreMoi(taille: 58),
+                                noeuds: [
+                                  for (final a in e.appareils.values)
+                                    NoeudConstellation(id: a.id, nom: a.nom, plateforme: a.plateforme, empreinte: a.empreinte),
+                                ],
+                                onTap: e.pret ? (n) => choisirPuisEnvoyer(context, vers: e.appareils[n.id]) : null,
                               ),
-                              const SizedBox(height: 12),
-                              BoutonSecondaire(
-                                texte: context.t('recevoir'),
-                                icone: Icons.arrow_downward_rounded,
-                                hauteur: 60,
-                                onTap: e.pret ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Recevoir())) : null,
+                              Center(
+                                child: AnimatedSwitcher(
+                                  duration: duree(context, 260),
+                                  child: Text(
+                                    e.appareils.isEmpty ? context.t('recherche_appareils') : context.t('toucher_appareil'),
+                                    key: ValueKey(e.appareils.isEmpty),
+                                    textAlign: TextAlign.center,
+                                    style: Typo.secondaire.copyWith(color: p.texte2),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: BoutonLiquide(
+                                      texte: context.t('envoyer'),
+                                      icone: Icons.arrow_upward_rounded,
+                                      hauteur: 58,
+                                      onTap: e.pret ? () => choisirPuisEnvoyer(context) : null,
+                                      chargement: !e.pret && e.erreurDemarrage == null,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: BoutonSecondaire(
+                                      texte: context.t('recevoir'),
+                                      icone: Icons.arrow_downward_rounded,
+                                      hauteur: 58,
+                                      onTap: e.pret ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Recevoir())) : null,
+                                    ),
+                                  ),
+                                ],
                               ),
                               const CartePareFeu(),
                               if (enCours.isNotEmpty) ...[
                                 TitreSection(context.t('en_cours')),
                                 for (final g in enCours) _CarteEnCours(groupe: g),
                               ],
-                              TitreSection(
-                                context.t('a_proximite'),
-                                // La découverte tourne en continu : une pastille qui respire le dit.
-                                fin: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (e.pret) Pulsation(couleur: p.succes, taille: 6),
-                                    if (e.appareils.isNotEmpty) Text('${e.appareils.length}', style: Typo.legende.copyWith(color: p.texte3)),
-                                  ],
-                                ),
-                              ),
-                              if (e.appareils.isEmpty)
-                                // Personne encore : le radar, comme AirDrop quand il cherche.
-                                Carte(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    child: Column(
-                                      children: [
-                                        Radar(
-                                          taille: 170,
-                                          child: AvatarAppareil(plateforme: EtatApp.plateforme(), empreinte: e.empreinte, taille: 56),
-                                        ),
-                                        Text(context.t('recherche_appareils'), textAlign: TextAlign.center, style: Typo.titreCarte.copyWith(color: p.texte)),
-                                        const SizedBox(height: 6),
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 380),
-                                          child: Text(context.t('personne_texte'), textAlign: TextAlign.center, style: Typo.secondaire.copyWith(color: p.texte2)),
-                                        ),
-                                        const SizedBox(height: 14),
-                                        BoutonSecondaire(
-                                          texte: context.t('recevoir'),
-                                          icone: Icons.qr_code_2_rounded,
-                                          hauteur: 44,
-                                          large: false,
-                                          onTap: e.pret ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Recevoir())) : null,
-                                        ),
-                                        const SizedBox(height: 6),
-                                      ],
-                                    ),
+                              if (e.appareils.isNotEmpty) ...[
+                                TitreSection(
+                                  context.t('a_proximite'),
+                                  // La découverte tourne en continu : une pastille qui respire le dit.
+                                  fin: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (e.pret) Pulsation(couleur: p.succes, taille: 6),
+                                      Text('${e.appareils.length}', style: Typo.legende.copyWith(color: p.texte3)),
+                                    ],
                                   ),
-                                )
-                              else
+                                ),
                                 for (final (i, a) in e.appareils.values.indexed)
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 10),
                                     child: Apparition(delai: i * 40, child: CarteAppareil(appareil: a)),
                                   ),
+                              ] else
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 18),
+                                  child: Text(context.t('personne_texte'), textAlign: TextAlign.center, style: Typo.secondaire.copyWith(color: p.texte3)),
+                                ),
                             ],
                           ),
                         ),

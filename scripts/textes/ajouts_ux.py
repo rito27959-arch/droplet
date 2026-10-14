@@ -128,3 +128,80 @@ _V = {
 for _l, _v in _V.items():
     assert len(_v) == len(_K), (_l, len(_v))
     AJOUTS[_l].update(dict(zip(_K, _v)))
+
+# Échanger avec un navigateur (sans l'app).
+_K2 = ['web_titre', 'web_texte', 'web_recevoir', 'web_recevoir_texte', 'web_carte', 'web_carte_recevoir', 'web_echec', 'web_autre_adresse',
+       'web_activite', 'web_telechargements', 'web_recus', 'web_avertissement',
+       'web_p_telecharger', 'web_p_a_telecharger', 'web_p_tout', 'web_p_envoyer_vers', 'web_p_choisir', 'web_p_glisser',
+       'web_p_sous', 'web_p_sous_recevoir', 'web_p_pied', 'web_p_envoye', 'web_p_echec']
+_V2 = {
+ 'fr': ["Vers un navigateur", "Pour un appareil sans Droplet Drop. Sur le même réseau (ou votre connexion directe), ouvrez cette adresse dans son navigateur, ou scannez le code avec son appareil photo.",
+        "Depuis un navigateur", "Un appareil sans Droplet Drop peut vous envoyer des fichiers : sur le même réseau, ouvrez cette adresse dans son navigateur.",
+        "Pour un appareil sans l'app : un lien à ouvrir.", "Un appareil sans l'app vous envoie des fichiers.", "La page n'a pas pu s'ouvrir.", "Autre adresse",
+        "Activité", "{n} téléchargement(s)", "{n} fichier(s) reçu(s)", "Cette page n'est pas chiffrée comme un envoi entre deux apps Droplet Drop. Utilisez-la sur un réseau de confiance ; elle se ferme quand vous quittez cet écran.",
+        "Télécharger", "À télécharger", "Tout télécharger", "Envoyer vers {nom}", "Choisir des fichiers", "ou glissez-les ici", "vous propose des fichiers.", "attend vos fichiers.", "Partagé avec Droplet Drop · drop.dropletmesh.app", "Envoyé", "Échec"],
+ 'en': ["To a browser", "For a device without Droplet Drop. On the same network (or your direct connection), open this address in its browser, or scan the code with its camera.",
+        "From a browser", "A device without Droplet Drop can send you files: on the same network, open this address in its browser.",
+        "For a device without the app: a link to open.", "A device without the app sends you files.", "The page couldn't open.", "Other address",
+        "Activity", "{n} download(s)", "{n} file(s) received", "This page isn't encrypted like a transfer between two Droplet Drop apps. Use it on a network you trust; it closes when you leave this screen.",
+        "Download", "To download", "Download all", "Send to {nom}", "Choose files", "or drag them here", "is sharing files with you.", "is waiting for your files.", "Shared with Droplet Drop · drop.dropletmesh.app", "Sent", "Failed"],
+ 'es': ["A un navegador", "Para un dispositivo sin Droplet Drop. En la misma red (o tu conexión directa), abre esta dirección en su navegador o escanea el código con su cámara.",
+        "Desde un navegador", "Un dispositivo sin Droplet Drop puede enviarte archivos: en la misma red, abre esta dirección en su navegador.",
+        "Para un dispositivo sin la app: un enlace que abrir.", "Un dispositivo sin la app te envía archivos.", "No se pudo abrir la página.", "Otra dirección",
+        "Actividad", "{n} descarga(s)", "{n} archivo(s) recibido(s)", "Esta página no está cifrada como un envío entre dos apps Droplet Drop. Úsala en una red de confianza; se cierra al salir de esta pantalla.",
+        "Descargar", "Para descargar", "Descargar todo", "Enviar a {nom}", "Elegir archivos", "o arrástralos aquí", "comparte archivos contigo.", "espera tus archivos.", "Compartido con Droplet Drop · drop.dropletmesh.app", "Enviado", "Error"],
+ 'de': ["An einen Browser", "Für ein Gerät ohne Droplet Drop. Im selben Netz (oder über deine Direktverbindung) diese Adresse im Browser öffnen oder den Code mit der Kamera scannen.",
+        "Von einem Browser", "Ein Gerät ohne Droplet Drop kann dir Dateien senden: Im selben Netz diese Adresse im Browser öffnen.",
+        "Für ein Gerät ohne App: ein Link zum Öffnen.", "Ein Gerät ohne App sendet dir Dateien.", "Die Seite konnte nicht geöffnet werden.", "Andere Adresse",
+        "Aktivität", "{n} Download(s)", "{n} Datei(en) empfangen", "Diese Seite ist nicht so verschlüsselt wie eine Übertragung zwischen zwei Droplet-Drop-Apps. Nutze sie in einem vertrauenswürdigen Netz; sie schließt sich, wenn du diesen Bildschirm verlässt.",
+        "Herunterladen", "Zum Herunterladen", "Alle herunterladen", "An {nom} senden", "Dateien auswählen", "oder hierher ziehen", "teilt Dateien mit dir.", "wartet auf deine Dateien.", "Geteilt mit Droplet Drop · drop.dropletmesh.app", "Gesendet", "Fehlgeschlagen"],
+ 'it': ["Verso un browser", "Per un dispositivo senza Droplet Drop. Sulla stessa rete (o la tua connessione diretta), apri questo indirizzo nel suo browser o scansiona il codice con la fotocamera.",
+        "Da un browser", "Un dispositivo senza Droplet Drop può inviarti file: sulla stessa rete, apri questo indirizzo nel suo browser.",
+        "Per un dispositivo senza l'app: un link da aprire.", "Un dispositivo senza l'app ti invia file.", "Impossibile aprire la pagina.", "Altro indirizzo",
+        "Attività", "{n} download", "{n} file ricevuti", "Questa pagina non è cifrata come un invio tra due app Droplet Drop. Usala su una rete fidata; si chiude quando lasci questa schermata.",
+        "Scarica", "Da scaricare", "Scarica tutto", "Invia a {nom}", "Scegli i file", "o trascinali qui", "condivide dei file con te.", "aspetta i tuoi file.", "Condiviso con Droplet Drop · drop.dropletmesh.app", "Inviato", "Errore"],
+ 'pt': ["Para um navegador", "Para um dispositivo sem Droplet Drop. Na mesma rede (ou na sua ligação direta), abra este endereço no navegador ou leia o código com a câmara.",
+        "A partir de um navegador", "Um dispositivo sem Droplet Drop pode enviar-lhe ficheiros: na mesma rede, abra este endereço no navegador.",
+        "Para um dispositivo sem a app: um link para abrir.", "Um dispositivo sem a app envia-lhe ficheiros.", "Não foi possível abrir a página.", "Outro endereço",
+        "Atividade", "{n} transferência(s)", "{n} ficheiro(s) recebido(s)", "Esta página não é cifrada como um envio entre duas apps Droplet Drop. Use-a numa rede de confiança; fecha quando sair deste ecrã.",
+        "Transferir", "Para transferir", "Transferir tudo", "Enviar para {nom}", "Escolher ficheiros", "ou arraste-os para aqui", "partilha ficheiros consigo.", "espera os seus ficheiros.", "Partilhado com Droplet Drop · drop.dropletmesh.app", "Enviado", "Falhou"],
+ 'ru': ["В браузер", "Для устройства без Droplet Drop. В той же сети (или через прямое соединение) откройте этот адрес в браузере или отсканируйте код камерой.",
+        "Из браузера", "Устройство без Droplet Drop может прислать вам файлы: в той же сети откройте этот адрес в его браузере.",
+        "Для устройства без приложения: ссылка.", "Устройство без приложения присылает вам файлы.", "Не удалось открыть страницу.", "Другой адрес",
+        "Активность", "Загрузок: {n}", "Получено файлов: {n}", "Эта страница не зашифрована так, как передача между двумя приложениями Droplet Drop. Используйте её в доверенной сети; она закроется, когда вы покинете этот экран.",
+        "Скачать", "Для загрузки", "Скачать всё", "Отправить на {nom}", "Выбрать файлы", "или перетащите их сюда", "делится с вами файлами.", "ждёт ваши файлы.", "Отправлено через Droplet Drop · drop.dropletmesh.app", "Отправлено", "Ошибка"],
+ 'ar': ["إلى متصفح", "لجهاز لا يحتوي على Droplet Drop. على الشبكة نفسها (أو اتصالك المباشر)، افتح هذا العنوان في متصفحه، أو امسح الرمز بكاميرته.",
+        "من متصفح", "يمكن لجهاز لا يحتوي على Droplet Drop أن يرسل إليك ملفات: على الشبكة نفسها، افتح هذا العنوان في متصفحه.",
+        "لجهاز بلا تطبيق: رابط يُفتح.", "جهاز بلا تطبيق يرسل إليك ملفات.", "تعذّر فتح الصفحة.", "عنوان آخر",
+        "النشاط", "{n} تنزيل", "{n} ملف مستلَم", "هذه الصفحة غير مشفّرة مثل الإرسال بين تطبيقَي Droplet Drop. استخدمها على شبكة موثوقة؛ تُغلق عند مغادرة هذه الشاشة.",
+        "تنزيل", "للتنزيل", "تنزيل الكل", "إرسال إلى {nom}", "اختيار ملفات", "أو اسحبها إلى هنا", "يشارك معك ملفات.", "ينتظر ملفاتك.", "تمت المشاركة عبر Droplet Drop · drop.dropletmesh.app", "تم الإرسال", "فشل"],
+ 'hi': ["ब्राउज़र पर", "बिना Droplet Drop वाले डिवाइस के लिए। उसी नेटवर्क पर (या आपके डायरेक्ट कनेक्शन पर) यह पता उसके ब्राउज़र में खोलें, या उसके कैमरे से कोड स्कैन करें।",
+        "ब्राउज़र से", "बिना Droplet Drop वाला डिवाइस आपको फ़ाइलें भेज सकता है: उसी नेटवर्क पर यह पता उसके ब्राउज़र में खोलें।",
+        "बिना ऐप वाले डिवाइस के लिए: खोलने वाला लिंक।", "बिना ऐप वाला डिवाइस आपको फ़ाइलें भेजता है।", "पेज नहीं खुल सका।", "दूसरा पता",
+        "गतिविधि", "{n} डाउनलोड", "{n} फ़ाइलें मिलीं", "यह पेज दो Droplet Drop ऐप के बीच भेजने जैसा एन्क्रिप्टेड नहीं है। इसे भरोसेमंद नेटवर्क पर इस्तेमाल करें; यह स्क्रीन छोड़ते ही बंद हो जाता है।",
+        "डाउनलोड करें", "डाउनलोड के लिए", "सब डाउनलोड करें", "{nom} को भेजें", "फ़ाइलें चुनें", "या उन्हें यहाँ खींचें", "आपके साथ फ़ाइलें शेयर कर रहा है।", "आपकी फ़ाइलों का इंतज़ार कर रहा है।", "Droplet Drop से शेयर किया गया · drop.dropletmesh.app", "भेजा गया", "विफल"],
+ 'zh': ["发送到浏览器", "适用于没有 Droplet Drop 的设备。在同一网络（或你的直连）上，在它的浏览器中打开此地址，或用它的相机扫描二维码。",
+        "从浏览器接收", "没有 Droplet Drop 的设备也能给你发文件：在同一网络上，在它的浏览器中打开此地址。",
+        "适用于没有应用的设备：打开一个链接即可。", "没有应用的设备给你发送文件。", "页面无法打开。", "其他地址",
+        "动态", "{n} 次下载", "已收到 {n} 个文件", "此页面不像两个 Droplet Drop 应用之间的传输那样加密。请在可信网络中使用；离开此界面后页面即关闭。",
+        "下载", "可下载", "全部下载", "发送到 {nom}", "选择文件", "或拖到这里", "正在与你分享文件。", "正在等待你的文件。", "通过 Droplet Drop 分享 · drop.dropletmesh.app", "已发送", "失败"],
+}
+for _l, _v in _V2.items():
+    assert len(_v) == len(_K2), (_l, len(_v))
+    AJOUTS[_l].update(dict(zip(_K2, _v)))
+
+# L'accueil reprend le titre du site.
+_HERO = {
+ 'fr': ("Envoyez tout, à tous les appareils autour de vous.", "Touchez un appareil pour lui envoyer des fichiers."),
+ 'en': ("Send anything to every device around you.", "Tap a device to send it files."),
+ 'es': ("Envía lo que quieras a todos los dispositivos que te rodean.", "Toca un dispositivo para enviarle archivos."),
+ 'de': ("Schick alles an alle Geräte um dich herum.", "Tippe auf ein Gerät, um ihm Dateien zu senden."),
+ 'it': ("Invia di tutto, a tutti i dispositivi intorno a te.", "Tocca un dispositivo per inviargli dei file."),
+ 'pt': ("Envie tudo, para todos os dispositivos à sua volta.", "Toque num dispositivo para lhe enviar ficheiros."),
+ 'ru': ("Отправляйте что угодно на все устройства вокруг.", "Коснитесь устройства, чтобы отправить ему файлы."),
+ 'ar': ("أرسل كل شيء، إلى كل الأجهزة من حولك.", "المس جهازًا لإرسال الملفات إليه."),
+ 'hi': ("कुछ भी भेजें, अपने आस-पास के हर डिवाइस पर।", "फ़ाइलें भेजने के लिए किसी डिवाइस को टैप करें।"),
+ 'zh': ("任何东西，发给身边的每一台设备。", "轻点一台设备，给它发送文件。"),
+}
+for _l, (_h, _t) in _HERO.items():
+    AJOUTS[_l].update({'hero_accueil': _h, 'toucher_appareil': _t})

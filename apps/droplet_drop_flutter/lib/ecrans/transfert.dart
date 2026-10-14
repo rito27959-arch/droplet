@@ -8,6 +8,7 @@ import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
 import '../design/marque.dart';
+import '../design/scene.dart';
 import '../design/typo.dart';
 
 class EcranTransfert extends StatelessWidget {
@@ -42,13 +43,18 @@ class EcranTransfert extends StatelessWidget {
 
         return Scaffold(
           backgroundColor: p.fond,
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
-            backgroundColor: p.fond,
+            backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             iconTheme: IconThemeData(color: p.accentTexte),
             title: Text(envoi ? context.t('envoi') : context.t('reception'), style: Typo.titreCarte.copyWith(color: p.texte)),
           ),
-          body: Column(
+          body: Fond(
+            lueur: const Alignment(0, -0.55),
+            child: SafeArea(
+            bottom: false,
+            child: Column(
             children: [
               Expanded(
                 child: ListView(
@@ -65,7 +71,10 @@ class EcranTransfert extends StatelessWidget {
                               transitionBuilder: (c, a) => ScaleTransition(scale: a, child: FadeTransition(opacity: a, child: c)),
                               child: finis && termines == liste.length
                                   ? _Reussite(key: const ValueKey('ok'))
-                                  : AnneauProgression(
+                                  : Lueur(
+                                    rayon: 90,
+                                    intensite: .35,
+                                    child: AnneauProgression(
                                       key: const ValueKey('anneau'),
                                       valeur: enPreparation ? ((prep?.$2 ?? 0) == 0 ? 0 : prep!.$1 / prep.$2) : (total == 0 ? 0 : fait / total),
                                       taille: 168,
@@ -81,6 +90,7 @@ class EcranTransfert extends StatelessWidget {
                                         ],
                                       ),
                                     ),
+                                  ),
                             ),
                           ),
                           const SizedBox(height: 22),
@@ -99,6 +109,11 @@ class EcranTransfert extends StatelessWidget {
                             textAlign: TextAlign.center,
                             style: Typo.chiffres.copyWith(color: p.texte2),
                           ),
+                          if (premier != null && premier.fichiers.isNotEmpty) ...[
+                            const SizedBox(height: 20),
+                            // Ce qui passe, en tuiles — les vraies photos une fois arrivées.
+                            Mosaique(noms: [for (final f in premier.fichiers) f.nom], chemins: premier.chemins, max: 6, tuile: 58),
+                          ],
                           TitreSection(envoi ? context.t('destinataires') : context.t('expediteur')),
                           for (final t in liste) Padding(padding: const EdgeInsets.only(bottom: 10), child: LigneTransfert(t: t)),
                           if (finis && !envoi && termines > 0 && premier!.chemins.isNotEmpty) ...[
@@ -150,6 +165,8 @@ class EcranTransfert extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          ),
           ),
         );
       },

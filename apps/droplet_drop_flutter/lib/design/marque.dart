@@ -53,9 +53,11 @@ class AvatarAppareil extends StatelessWidget {
     return Container(
       width: taille,
       height: taille,
+      // Une tuile aux coins doux, comme les appareils du site.
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(taille * 0.3),
         gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _teintes[i]),
+        boxShadow: [BoxShadow(color: _teintes[i].first.withValues(alpha: 0.25), blurRadius: taille * 0.3, offset: Offset(0, taille * 0.08))],
       ),
       child: Icon(icone(plateforme), color: Colors.white, size: taille * 0.48),
     );

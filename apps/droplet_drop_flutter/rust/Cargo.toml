@@ -15,6 +15,8 @@ drop_core = { path = "../../../crates/drop_core" }
 drop_transfer = { path = "../../../crates/drop_transfer" }
 drop_discovery = { path = "../../../crates/drop_discovery" }
 drop_storage = { path = "../../../crates/drop_storage" }
+drop_web = { path = "../../../crates/drop_web" }
+drop_crypto = { path = "../../../crates/drop_crypto" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

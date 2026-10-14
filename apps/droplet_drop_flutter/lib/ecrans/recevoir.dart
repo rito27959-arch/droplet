@@ -17,6 +17,7 @@ import '../design/typo.dart';
 import 'connexion_directe.dart';
 import 'group_drop.dart';
 import 'pare_feu.dart';
+import 'partage_web.dart';
 import 'reglages.dart';
 
 class Recevoir extends StatelessWidget {
@@ -68,6 +69,8 @@ class Recevoir extends StatelessWidget {
                       ),
                       const CartePareFeu(),
                       if (Natif.android) ...[const SizedBox(height: 18), const CarteConnexionDirecte()],
+                      const SizedBox(height: 14),
+                      const CarteNavigateur(),
                       TitreSection(context.t('qr_appareil')),
                       Carte(
                         child: Column(

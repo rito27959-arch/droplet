@@ -416,6 +416,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "drop_web"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "env_filter"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1151,9 +1160,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "drop_core",
+ "drop_crypto",
  "drop_discovery",
  "drop_storage",
  "drop_transfer",
+ "drop_web",
  "flutter_rust_bridge",
  "libc",
  "serde_json",

@@ -27,6 +27,8 @@ struct Global {
     annonceur: Mutex<Option<Annonceur>>,
     historique: Mutex<Historique>,
     abonnes: Arc<Mutex<Vec<StreamSink<String>>>>,
+    /// La page ouverte aux navigateurs (une à la fois).
+    web: Mutex<Option<drop_web::PartageWeb>>,
 }
 
 static GLOBAL: OnceLock<Global> = OnceLock::new();
@@ -156,7 +158,7 @@ pub fn demarrer(nom: String, plateforme: String, donnees: String, reception: Str
     });
 
     let i = info(&moteur);
-    let _ = GLOBAL.set(Global { rt, moteur, annonceur: Mutex::new(annonceur), historique: Mutex::new(historique), abonnes });
+    let _ = GLOBAL.set(Global { rt, moteur, annonceur: Mutex::new(annonceur), historique: Mutex::new(historique), abonnes, web: Mutex::new(None) });
     Ok(i)
 }
 
@@ -331,4 +333,43 @@ pub fn effacer_historique(id: Option<String>) {
 pub fn version() -> String {
     let _ = Etat::Termine;
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// ── Échanger avec un navigateur ──────────────────────────────────────────
+
+/// Ouvre la page pour les navigateurs : [chemins]/[noms] à télécharger, et
+/// si [recevoir], le dépôt de fichiers vers le dossier de réception.
+/// [textes] : JSON des textes de la page (dans la langue de l'app).
+/// Rend `{"port":…,"jeton":"…","adresses":[…]}`.
+pub fn partage_web_demarrer(chemins: Vec<String>, noms: Vec<String>, recevoir: bool, textes: String) -> anyhow::Result<String> {
+    let gl = g()?;
+    anyhow::ensure!(chemins.len() == noms.len(), "liste de fichiers invalide");
+    let jeton = drop_crypto::secret_aleatoire(16);
+    let config = drop_web::Config {
+        fichiers: chemins.into_iter().map(PathBuf::from).zip(noms).collect(),
+        reception: recevoir.then(|| gl.moteur.config().reception),
+        jeton: jeton.clone(),
+        textes: serde_json::from_str(&textes).unwrap_or_default(),
+        nom_appareil: gl.moteur.config().nom,
+        port: 47380,
+    };
+    let ab = gl.abonnes.clone();
+    let rappel: drop_web::Rappel = Arc::new(move |v| diffuser(&ab, v.to_string()));
+    // L'ancienne page se ferme d'abord.
+    if let Some(ancienne) = gl.web.lock().unwrap().take() {
+        ancienne.arreter();
+    }
+    let partage = gl.rt.block_on(drop_web::demarrer(config, rappel))?;
+    let port = partage.port;
+    *gl.web.lock().unwrap() = Some(partage);
+    Ok(serde_json::json!({ "port": port, "jeton": jeton, "adresses": drop_transfer::adresses_locales() }).to_string())
+}
+
+#[flutter_rust_bridge::frb(sync)]
+pub fn partage_web_arreter() {
+    if let Some(gl) = GLOBAL.get() {
+        if let Some(p) = gl.web.lock().unwrap().take() {
+            p.arreter();
+        }
+    }
 }

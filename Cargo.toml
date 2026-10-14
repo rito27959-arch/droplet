@@ -6,6 +6,7 @@ members = [
   "crates/drop_transfer",
   "crates/drop_discovery",
   "crates/drop_storage",
+  "crates/drop_web",
   "apps/droplet_drop_flutter/rust",
 ]
 

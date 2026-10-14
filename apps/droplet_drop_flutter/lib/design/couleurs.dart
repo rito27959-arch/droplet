@@ -74,10 +74,12 @@ class Palette {
     if (sombre) {
       return Palette(
         sombre: true,
-        fond: const Color(0xFF080C16),
-        fondEleve: const Color(0xFF0E1420),
-        surface: const Color(0xFF141B28),
-        surfaceHaute: const Color(0xFF202A39),
+        // La nuit du site (drop.dropletmesh.app) : un noir bleuté profond,
+        // des cartes de verre fumé à peine plus claires.
+        fond: const Color(0xFF05070C),
+        fondEleve: const Color(0xFF0A0E17),
+        surface: const Color(0xFF10151F),
+        surfaceHaute: const Color(0xFF1A2130),
         trait: const Color(0x14FFFFFF),
         texte: const Color(0xFFF7F9FC),
         texte2: const Color(0xFFA5B0C1),
@@ -92,10 +94,10 @@ class Palette {
     }
     return Palette(
       sombre: false,
-      fond: const Color(0xFFF3F6FA),
-      fondEleve: const Color(0xFFFAFBFD),
+      fond: const Color(0xFFF5F5F7),
+      fondEleve: const Color(0xFFFBFBFD),
       surface: const Color(0xFFFFFFFF),
-      surfaceHaute: const Color(0xFFEDF1F7),
+      surfaceHaute: const Color(0xFFEEF0F4),
       trait: const Color(0x140B1220),
       texte: const Color(0xFF0B1220),
       texte2: const Color(0xFF55607A),

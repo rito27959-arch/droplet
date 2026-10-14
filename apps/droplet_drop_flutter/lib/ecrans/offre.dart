@@ -9,8 +9,8 @@ import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
 import '../design/marque.dart';
+import '../design/scene.dart';
 import '../design/typo.dart';
-import 'choisir.dart' show iconeFichier;
 import 'transfert.dart';
 
 Future<void> montrerOffre(BuildContext context, Offre o) async {
@@ -72,59 +72,43 @@ class _FeuilleOffreState extends State<_FeuilleOffre> {
           max: 560,
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-            decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(28), border: Border.all(color: p.trait)),
+            decoration: BoxDecoration(
+              color: p.surface,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: p.sombre ? Colors.white.withValues(alpha: .1) : p.trait),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: p.sombre ? .5 : .12), blurRadius: 40, offset: const Offset(0, 16))],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    AvatarAppareil(plateforme: o.de.plateforme, empreinte: o.de.empreinte, taille: 52),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(context.t('offre_titre', {'qui': o.de.nom}), style: Typo.titreCarte.copyWith(color: p.texte)),
-                          const SizedBox(height: 2),
-                          Text(context.t('code_appareil', {'c': o.de.courte}), style: Typo.chiffres.copyWith(color: p.texte2, fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  ],
+                // Comme sur le site : l'appareil dans son halo, la phrase, la
+                // mosaïque de ce qu'il envoie, et son code.
+                Center(child: Lueur(rayon: 50, intensite: .45, child: AvatarAppareil(plateforme: o.de.plateforme, empreinte: o.de.empreinte, taille: 60))),
+                const SizedBox(height: 14),
+                Text(context.t('offre_titre', {'qui': o.de.nom}), textAlign: TextAlign.center, style: Typo.titre.copyWith(color: p.texte)),
+                const SizedBox(height: 4),
+                Text(
+                  '${context.t('n_fichiers', {'n': '${o.fichiers.length}'})} · ${tailleLocale(o.total)}',
+                  textAlign: TextAlign.center,
+                  style: Typo.chiffres.copyWith(color: p.texte2),
                 ),
                 const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: p.surfaceHaute, borderRadius: BorderRadius.circular(18)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final f in montres)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            children: [
-                              Icon(iconeFichier(f.nom), size: 18, color: p.texte2),
-                              const SizedBox(width: 10),
-                              Expanded(child: Text(f.chemin, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.secondaire.copyWith(color: p.texte))),
-                              Text(tailleLocale(f.taille), style: Typo.legende.copyWith(color: p.texte3)),
-                            ],
-                          ),
-                        ),
-                      if (o.fichiers.length > montres.length)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(context.t('et_n_autres', {'n': '${o.fichiers.length - montres.length}'}), style: Typo.secondaire.copyWith(color: p.texte2)),
-                        ),
-                      const Divider(height: 18),
-                      Row(
-                        children: [
-                          Expanded(child: Text(context.t('n_fichiers', {'n': '${o.fichiers.length}'}), style: Typo.secondaire.copyWith(color: p.texte2))),
-                          Text(tailleLocale(o.total), style: Typo.chiffres.copyWith(color: p.texte, fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                    ],
+                Mosaique(noms: [for (final f in o.fichiers) f.nom], max: 5, tuile: 56),
+                if (o.fichiers.length <= 3) ...[
+                  const SizedBox(height: 12),
+                  for (final f in montres)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Text(f.chemin, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: Typo.secondaire.copyWith(color: p.texte2)),
+                    ),
+                ],
+                const SizedBox(height: 14),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(color: p.surfaceHaute, borderRadius: BorderRadius.circular(99)),
+                    child: Text(context.t('code_appareil', {'c': o.de.courte}), style: Typo.chiffres.copyWith(color: p.texte2, fontSize: 13)),
                   ),
                 ),
                 if (o.fichiers.any((f) => _executable(f.nom))) ...[

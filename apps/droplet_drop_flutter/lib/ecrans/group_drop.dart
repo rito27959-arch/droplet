@@ -16,6 +16,7 @@ import '../app/textes.dart';
 import '../design/composants.dart';
 import '../design/couleurs.dart';
 import '../design/marque.dart';
+import '../design/scene.dart';
 import '../design/typo.dart';
 import '../src/rust/api/simple.dart' as moteur;
 import 'choisir.dart';
@@ -34,8 +35,9 @@ class EcranGroupDrop extends StatelessWidget {
         final sessions = EtatApp.i.mesSessions.values.toList().reversed.toList();
         return Scaffold(
           backgroundColor: p.fond,
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
-            backgroundColor: p.fond,
+            backgroundColor: Colors.transparent,
             surfaceTintColor: Colors.transparent,
             iconTheme: IconThemeData(color: p.accentTexte),
             title: Text(context.t('group_drop'), style: Typo.titreCarte.copyWith(color: p.texte)),
@@ -294,9 +296,45 @@ class _TableauSessionState extends State<TableauSession> {
           ),
         );
 
+        // La scène du site : le code au centre, chaque appareil autour avec
+        // son anneau, qui devient vert quand il a tout reçu.
+        final scene = Constellation(
+          hauteur: large ? 360 : 300,
+          tailleNoeud: parts.length > 10 ? 40 : 48,
+          centre: Lueur(
+            rayon: 60,
+            intensite: .45,
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+              child: QrImageView(
+                data: s.invitation,
+                size: 78,
+                padding: EdgeInsets.zero,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.circle, color: Color(0xFF080C16)),
+                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.circle, color: Color(0xFF080C16)),
+              ),
+            ),
+          ),
+          noeuds: [
+            for (final t in parts.take(16))
+              NoeudConstellation(
+                id: t.id,
+                nom: t.pair.nom.isEmpty ? t.pair.courte : t.pair.nom,
+                plateforme: t.pair.plateforme,
+                empreinte: t.pair.empreinte,
+                progression: t.progression,
+                fini: t.etat == EtatTransfert.termine,
+              ),
+          ],
+        );
+
         final tableau = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            scene,
+            const SizedBox(height: 8),
             Carte(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -381,7 +419,10 @@ class _TableauSessionState extends State<TableauSession> {
               style: Typo.titreCarte.copyWith(color: p.texte),
             ),
           ),
-          body: ListView(
+          body: Fond(
+            child: SafeArea(
+            bottom: false,
+            child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
             children: [
               Colonne(
@@ -400,6 +441,8 @@ class _TableauSessionState extends State<TableauSession> {
                       ),
               ),
             ],
+          ),
+          ),
           ),
         );
       },

@@ -20,6 +20,7 @@ import '../src/rust/api/simple.dart' as moteur;
 import 'accueil.dart';
 import 'connexion_directe.dart';
 import 'group_drop.dart';
+import 'partage_web.dart';
 import 'scanner.dart';
 import 'selection.dart';
 import 'transfert.dart';
@@ -315,6 +316,8 @@ class _EcranDestinatairesState extends State<EcranDestinataires> {
                             ],
                           ),
                           if (Natif.android) ...[const SizedBox(height: 14), const CarteConnexionDirecte()],
+                          const SizedBox(height: 14),
+                          CarteNavigateur(choisis: _fichiers),
                           const SizedBox(height: 18),
                           Carte(
                             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => CreerDistribution(choisis: _fichiers))),

@@ -257,7 +257,16 @@ class Carte extends StatelessWidget {
       curve: kSortie,
       padding: padding,
       decoration: BoxDecoration(
-        color: selectionnee ? Color.alphaBlend(p.accent.withValues(alpha: p.sombre ? 0.12 : 0.07), p.surface) : (couleur ?? p.surface),
+        color: selectionnee ? Color.alphaBlend(p.accent.withValues(alpha: p.sombre ? 0.12 : 0.07), p.surface) : (couleur ?? (p.sombre ? null : p.surface)),
+        // La nuit : du verre fumé, un reflet à peine plus clair en haut —
+        // les cartes du site posées sur le ciel.
+        gradient: p.sombre && !selectionnee && couleur == null
+            ? LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color.alphaBlend(Colors.white.withValues(alpha: 0.05), p.surface).withValues(alpha: 0.9), p.surface.withValues(alpha: 0.86)],
+              )
+            : null,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: selectionnee ? p.accent.withValues(alpha: 0.9) : p.trait, width: selectionnee ? 1.5 : 1),
         boxShadow: p.sombre ? null : [BoxShadow(color: const Color(0xFF0B1220).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
@@ -297,12 +306,15 @@ class Givre extends StatelessWidget {
   }
 }
 
-/// Le fond de l'application : uni, avec une lueur d'accent très douce en
-/// haut. Rien qui bouge.
+/// Le fond de l'application : le ciel du site. La nuit : un dégradé bleu
+/// très profond, une lueur d'accent en haut, et des étoiles fixes (toujours
+/// les mêmes, rien ne bouge). Le jour : le gris lumineux, et la même lueur,
+/// plus douce.
 class Fond extends StatelessWidget {
-  const Fond({super.key, required this.child});
+  const Fond({super.key, required this.child, this.lueur = const Alignment(0, -1.1)});
 
   final Widget child;
+  final Alignment lueur;
 
   @override
   Widget build(BuildContext context) {
@@ -310,15 +322,51 @@ class Fond extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: p.fond,
-        gradient: RadialGradient(
-          center: const Alignment(-0.6, -1.15),
-          radius: 1.25,
-          colors: [p.accent.withValues(alpha: p.sombre ? 0.16 : 0.09), p.fond.withValues(alpha: 0)],
-        ),
+        gradient: p.sombre
+            ? const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF071029), Color(0xFF05070C)], stops: [0, .55])
+            : null,
       ),
-      child: child,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: lueur,
+            radius: 1.1,
+            colors: [p.accent.withValues(alpha: p.sombre ? 0.24 : 0.10), p.accent.withValues(alpha: 0)],
+          ),
+        ),
+        child: p.sombre ? CustomPaint(painter: const _Etoiles(), child: child) : child,
+      ),
     );
   }
+}
+
+/// Le champ d'étoiles du site : pseudo-aléatoire mais fixe (même graine),
+/// plus dense en haut, et très discret.
+class _Etoiles extends CustomPainter {
+  const _Etoiles();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var graine = 7;
+    double alea() {
+      graine = (graine * 1103515245 + 12345) & 0x7fffffff;
+      return graine / 0x7fffffff;
+    }
+
+    final n = (size.width * size.height / 9000).clamp(40, 220).round();
+    final pinceau = Paint();
+    for (var i = 0; i < n; i++) {
+      final x = alea() * size.width;
+      // Plus d'étoiles près du haut.
+      final y = alea() * alea() * size.height;
+      final r = 0.5 + alea() * 1.1;
+      pinceau.color = Colors.white.withValues(alpha: 0.12 + alea() * 0.45 * (1 - y / size.height));
+      canvas.drawCircle(Offset(x, y), r, pinceau);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Etoiles old) => false;
 }
 
 /// La progression : un anneau au dégradé liquide.
