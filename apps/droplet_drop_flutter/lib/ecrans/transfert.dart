@@ -58,7 +58,9 @@ class EcranTransfert extends StatelessWidget {
             children: [
               Expanded(
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  // SafeArea ne réserve que la barre d'état : la barre de
+                  // titre, transparente, est au-dessus du contenu.
+                  padding: const EdgeInsets.fromLTRB(20, kToolbarHeight + 8, 20, 24),
                   children: [
                     Colonne(
                       child: Column(

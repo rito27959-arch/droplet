@@ -43,7 +43,9 @@ class EcranGroupDrop extends StatelessWidget {
             title: Text(context.t('group_drop'), style: Typo.titreCarte.copyWith(color: p.texte)),
           ),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            // La barre du haut est transparente et le contenu passe dessous :
+            // il commence donc SOUS elle (barre d'état + barre de titre).
+            padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + kToolbarHeight + 8, 20, 32),
             children: [
               Colonne(
                 child: Column(

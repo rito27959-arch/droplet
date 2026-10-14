@@ -114,12 +114,23 @@ class _EcranSelectionState extends State<EcranSelection> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: MediaQuery.sizeOf(context).width - 32),
-                child: Segments<Onglet>(options: options, valeur: _onglet, onChange: (o) => setState(() => _onglet = o)),
-              ),
+            // ⚠️ Une LARGEUR FINIE, toujours. Les onglets se partagent la
+            // largeur (Expanded) : dans un défilement horizontal sans borne,
+            // Flutter ne savait pas les mesurer et ne dessinait rien — on ne
+            // voyait que « Photos », l'onglet ouvert par défaut. Ils prennent
+            // la largeur de l'écran, et défilent seulement si chacun aurait
+            // moins de 84 points (petit écran, langue aux mots longs).
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final largeur = c.maxWidth < options.length * 84.0 ? options.length * 84.0 : c.maxWidth;
+                return SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: largeur,
+                    child: Segments<Onglet>(options: options, valeur: _onglet, onChange: (o) => setState(() => _onglet = o)),
+                  ),
+                );
+              },
             ),
           ),
           Expanded(

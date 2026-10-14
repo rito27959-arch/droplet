@@ -97,21 +97,49 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
     await _demarrer();
   }
 
-  Future<void> _demarrer() async {
+  /// Démarre la caméra.
+  ///
+  /// ⚠️ D'ABORD, ARRÊTER CE QUI TRAÎNE. mobile_scanner garde UNE session de
+  /// caméra pour toute l'app. Si l'on quitte un scanner pendant que sa
+  /// caméra démarre encore, l'arrêt arrive trop tôt (rien à arrêter), puis
+  /// le démarrage aboutit : la caméra reste ouverte, orpheline. Chaque
+  /// scanner suivant échouait alors (« déjà démarrée »), jusqu'au
+  /// redémarrage de l'app — « Réessayer » n'y pouvait rien. On ferme donc
+  /// toute session restée ouverte avant de démarrer.
+  ///
+  /// Et `start()` ne lève pas ses erreurs : il les range dans
+  /// `value.error`. On les lit là.
+  Future<void> _demarrer({bool deuxiemeEssai = false}) async {
+    try {
+      await MobileScannerPlatform.instance.stop();
+    } catch (_) {}
     try {
       await _camera.start();
     } on MobileScannerException catch (e) {
-      if (!mounted) return;
-      setState(() => _etat = e.errorCode == MobileScannerErrorCode.permissionDenied ? _Camera.refuseeDefinitivement : _Camera.erreur);
+      _echec(e.errorCode);
+      return;
     } catch (_) {
       if (mounted) setState(() => _etat = _Camera.erreur);
+      return;
     }
+    final erreur = _camera.value.error;
+    if (erreur == null || !mounted) return;
+    if (erreur.errorCode == MobileScannerErrorCode.controllerAlreadyInitialized && !deuxiemeEssai) {
+      return _demarrer(deuxiemeEssai: true);
+    }
+    _echec(erreur.errorCode);
+  }
+
+  void _echec(MobileScannerErrorCode code) {
+    if (!mounted) return;
+    setState(() => _etat = code == MobileScannerErrorCode.permissionDenied ? _Camera.refuseeDefinitivement : _Camera.erreur);
   }
 
   Future<void> _reessayer() async {
     setState(() => _etat = _Camera.verification);
     try {
       await _camera.stop();
+      await MobileScannerPlatform.instance.stop();
     } catch (_) {}
     await _verifier(demander: true);
   }
@@ -139,6 +167,9 @@ class _ScannerState extends State<_Scanner> with WidgetsBindingObserver {
                 errorBuilder: (context, error, _) {
                   // L'erreur arrive pendant la construction : on change
                   // d'écran au tour suivant.
+                  // « Déjà démarrée » : `_demarrer` ferme la session
+                  // orpheline et réessaie, ce n'est pas un échec.
+                  if (error.errorCode == MobileScannerErrorCode.controllerAlreadyInitialized) return const ColoredBox(color: Colors.black);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!mounted) return;
                     setState(() => _etat = error.errorCode == MobileScannerErrorCode.permissionDenied ? _Camera.refuseeDefinitivement : _Camera.erreur);
