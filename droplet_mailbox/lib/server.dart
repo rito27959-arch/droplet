@@ -149,9 +149,11 @@ Future<Response?> _controler(Request r, String peerId, List<int> corps) async {
       }
       return null;
     case Verdict.invalide:
-      return json({'error': 'signature invalide'}, statut: 401);
+      return json({'error': 'signature invalide', 'raison': Securite.raisons[r]}, statut: 401, enTetes: Securite.entetesRefus(r));
     case Verdict.absent:
-      if (compte.signe || _securite.exigerSignature) return json({'error': 'signature requise'}, statut: 401);
+      if (compte.signe || _securite.exigerSignature) {
+        return json({'error': 'signature requise', 'raison': 'requise'}, statut: 401, enTetes: Securite.entetesRefus(r));
+      }
       return null;
   }
 }
@@ -367,6 +369,7 @@ Middleware _cors() {
       'access-control-allow-origin': o,
       'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
       'access-control-allow-headers': 'content-type, x-droplet-id, x-droplet-ts, x-droplet-nonce, x-droplet-sig',
+      'access-control-expose-headers': 'x-droplet-raison, x-droplet-heure',
       'access-control-max-age': '86400',
       'vary': 'origin',
     };

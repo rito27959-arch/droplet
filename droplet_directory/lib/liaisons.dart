@@ -77,6 +77,7 @@ class Liaisons {
       'access-control-allow-origin': origine,
       'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
       'access-control-allow-headers': 'content-type, x-droplet-id, x-droplet-ts, x-droplet-nonce, x-droplet-sig',
+      'access-control-expose-headers': 'x-droplet-raison, x-droplet-heure',
       'access-control-max-age': '86400',
       'vary': 'origin',
     };

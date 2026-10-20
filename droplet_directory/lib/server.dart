@@ -353,10 +353,10 @@ Future<Response?> _controler(Request r, String peerId, List<int> corps) async {
       }
       return null;
     case Verdict.invalide:
-      return json({'error': 'signature invalide'}, statut: 401);
+      return json({'error': 'signature invalide', 'raison': Securite.raisons[r]}, statut: 401, enTetes: Securite.entetesRefus(r));
     case Verdict.absent:
       if ((compte?.signe ?? false) || _securite.exigerSignature) {
-        return json({'error': 'signature requise'}, statut: 401);
+        return json({'error': 'signature requise', 'raison': 'requise'}, statut: 401, enTetes: Securite.entetesRefus(r));
       }
       return null;
   }
@@ -378,7 +378,7 @@ Future<Response> _declarerAppareil(Request r, String peerId, String appareil) as
   final corps = await r.read().fold<List<int>>([], (a, b) => a..addAll(b));
   final compte = _comptes[peerId];
   if (await _securite.verifier(r, peerId, corps, compte?.cle) != Verdict.signe) {
-    return json({'error': 'signature du téléphone requise'}, statut: 401);
+    return json({'error': 'signature du téléphone requise', 'raison': Securite.raisons[r]}, statut: 401, enTetes: Securite.entetesRefus(r));
   }
   if (compte != null && !compte.signe) {
     _comptes[peerId] = (cle: compte.cle, signe: true);

@@ -102,6 +102,27 @@ class Securite {
 
   /// La requête vient-elle bien de [peerId] ? [clePublique] est sa clé
   /// enregistrée (base64), ou null si on ne la connaît pas.
+  /// Pourquoi la dernière requête a été refusée — sans rien révéler de
+  /// secret : « heure » (horloge du téléphone décalée de plus de 5 min),
+  /// « signature » (clé du téléphone différente de celle enregistrée),
+  /// « inconnu » (aucune clé enregistrée), « rejeu », « entetes ».
+  /// Rendu au client pour qu'il se corrige seul, et écrit au journal.
+  static final raisons = Expando<String>('raison');
+
+  Verdict _refus(Request r, String peerId, String raison) {
+    raisons[r] = raison;
+    final court = peerId.length > 8 ? peerId.substring(0, 8) : peerId;
+    print('[Sécurité] refus $court… : $raison');
+    return Verdict.invalide;
+  }
+
+  /// L'en-tête et le corps d'un 401 : la raison et l'heure du serveur, pour
+  /// que le téléphone recale son horloge et réessaie.
+  static Map<String, String> entetesRefus(Request r) => {
+        'x-droplet-raison': raisons[r] ?? 'requise',
+        'x-droplet-heure': '${DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000}',
+      };
+
   Future<Verdict> verifier(Request r, String peerId, List<int> corps, String? clePublique) async {
     final id = r.headers['x-droplet-id'];
     final ts = r.headers['x-droplet-ts'];
@@ -109,29 +130,30 @@ class Securite {
     final nonce = r.headers['x-droplet-nonce'];
     if (id == null && ts == null && sig == null) return Verdict.absent;
     if (id != peerId || ts == null || sig == null || nonce == null || nonce.length < 16 || nonce.length > 64) {
-      return Verdict.invalide;
+      return _refus(r, peerId, 'entetes');
     }
-    if (_cleServeur == null || clePublique == null) return Verdict.invalide;
+    if (_cleServeur == null) return _refus(r, peerId, 'serveur');
+    if (clePublique == null) return _refus(r, peerId, 'inconnu');
 
     final secondes = int.tryParse(ts);
-    if (secondes == null) return Verdict.invalide;
+    if (secondes == null) return _refus(r, peerId, 'heure');
     final quand = DateTime.fromMillisecondsSinceEpoch(secondes * 1000, isUtc: true);
-    if (DateTime.now().toUtc().difference(quand).abs() > _fenetre) return Verdict.invalide;
+    if (DateTime.now().toUtc().difference(quand).abs() > _fenetre) return _refus(r, peerId, 'heure');
 
     final k = await _secret(peerId, clePublique);
-    if (k == null) return Verdict.invalide;
+    if (k == null) return _refus(r, peerId, 'cle');
     final canon = '${r.method.toUpperCase()}\n${r.requestedUri.path}\n$ts\n$nonce\n${c.sha256.convert(corps)}';
     final attendu = base64Url.encode(c.Hmac(c.sha256, k).convert(utf8.encode(canon)).bytes).replaceAll('=', '');
-    if (!_egal(attendu, sig.replaceAll('=', ''))) return Verdict.invalide;
+    if (!_egal(attendu, sig.replaceAll('=', ''))) return _refus(r, peerId, 'signature');
 
     // Pas de rejeu : chaque signature ne sert qu'une fois.
     _oublierVieilles();
-    if (_vues.containsKey(sig)) return Verdict.invalide;
+    if (_vues.containsKey(sig)) return _refus(r, peerId, 'rejeu');
     _vues[sig] = DateTime.now();
     final registre = premiereFois;
     if (registre != null) {
       try {
-        if (!await registre(sig)) return Verdict.invalide;
+        if (!await registre(sig)) return _refus(r, peerId, 'rejeu');
       } catch (_) {
         // Base injoignable : la mémoire locale reste la seule garde, et la
         // requête n'est pas bloquée pour autant.
