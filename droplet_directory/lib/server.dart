@@ -342,9 +342,15 @@ final _debitInscription = Debit(capacite: 10, parMinute: 20);
 /// Contrôle d'identité : null si la requête peut passer, sinon le refus.
 /// Voir securite.dart pour la règle de transition (verrou après la
 /// première signature).
-Future<Response?> _controler(Request r, String peerId, List<int> corps) async {
+///
+/// [clePresentee] : à la toute PREMIÈRE inscription, aucune clé n'est encore
+/// enregistrée ; la signature est alors vérifiée avec la clé que la requête
+/// présente — elle prouve que le téléphone possède bien la clé privée qui
+/// va avec. Sans cela, une première inscription signée était refusée à
+/// coup sûr, et un téléphone neuf ne pouvait plus jamais entrer.
+Future<Response?> _controler(Request r, String peerId, List<int> corps, {String? clePresentee}) async {
   final compte = _comptes[peerId];
-  final verdict = await _securite.verifier(r, peerId, corps, compte?.cle);
+  final verdict = await _securite.verifier(r, peerId, corps, compte?.cle ?? clePresentee);
   switch (verdict) {
     case Verdict.signe:
       if (compte != null && !compte.signe) {
@@ -613,7 +619,7 @@ Future<Response> _handleRegister(Request request) async {
 
     // ── L'identifiant appartient à la clé qui l'a enregistré en premier ──
     final compte = _comptes[peerId];
-    final refus = await _controler(request, peerId, octets);
+    final refus = await _controler(request, peerId, octets, clePresentee: compte == null ? publicKey : null);
     if (refus != null) return refus;
     if (compte != null && compte.cle != publicKey) {
       // Changer de clé n'est permis qu'avec la signature de l'ancienne :
@@ -625,8 +631,10 @@ Future<Response> _handleRegister(Request request) async {
       }
     }
     if (compte == null || compte.cle != publicKey) {
-      _comptes[peerId] = (cle: publicKey, signe: compte?.signe ?? false);
+      final signe = (compte?.signe ?? false) || request.headers.containsKey('x-droplet-sig');
+      _comptes[peerId] = (cle: publicKey, signe: signe);
       await _base?.lierCle(peerId, publicKey);
+      if (signe) await _base?.marquerSigne(peerId);
     }
     await _base?.inscrire(peerId: peerId, pseudo: pseudo, onion: onion, cle: publicKey, fcm: fcmToken);
 
