@@ -1,0 +1,14 @@
+name: Diag prod
+on: { push: { branches: [diag-prod] } }
+permissions: { contents: write }
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          pip install cryptography >/dev/null
+          python3 test_prod.py > /tmp/j.txt 2>&1; cat /tmp/j.txt
+          git config user.name ci; git config user.email ci@users.noreply.github.com
+          git checkout -q --orphan journal-diag-prod; git rm -rfq . >/dev/null
+          cp /tmp/j.txt journal.txt; git add journal.txt; git commit -qm "diag $GITHUB_SHA"; git push -fq origin journal-diag-prod
