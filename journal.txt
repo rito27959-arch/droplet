@@ -1,0 +1,4 @@
+inscription signée (neuf): 200 {"ok":true,"count":5}
+relève boîte: 200 {"messages":[],"count":0}
+horloge +15 min: 401 heure {"error":"signature invalide","raison":"heure"}
+désinscription: 200
