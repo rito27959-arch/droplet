@@ -41,6 +41,11 @@ class Appareil:
 alice, bob, pirate = Appareil('alice'), Appareil('bob'), Appareil('pirate')
 verifier('inscription sans signature (ancienne app) acceptée', alice.inscription() == 200)
 verifier('bob inscrit', bob.inscription() == 200)
+# Un téléphone NEUF dont la toute première inscription est déjà signée :
+# l'annuaire doit vérifier avec la clé présentée (bug du 20 octobre : 401).
+neuf = Appareil('neuf')
+verifier('première inscription signée acceptée', neuf.inscription(signe=True) == 200)
+verifier('…et la boîte reconnaît aussitôt sa clé', req(BOI + '/messages/' + neuf.id, entetes=neuf.signer('GET', '/messages/' + neuf.id))[0] == 200)
 verifier('le pirate ne peut pas remplacer la clé d’Alice', pirate.inscription(pub=pirate.pub) == 200 and
          req(ANN + '/register', 'POST', {'peerId': alice.id, 'pseudo': 'P', 'onion': 'p.onion', 'publicKey': pirate.pub})[0] == 409)
 verifier('/notify refusé sans clé interne', req(ANN + '/notify', 'POST', {'peerId': alice.id, 'title': 'x', 'body': 'y'})[0] == 403)
