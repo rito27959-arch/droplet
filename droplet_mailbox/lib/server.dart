@@ -215,8 +215,48 @@ Future<Response> _deposer(Request r) async {
       await _db.execute(Sql.named("SELECT pg_notify('boite', @a)"), parameters: {'a': a});
     } catch (_) {}
   }());
-  _notifier(de, a);
+  if (_meriteUnReveil(de, a, payload)) _notifier(de, a);
   return json({'ok': true, 'id': id});
+}
+
+/// Les derniers réveils « paquet » par expéditeur→destinataire.
+final _derniersReveils = <String, DateTime>{};
+
+/// Ce dépôt mérite-t-il « Nouveau message » sur le téléphone ?
+///
+/// ⚠️ AVANT, CHAQUE DÉPÔT RÉVEILLAIT. Or la boîte transporte bien plus que
+/// des messages : les accusés « distribué / lu », les échanges avec Droplet
+/// Web, chaque morceau d'une photo, et les paquets techniques (statuts,
+/// synchro de groupe, demandes de photo de profil…). Le destinataire
+/// recevait « Nouveau message de papa » toutes les deux minutes, ouvrait
+/// l'app, et n'y trouvait rien. On lit l'enveloppe — en clair par
+/// construction, le contenu, lui, reste chiffré :
+///   • `rc` (accusé), `w`/`l` (Droplet Web) : jamais ;
+///   • `f: 2` (morceau de fichier) : seulement le premier ;
+///   • `pk` (paquet) : si l'app le marque `nt: 1` (message de groupe) ; une
+///     app plus ancienne ne marque rien → au plus un réveil par quart d'heure.
+bool _meriteUnReveil(String de, String a, String payload) {
+  Object? e;
+  try {
+    e = jsonDecode(payload);
+  } catch (_) {
+    return true;
+  }
+  if (e is! Map) return true;
+  if (e['rc'] == 1 || e['w'] == 1 || e['l'] == 1) return false;
+  if (e['f'] == 2) return (e['i'] ?? 0) == 0;
+  if (e['pk'] == 1) {
+    if (e['nt'] == 1) return true;
+    if (e['nt'] == 0) return false;
+    final cle = '$de>$a';
+    final avant = _derniersReveils[cle];
+    final maintenant = DateTime.now();
+    if (avant != null && maintenant.difference(avant) < const Duration(minutes: 15)) return false;
+    _derniersReveils[cle] = maintenant;
+    if (_derniersReveils.length > 20000) _derniersReveils.clear();
+    return true;
+  }
+  return true;
 }
 
 /// Réveille le destinataire par notification push (via l'annuaire, seul
