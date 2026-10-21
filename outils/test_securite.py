@@ -106,6 +106,8 @@ verifier('déclarer un appareil sans signature : refusé', req(ANN + chemin_cle,
 verifier('le pirate ne peut pas attacher un appareil au compte d’Alice',
          signee(pirate, 'POST', chemin_cle, {'cle': pirate.pub}, base=ANN, entetes={'x-droplet-id': alice.id})[0] == 401)
 verifier('Alice déclare son navigateur', signee(alice, 'POST', chemin_cle, {'cle': nav.pub}, base=ANN)[0] == 200)
+liste = json.loads(req(ANN + f'/appareils/{alice.id}/liste')[1])
+verifier('ses contacts voient son navigateur et sa clé', {'id': nav.id, 'cle': nav.pub} in liste['appareils'])
 verifier('une autre clé pour le même appareil : refusée', signee(alice, 'POST', chemin_cle, {'cle': pirate.pub}, base=ANN)[0] == 409)
 chemin_nav = '/messages/' + nav.id
 verifier('le navigateur relève sa file, signé', signee(nav, 'GET', chemin_nav)[0] == 200)
@@ -127,6 +129,7 @@ chemin_rev = f'/appareils/{alice.id}/{nav.id}'
 verifier('déconnexion non signée : refusée', req(ANN + chemin_rev, 'DELETE')[0] == 401)
 verifier('Alice déconnecte son navigateur', signee(alice, 'DELETE', chemin_rev, base=ANN)[0] == 200)
 verifier('le navigateur déconnecté ne relève plus rien', signee(nav, 'GET', chemin_nav)[0] == 401)
+verifier('le navigateur déconnecté disparaît de la liste', all(x['id'] != nav.id for x in json.loads(req(ANN + f'/appareils/{alice.id}/liste')[1])['appareils']))
 verifier('l’annuaire dit au navigateur qu’il est déconnecté', json.loads(req(ANN + chemin_rev + '/etat')[1])['lie'] is False)
 verifier('on ne relie pas un appareil déconnecté', signee(alice, 'POST', chemin_cle, {'cle': nav.pub}, base=ANN)[0] == 410)
 

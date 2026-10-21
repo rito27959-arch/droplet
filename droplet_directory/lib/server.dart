@@ -335,6 +335,13 @@ late final Securite _securite;
 /// mémoire de la table `comptes` : une recherche par requête, sans base.
 final Map<String, ({String cle, bool signe})> _comptes = {};
 
+/// Compte → ses appareils liés (identifiant → clé publique X25519).
+final Map<String, Map<String, String>> _appareilsDe = {};
+
+/// Les comptes dont l'app chiffre aussi pour les appareils liés des autres
+/// (et comprend les messages qu'un appareil lié envoie au nom d'un compte).
+final Set<String> _multiAppareils = {};
+
 final _debitNotify = Debit(capacite: 20, parMinute: 30);
 final _debitRecherche = Debit(capacite: 20, parMinute: 30);
 final _debitInscription = Debit(capacite: 10, parMinute: 20);
@@ -403,7 +410,28 @@ Future<Response> _declarerAppareil(Request r, String peerId, String appareil) as
   _comptes[appareil] = (cle: cle, signe: true);
   await _base?.lierCle(appareil, cle);
   await _base?.marquerSigne(appareil);
+  // Rattaché au compte : ses contacts sauront chiffrer pour lui.
+  if ((_appareilsDe[peerId] ??= {})[appareil] != cle) {
+    _appareilsDe[peerId]![appareil] = cle;
+    await _base?.rattacherAppareil(peerId, appareil, cle);
+  }
   return json({'ok': true});
+}
+
+/// Les appareils liés d'un compte, pour qu'un contact chiffre aussi pour
+/// eux. Public comme une clé publique : on n'y apprend rien qu'on ne puisse
+/// déjà déduire en écrivant à ce compte. `md` : l'app du compte sait elle-même
+/// chiffrer pour les appareils des autres.
+Response _listerAppareils(Request r, String peerId) {
+  if (!Liaisons.formeValide(peerId)) return Response(400);
+  final appareils = [
+    for (final e in (_appareilsDe[peerId] ?? const <String, String>{}).entries)
+      if (!_liaisons.estRevoque(peerId, e.key)) {'id': e.key, 'cle': e.value},
+  ];
+  return Response.ok(
+    jsonEncode({'md': _multiAppareils.contains(peerId), 'appareils': appareils}),
+    headers: {'content-type': 'application/json', 'cache-control': 'no-store'},
+  );
 }
 
 /// Le téléphone retire un appareil : plus de clé, plus de file.
@@ -414,6 +442,9 @@ Future<Response> _revoquerAppareil(Request r, String peerId, String appareil) as
   final reponse = _liaisons.revoquer(r, peerId, appareil);
   if (appareil != peerId && _comptes.remove(appareil) != null) {
     await _base?.oublierAppareil(appareil);
+  }
+  if (_appareilsDe[peerId]?.remove(appareil) != null) {
+    await _base?.detacherAppareil(peerId, appareil);
   }
   return reponse;
 }
@@ -453,6 +484,7 @@ final _router = Router()
   ..get('/liaison/<canal>', (Request r, String canal) => _liaisons.relever(r, canal))
   ..post('/appareils/<id>/<appareil>/cle', _declarerAppareil)
   ..delete('/appareils/<id>/<appareil>', _revoquerAppareil)
+  ..get('/appareils/<id>/liste', _listerAppareils)
   ..get('/appareils/<id>/<appareil>/etat', (Request r, String id, String appareil) => _liaisons.etat(r, id, appareil))
   ..get('/i', _handleInvitation)
   ..get('/i/apercu.jpg', _handleApercuInvitation)
@@ -637,6 +669,12 @@ Future<Response> _handleRegister(Request request) async {
       if (signe) await _base?.marquerSigne(peerId);
     }
     await _base?.inscrire(peerId: peerId, pseudo: pseudo, onion: onion, cle: publicKey, fcm: fcmToken);
+    // L'app annonce qu'elle sait chiffrer pour les appareils liés.
+    final md = json['md'] == true;
+    if (md != _multiAppareils.contains(peerId)) {
+      md ? _multiAppareils.add(peerId) : _multiAppareils.remove(peerId);
+      await _base?.noterMultiAppareils(peerId, md);
+    }
 
     _db.register(DirectoryEntry(
       peerId: peerId,
@@ -1534,6 +1572,8 @@ Future<void> main(List<String> args) async {
       _securite.premiereFois = _base!.registre;
       Timer.periodic(const Duration(minutes: 5), (_) => _base?.oublierVieillesSignatures2().catchError((_) {}));
       _comptes.addAll(await _base!.comptes());
+      _appareilsDe.addAll(await _base!.appareils());
+      _multiAppareils.addAll(await _base!.comptesMultiAppareils());
       for (final l in await _base!.annuaire()) {
         _db.register(DirectoryEntry(
           peerId: l[0] as String,
