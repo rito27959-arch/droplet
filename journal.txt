@@ -1,0 +1,96 @@
+✅ inscription sans signature (ancienne app) acceptée
+✅ bob inscrit
+✅ première inscription signée acceptée
+✅ …et la boîte reconnaît aussitôt sa clé
+✅ le pirate ne peut pas remplacer la clé d’Alice
+✅ /notify refusé sans clé interne
+✅ /notify accepté avec la clé interne
+✅ dépôt sans signature (ancienne app)
+✅ relève sans signature tant qu’Alice n’a jamais signé
+✅ relève signée acceptée
+✅ après signature, relève non signée REFUSÉE
+✅ signature du pirate refusée
+✅ rejeu de la même signature refusé
+✅ signature périmée refusée
+✅ le pirate ne dépose plus au nom d’Alice
+✅ attente longue réveillée par le dépôt (2.0 s)
+✅ le message survit au redémarrage
+✅ la protection d’Alice survit au redémarrage de l’annuaire
+✅ Alice (signée) se réinscrit normalement
+✅ l’inscription survit au redémarrage
+✅ déclarer un appareil sans signature : refusé
+✅ le pirate ne peut pas attacher un appareil au compte d’Alice
+✅ Alice déclare son navigateur
+✅ ses contacts voient son navigateur et sa clé
+✅ …et la clé du compte lui-même
+✅ une autre clé pour le même appareil : refusée
+✅ le navigateur relève sa file, signé
+✅ sa file non signée : refusée
+✅ le téléphone dépose un lot pour le navigateur
+✅ le navigateur reçoit le lot
+✅ le navigateur dépose une demande pour le téléphone
+✅ personne ne dépose au nom du navigateur
+✅ la boîte accepte Droplet Web (CORS, en-têtes de signature)
+✅ la recherche par pseudo répond à Droplet Web (CORS)
+✅ l’appareil n’apparaît pas dans la recherche
+✅ déconnexion non signée : refusée
+✅ Alice déconnecte son navigateur
+✅ le navigateur déconnecté ne relève plus rien
+✅ le navigateur déconnecté disparaît de la liste
+✅ l’annuaire dit au navigateur qu’il est déconnecté
+✅ on ne relie pas un appareil déconnecté
+✅ inondation freinée (429 après 53 dépôts)
+RÉSULTAT OK
+code: 0
+== palier 10000 400
+appareils connectés en attente longue : 10000
+dépôts réussis : 12103 (336/s, visé 400/s) · reçus : 12103 · erreurs : 0
+délai dépôt → réception : médiane 495 ms · 95 % 2237 ms · max 5906 ms
+boîte : processeur max 208 % (moyenne 144 %, 100 % = 1 cœur) · mémoire max 255 Mo
+== annuaire
+  GET /health         — Health check
+[Directory] Enregistré: Testeur (c9346bc9…) sans jeton push — total: 1
+[Directory] Enregistré: Testeur (246e64ed…) sans jeton push — total: 2
+[Directory] Enregistré: Testeur (820fcc3c…) sans jeton push — total: 3
+[Directory] Enregistré: Testeur (49519986…) sans jeton push — total: 4
+[Directory] ⛔ Tentative de remplacer la clé de c9346bc9… refusée
+[Sécurité] Clé publique du serveur : k1nqnqjqQasqmhAkA5hSowtxTcLwE2gd5zulqENxFkU=
+[Directory] Postgres : 4 inscriptions et 4 comptes rechargés
+[Directory] FIREBASE_SERVICE_ACCOUNT_JSON absente — /notify restera sans effet
+[Directory] Paquets de clés Signal dans cles_signal
+[Directory] Sauvegardes chiffrées dans sauvegardes
+[Directory] ⚠️ Signalements dans reports.json — PERDUS au prochain redéploiement (aucun volume monté sur /data)
+[Directory] ⚠️ ADMIN_KEY absente — /admin/reports et /admin/warn répondront 503 (modération désactivée)
+[Directory] Serveur annuaire démarré sur http://0.0.0.0:8080
+[Directory] Endpoints:
+  POST /register      — Enregistrer un appareil
+  DELETE /register    — Se désinscrire
+  GET /search?q=      — Chercher un contact
+  POST /notify        — Réveiller un appareil par push
+  POST /report        — Signaler un contact
+  POST /presence      — Battement de présence (app ouverte)
+  GET /presence?ids=  — Dernier battement de ces identifiants
+  GET /admin/reports  — [clé admin] Lister les signalements
+  POST /admin/warn    — [clé admin] Avertir un compte
+  POST|GET /liaison/<canal> — Liaison de Droplet Web
+  DELETE /appareils/<id>/<appareil> — Déconnecter un appareil lié
+  GET /health         — Health check
+[Directory] Enregistré: Testeur (c9346bc9…) sans jeton push — total: 4
+[Sécurité] refus c9346bc9… : signature
+[Directory] dernière minute : 12176 requêtes (200×12170 401×4 409×1 410×1)
+== boite
+[Sécurité] Clé publique du serveur : k1nqnqjqQasqmhAkA5hSowtxTcLwE2gd5zulqENxFkU=
+[Boîte] Prête — 4 copie(s), stockage Postgres
+[Sécurité] refus c9346bc9… : signature
+[Sécurité] refus c9346bc9… : rejeu
+[Sécurité] refus c9346bc9… : heure
+[Sécurité] Clé publique du serveur : k1nqnqjqQasqmhAkA5hSowtxTcLwE2gd5zulqENxFkU=
+[Boîte] Prête — 4 copie(s), stockage Postgres
+[Sécurité] refus p1UUodt5… : inconnu
+[Boîte] dernière minute : 11953 requêtes (200×11951 401×2) · 119 lentes
+[Boîte 3] dernière minute : 11928 requêtes (200×11917 429×11)
+[Boîte 2] dernière minute : 11430 requêtes (200×11424 401×1 429×5)
+[Boîte 1] dernière minute : 11556 requêtes (200×11551 429×5)
+== build
+Generated: /tmp/annuaire
+Generated: /tmp/boite
