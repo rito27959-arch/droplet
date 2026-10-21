@@ -728,7 +728,19 @@ Future<Response> _handleVerifierInterne(Request request) async {
     },
   );
   final refus = await _controler(simulee, peerId, const []);
-  return json({'ok': refus == null, 'signeRequis': _comptes[peerId]?.signe ?? false});
+  // Un appareil lié (Droplet Web) qui parle au nom de son compte : vrai
+  // seulement si le téléphone de ce compte l'a bien rattaché.
+  final compte = j['compte'];
+  final compteValide = refus == null &&
+      compte is String &&
+      compte.isNotEmpty &&
+      (_appareilsDe[compte]?.containsKey(peerId) ?? false) &&
+      !_liaisons.estRevoque(compte, peerId);
+  return json({
+    'ok': refus == null,
+    'signeRequis': _comptes[peerId]?.signe ?? false,
+    if (compteValide) 'compte': compte,
+  });
 }
 
 Future<Response> _handleNotify(Request request) async {
