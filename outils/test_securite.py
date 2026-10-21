@@ -108,6 +108,7 @@ verifier('le pirate ne peut pas attacher un appareil au compte d’Alice',
 verifier('Alice déclare son navigateur', signee(alice, 'POST', chemin_cle, {'cle': nav.pub}, base=ANN)[0] == 200)
 liste = json.loads(req(ANN + f'/appareils/{alice.id}/liste')[1])
 verifier('ses contacts voient son navigateur et sa clé', {'id': nav.id, 'cle': nav.pub} in liste['appareils'])
+verifier('…et la clé du compte lui-même', liste.get('cle') == alice.pub)
 verifier('une autre clé pour le même appareil : refusée', signee(alice, 'POST', chemin_cle, {'cle': pirate.pub}, base=ANN)[0] == 409)
 chemin_nav = '/messages/' + nav.id
 verifier('le navigateur relève sa file, signé', signee(nav, 'GET', chemin_nav)[0] == 200)

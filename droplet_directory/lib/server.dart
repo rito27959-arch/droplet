@@ -429,7 +429,7 @@ Response _listerAppareils(Request r, String peerId) {
       if (!_liaisons.estRevoque(peerId, e.key)) {'id': e.key, 'cle': e.value},
   ];
   return Response.ok(
-    jsonEncode({'md': _multiAppareils.contains(peerId), 'appareils': appareils}),
+    jsonEncode({'md': _multiAppareils.contains(peerId), 'cle': _comptes[peerId]?.cle, 'appareils': appareils}),
     headers: {'content-type': 'application/json', 'cache-control': 'no-store'},
   );
 }
