@@ -166,6 +166,8 @@ class DirectoryDb {
   /// TTL d'une entrée : 7 jours.
   static const _ttl = Duration(days: 7);
 
+  DirectoryEntry? de(String peerId) => _entries[peerId];
+
   void register(DirectoryEntry entry) {
     entry.lastSeen = DateTime.now();
     _entries[entry.peerId] = entry;
@@ -429,7 +431,14 @@ Response _listerAppareils(Request r, String peerId) {
       if (!_liaisons.estRevoque(peerId, e.key)) {'id': e.key, 'cle': e.value},
   ];
   return Response.ok(
-    jsonEncode({'md': _multiAppareils.contains(peerId), 'cle': _comptes[peerId]?.cle, 'appareils': appareils}),
+    jsonEncode({
+      'md': _multiAppareils.contains(peerId),
+      'cle': _comptes[peerId]?.cle,
+      // Le pseudo public (celui que la recherche montre déjà) : Droplet Web
+      // nomme la discussion même si le téléphone ne l'a jamais transmise.
+      'pseudo': _db.de(peerId)?.pseudo,
+      'appareils': appareils,
+    }),
     headers: {'content-type': 'application/json', 'cache-control': 'no-store'},
   );
 }
