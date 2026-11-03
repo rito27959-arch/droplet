@@ -56,6 +56,7 @@ import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 import 'package:args/args.dart';
 
+import 'annonces.dart';
 import 'apercu_invitation.dart';
 import 'cles_signal.dart';
 import 'fcm.dart';
@@ -498,7 +499,17 @@ final _router = Router()
   ..get('/i', _handleInvitation)
   ..get('/i/apercu.jpg', _handleApercuInvitation)
   ..post('/interne/verifier', _handleVerifierInterne)
+  // ── Le compte officiel Droplet (voir `annonces.dart`) ──
+  ..get('/annonces.json', (Request r) => _compte.lot(r))
+  ..get('/annonces/cle', (Request r) => _compte.cle(r))
+  ..get('/admin/annonces', (Request r) => _compte.page(r))
+  ..get('/admin/annonces/liste', (Request r) => _refusAdmin(r) ?? _compte.liste(r))
+  ..post('/admin/annonces', (Request r) async => _refusAdmin(r) ?? await _compte.publier(r))
+  ..delete('/admin/annonces/<id>', (Request r, String id) => _refusAdmin(r) ?? _compte.retirer(r, id))
   ..get('/health', _handleHealth);
+
+/// Le compte officiel : sa clé de signature et ses annonces.
+late CompteOfficiel _compte;
 
 /// Version courte et non-sensible d'un identifiant technique, pour les
 /// journaux — jamais l'identifiant complet, qui n'a rien à faire en clair
@@ -1661,6 +1672,9 @@ Future<void> main(List<String> args) async {
   _clesSignal = StockClesSignal(dossierCles);
   _liaisons = Liaisons(File(Platform.environment['REVOCATIONS_PATH'] ??
       (Directory('/data').existsSync() ? '/data/revocations.json' : 'revocations.json')));
+  // Le compte officiel : clé de signature et annonces, sur le volume.
+  _compte = await CompteOfficiel.ouvrir(Directory(Platform.environment['ANNONCES_PATH'] ??
+      (Directory('/data').existsSync() ? '/data/annonces' : 'annonces')));
   print('[Directory] Paquets de clés Signal dans ${dossierCles.path}');
   print('[Directory] Sauvegardes chiffrées dans ${dossierSauvegardes.path}');
   if (reportsPath.startsWith('/data/')) {
@@ -1723,5 +1737,7 @@ Future<void> main(List<String> args) async {
   print('  POST /admin/warn    — [clé admin] Avertir un compte');
   print('  POST|GET /liaison/<canal> — Liaison de Droplet Web');
   print('  DELETE /appareils/<id>/<appareil> — Déconnecter un appareil lié');
+  print('  GET /annonces.json  — Les annonces signées du compte officiel');
+  print('  GET /admin/annonces — Page de publication (clé admin)');
   print('  GET /health         — Health check');
 }
