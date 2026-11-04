@@ -21,6 +21,7 @@ jobs:
             [ -d "$d" ] || continue
             ( cd $d; echo "== $d"; dart pub get >/dev/null 2>&1; echo "pub: $?"; dart analyze lib; echo "analyse: $?"; dart compile exe lib/server.dart -o /tmp/srv; echo "compilation: $?" ) >> /tmp/journal.txt 2>&1
           done
+          ( cd droplet_mailbox && echo "== essai VAPID" && dart run tool/essai_vapid.dart; echo "essai: $?" ) >> /tmp/journal.txt 2>&1
           cat /tmp/journal.txt
           git config user.name ci; git config user.email ci@users.noreply.github.com
           git checkout -q --orphan journal-serveurs; git rm -rfq . >/dev/null

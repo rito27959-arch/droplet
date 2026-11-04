@@ -48,6 +48,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 
+import 'push_web.dart';
 import 'securite.dart';
 
 const _tailleMaxMessage = 2 * 1024 * 1024;
@@ -57,6 +58,7 @@ final _formeId = RegExp(r'^[A-Za-z0-9_-]{4,128}$');
 
 late final Pool _db;
 late final Securite _securite;
+late final PushWeb _push;
 final _hasard = Random.secure();
 final _http = http.Client();
 final _annuaire = Platform.environment['DIRECTORY_URL'] ?? 'https://droplet-directory-production.up.railway.app';
@@ -216,6 +218,8 @@ Future<Response> _deposer(Request r) async {
     } catch (_) {}
   }());
   if (_meriteUnReveil(de, a, payload)) _notifier(de, a);
+  // Droplet Web, onglet fermé : une notification du navigateur.
+  if (PushWeb.merite(payload)) _push.reveiller(a);
   return json({'ok': true, 'id': id});
 }
 
@@ -329,6 +333,40 @@ Future<Response> _toutEffacer(Request r, String peerId) async {
   return json({'ok': true, 'removed': res.affectedRows});
 }
 
+// ── Notifications de Droplet Web (voir `push_web.dart`) ──────────────
+
+Response _clePush(Request r) => json({'cle': _push.clePublique});
+
+/// Un navigateur lié confie son adresse d'abonnement. Signé comme un
+/// relevé : seul ce navigateur peut s'abonner pour lui-même.
+Future<Response> _abonnerPush(Request r, String peerId) async {
+  if (!_formeId.hasMatch(peerId)) return json({'error': 'identifiant invalide'}, statut: 400);
+  final octets = await r.read().fold<List<int>>([], (a, b) => a..addAll(b));
+  if (octets.length > 4096) return json({'error': 'trop grand'}, statut: 413);
+  final refus = await _controler(r, peerId, octets);
+  if (refus != null) return refus;
+  final Object? j;
+  try {
+    j = jsonDecode(utf8.decode(octets));
+  } catch (_) {
+    return json({'error': 'corps illisible'}, statut: 400);
+  }
+  final endpoint = j is Map ? j['endpoint'] : null;
+  if (endpoint is! String || !adressePushAcceptable(endpoint)) {
+    return json({'error': 'adresse de notification refusée'}, statut: 400);
+  }
+  await _push.abonner(peerId, endpoint);
+  return json({'ok': true});
+}
+
+Future<Response> _desabonnerPush(Request r, String peerId) async {
+  if (!_formeId.hasMatch(peerId)) return json({'error': 'identifiant invalide'}, statut: 400);
+  final refus = await _controler(r, peerId, const []);
+  if (refus != null) return refus;
+  await _push.desabonner(peerId);
+  return json({'ok': true});
+}
+
 Future<Response> _sante(Request r) async {
   try {
     final n = await _db.execute('SELECT count(*), count(DISTINCT destinataire) FROM messages');
@@ -348,12 +386,16 @@ final _routes = Router()
   ..get('/messages/<peerId>', _relever)
   ..delete('/messages/<peerId>/<id>', _accuser)
   ..delete('/messages/<peerId>', _toutEffacer)
+  ..get('/push/cle', _clePush)
+  ..post('/push/<peerId>', _abonnerPush)
+  ..delete('/push/<peerId>', _desabonnerPush)
   ..get('/health', _sante);
 
 Future<void> main() async {
   _securite = await Securite.depuisEnvironnement();
   await _ouvrirBase();
   await _preparerBase();
+  _push = await PushWeb.ouvrir(_db);
 
   Timer.periodic(const Duration(minutes: 5), (_) => oublierVieillesSignatures(_db).catchError((_) {}));
 
@@ -381,6 +423,7 @@ Future<void> main() async {
 Future<void> _copie(int numero) async {
   _securite = await Securite.depuisEnvironnement(silencieux: true);
   await _ouvrirBase();
+  _push = await PushWeb.ouvrir(_db);
   await _servir(numero);
 }
 

@@ -13,3 +13,5 @@ dependencies:
   cryptography: ^2.7.0
   crypto: ^3.0.3
   http: ^1.2.0
+  # La signature ES256 des notifications de Droplet Web (VAPID).
+  pointycastle: ^3.9.1
