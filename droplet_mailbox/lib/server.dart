@@ -49,6 +49,7 @@ import 'package:shelf/shelf_io.dart' as io;
 import 'package:shelf_router/shelf_router.dart';
 
 import 'kunfox.dart';
+import 'kunfox_duels.dart';
 import 'push_web.dart';
 import 'securite.dart';
 
@@ -61,6 +62,7 @@ late final Pool _db;
 late final Securite _securite;
 late final PushWeb _push;
 late final SauvegardesKunfox _kunfox;
+late final DuelsKunfox _duels;
 final _hasard = Random.secure();
 final _http = http.Client();
 final _annuaire = Platform.environment['DIRECTORY_URL'] ?? 'https://droplet-directory-production.up.railway.app';
@@ -395,6 +397,9 @@ final _routes = Router()
   ..get('/push/cle', _clePush)
   ..post('/push/<peerId>', _abonnerPush)
   ..delete('/push/<peerId>', _desabonnerPush)
+  ..post('/kunfox/duels', (Request r) => _duels.creer(r))
+  ..get('/kunfox/duels/<code>', (Request r, String code) => _duels.lire(r, code))
+  ..post('/kunfox/duels/<code>/resultat', (Request r, String code) => _duels.repondre(r, code))
   ..get('/kunfox/<id>', (Request r, String id) => _kunfox.lire(r, id))
   ..put('/kunfox/<id>', (Request r, String id) => _kunfox.ecrire(r, id))
   ..get('/health', _sante);
@@ -405,9 +410,12 @@ Future<void> main() async {
   await _preparerBase();
   await PushWeb.preparer(_db);
   await SauvegardesKunfox.preparer(_db);
+  await DuelsKunfox.preparer(_db);
   _push = PushWeb(_db);
   _kunfox = SauvegardesKunfox(_db);
+  _duels = DuelsKunfox(_db);
   Timer.periodic(const Duration(hours: 24), (_) => _kunfox.oublierVieilles().catchError((_) => 0));
+  Timer.periodic(const Duration(hours: 6), (_) => _duels.oublierVieux().catchError((_) => 0));
 
   Timer.periodic(const Duration(minutes: 5), (_) => oublierVieillesSignatures(_db).catchError((_) {}));
 
@@ -437,6 +445,7 @@ Future<void> _copie(int numero) async {
   await _ouvrirBase();
   _push = PushWeb(_db);
   _kunfox = SauvegardesKunfox(_db);
+  _duels = DuelsKunfox(_db);
   await _servir(numero);
 }
 
