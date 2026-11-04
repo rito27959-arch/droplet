@@ -466,7 +466,7 @@ Future<void> _servir(int numero) async {
 /// la boîte répond aux requêtes croisées pour les origines de Droplet
 /// seulement, en-têtes de signature compris.
 Middleware _cors() {
-  const origines = {'https://web.dropletmesh.app', 'https://dropletmesh.app', 'http://localhost:8080'};
+  const origines = {'https://web.dropletmesh.app', 'https://dropletmesh.app', 'https://kunfox.dropletmesh.app', 'http://localhost:8080'};
   Map<String, String> entetes(Request r) {
     final o = r.headers['origin'];
     if (o == null || !(origines.contains(o) || o.endsWith('.vercel.app'))) return const {};
