@@ -39,6 +39,7 @@ jobs:
           PORT=8081 /tmp/boite > /tmp/boite.log 2>&1 &
           sleep 3
           python3 outils/test_securite.py > /tmp/r.txt 2>&1; echo "code: $?" >> /tmp/r.txt
+          echo "== kunfox" >> /tmp/r.txt; python3 outils/test_kunfox.py >> /tmp/r.txt 2>&1; echo "code kunfox: $?" >> /tmp/r.txt
           pip install aiohttp >/dev/null 2>&1
           ulimit -n 65536
           for palier in "10000 400"; do
