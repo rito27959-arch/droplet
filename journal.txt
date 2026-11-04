@@ -1,0 +1,30 @@
+== droplet_directory
+pub: 0
+Analyzing lib...
+No issues found!
+analyse: 0
+Generated: /tmp/srv
+compilation: 0
+== droplet_mailbox
+pub: 0
+Analyzing lib...
+No issues found!
+analyse: 0
+Generated: /tmp/srv
+compilation: 0
+== outils/verif_appels
+pub: 0
+Analyzing lib...
+
+warning - server.dart:371:41 - Unnecessary cast. Try removing the cast. - unnecessary_cast
+
+1 issue found.
+analyse: 2
+Generated: /tmp/srv
+compilation: 0
+== essai VAPID
+VAPID_CLE BA_punNLAah-hwIcLpkpJtTF1JE4el5v-vAYFOJjnlQc6kIHGFdnSWzWdAaNuzDz1fEt5bdvwBSQVayMFmDR-gU
+VAPID_JETON eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJodHRwczovL2ZjbS5nb29nbGVhcGlzLmNvbSIsImV4cCI6MTc5Mzg3MDA0Miwic3ViIjoiaHR0cHM6Ly9kcm9wbGV0bWVzaC5hcHAifQ.EpTh8BZIbxSKchg9EGp17T0BhHiifLw0N6zE_3b5uZFJoXxw_f_WpD1yGk3evjNHzUn24cMEgebtqocnkjr7Ug
+ADRESSE_FCM true
+ADRESSE_AUTRE false
+essai: 0
