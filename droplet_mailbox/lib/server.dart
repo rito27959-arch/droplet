@@ -335,7 +335,11 @@ Future<Response> _toutEffacer(Request r, String peerId) async {
 
 // ── Notifications de Droplet Web (voir `push_web.dart`) ──────────────
 
-Response _clePush(Request r) => json({'cle': _push.clePublique});
+Future<Response> _clePush(Request r) async {
+  final cle = await _push.clePublique();
+  if (cle == null) return json({'error': 'indisponible, réessayez'}, statut: 503);
+  return json({'cle': cle});
+}
 
 /// Un navigateur lié confie son adresse d'abonnement. Signé comme un
 /// relevé : seul ce navigateur peut s'abonner pour lui-même.
@@ -395,7 +399,8 @@ Future<void> main() async {
   _securite = await Securite.depuisEnvironnement();
   await _ouvrirBase();
   await _preparerBase();
-  _push = await PushWeb.ouvrir(_db);
+  await PushWeb.preparer(_db);
+  _push = PushWeb(_db);
 
   Timer.periodic(const Duration(minutes: 5), (_) => oublierVieillesSignatures(_db).catchError((_) {}));
 
@@ -423,7 +428,7 @@ Future<void> main() async {
 Future<void> _copie(int numero) async {
   _securite = await Securite.depuisEnvironnement(silencieux: true);
   await _ouvrirBase();
-  _push = await PushWeb.ouvrir(_db);
+  _push = PushWeb(_db);
   await _servir(numero);
 }
 

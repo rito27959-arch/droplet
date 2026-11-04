@@ -47,51 +47,85 @@ bool adressePushAcceptable(String endpoint) {
 }
 
 class PushWeb {
-  PushWeb._(this._db, this._d, this.clePublique);
+  PushWeb(this._db);
+
+  PushWeb._essai(this._db, BigInt d) {
+    _d = d;
+    _cle = _b64url((_courbe.G * d)!.getEncoded(false));
+  }
 
   final Pool _db;
-  final BigInt _d;
-
-  /// La clé publique VAPID (65 octets, non compressée), en base64url sans
-  /// remplissage : ce que le navigateur passe à `pushManager.subscribe`.
-  final String clePublique;
+  BigInt? _d;
+  String? _cle;
+  Future<bool>? _chargement;
 
   final _client = http.Client();
   final _derniers = <String, DateTime>{};
 
   static final _courbe = ECDomainParameters('secp256r1');
 
-  /// Prépare les tables et la clé (créée si besoin, une seule fois même si
-  /// plusieurs copies démarrent ensemble).
-  static Future<PushWeb> ouvrir(Pool db) async {
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS reglages_boite (
-        cle TEXT PRIMARY KEY,
-        valeur TEXT NOT NULL
-      )''');
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS push_web (
-        appareil TEXT PRIMARY KEY,
-        endpoint TEXT NOT NULL,
-        cree TIMESTAMPTZ NOT NULL DEFAULT now()
-      )''');
-    final candidate = _hex(_nouvelleCle());
-    await db.execute(
-      Sql.named("INSERT INTO reglages_boite (cle, valeur) VALUES ('vapid', @v) ON CONFLICT (cle) DO NOTHING"),
-      parameters: {'v': candidate},
-    );
-    final r = await db.execute("SELECT valeur FROM reglages_boite WHERE cle = 'vapid'");
-    final d = BigInt.parse(r.first[0] as String, radix: 16);
-    final q = (_courbe.G * d)!;
-    return PushWeb._(db, d, _b64url(q.getEncoded(false)));
+  /// Prépare les tables et la clé — appelé UNE fois, par la copie
+  /// principale, au démarrage. Une erreur ici n'arrête rien : la boîte
+  /// fonctionne sans notifications web, et [_charger] réessaiera.
+  ///
+  /// ⚠️ LES COPIES NE TOUCHENT PAS À LA BASE AU DÉMARRAGE. Pendant un
+  /// redéploiement, l'ancienne et la nouvelle version tiennent chacune leurs
+  /// connexions, et Postgres peut refuser les suivantes (« too many
+  /// clients ») : une copie qui interrogeait la base dès son démarrage
+  /// mourait. La clé est donc lue à la première notification, avec reprise.
+  static Future<void> preparer(Pool db) async {
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS reglages_boite (
+          cle TEXT PRIMARY KEY,
+          valeur TEXT NOT NULL
+        )''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS push_web (
+          appareil TEXT PRIMARY KEY,
+          endpoint TEXT NOT NULL,
+          cree TIMESTAMPTZ NOT NULL DEFAULT now()
+        )''');
+      // Créée une seule fois, même si deux versions démarrent ensemble.
+      await db.execute(
+        Sql.named("INSERT INTO reglages_boite (cle, valeur) VALUES ('vapid', @v) ON CONFLICT (cle) DO NOTHING"),
+        parameters: {'v': _hex(_nouvelleCle())},
+      );
+    } catch (e) {
+      print('[Boîte] notifications web : préparation reportée ($e)');
+    }
   }
+
+  /// Lit la clé (une fois réussie, plus jamais).
+  Future<bool> _charger() {
+    if (_d != null) return Future.value(true);
+    return _chargement ??= () async {
+      try {
+        final r = await _db.execute("SELECT valeur FROM reglages_boite WHERE cle = 'vapid'");
+        if (r.isEmpty) return false;
+        final d = BigInt.parse(r.first[0] as String, radix: 16);
+        _d = d;
+        _cle = _b64url((_courbe.G * d)!.getEncoded(false));
+        return true;
+      } catch (_) {
+        return false;
+      } finally {
+        _chargement = null;
+      }
+    }();
+  }
+
+  /// La clé publique VAPID (65 octets, non compressée), en base64url sans
+  /// remplissage : ce que le navigateur passe à `pushManager.subscribe`.
+  /// `null` si la base est momentanément injoignable.
+  Future<String?> clePublique() async => await _charger() ? _cle : null;
 
   /// Pour la vérification automatique (`tool/essai_vapid.dart`) : une clé
   /// neuve, sa clé publique et un jeton signé, sans base de données.
   static (String, String) essai() {
     final d = _nouvelleCle();
-    final p = PushWeb._(_SansBase.instance, d, _b64url((_courbe.G * d)!.getEncoded(false)));
-    return (p.clePublique, p._jeton('https://fcm.googleapis.com/fcm/send/essai'));
+    final p = PushWeb._essai(_SansBase.instance, d);
+    return (p._cle!, p._jeton('https://fcm.googleapis.com/fcm/send/essai'));
   }
 
   static BigInt _nouvelleCle() {
@@ -145,6 +179,7 @@ class PushWeb {
     if (_derniers.length > 20000) _derniers.clear();
     unawaited(() async {
       try {
+        if (!await _charger()) return;
         final r = await _db.execute(Sql.named('SELECT endpoint FROM push_web WHERE appareil = @a'), parameters: {'a': appareil});
         if (r.isEmpty) return;
         final endpoint = r.first[0] as String;
@@ -156,7 +191,7 @@ class PushWeb {
                 'ttl': '86400',
                 'urgency': 'high',
                 'topic': 'droplet',
-                'authorization': 'vapid t=${_jeton(endpoint)}, k=$clePublique',
+                'authorization': 'vapid t=${_jeton(endpoint)}, k=$_cle',
                 'content-length': '0',
               },
             )
@@ -179,7 +214,7 @@ class PushWeb {
     })));
     final signe = '$entete.$corps';
     final signataire = ECDSASigner(SHA256Digest(), HMac(SHA256Digest(), 64))
-      ..init(true, PrivateKeyParameter<ECPrivateKey>(ECPrivateKey(_d, _courbe)));
+      ..init(true, PrivateKeyParameter<ECPrivateKey>(ECPrivateKey(_d!, _courbe)));
     final s = signataire.generateSignature(Uint8List.fromList(utf8.encode(signe))) as ECSignature;
     return '$signe.${_b64url([..._octets32(s.r), ..._octets32(s.s)])}';
   }
