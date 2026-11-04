@@ -25,7 +25,7 @@ s, _ = req('PUT', f'/kunfox/{ident}', {'paquet': 'AAAA', 'version': 2}); verifie
 s, j = req('GET', f'/kunfox/{ident}'); verifie('relecture v2', s == 200 and j.get('paquet') == 'AAAA' and j.get('version') == 2)
 s, _ = req('PUT', f'/kunfox/{ident}', {'paquet': 'VIEUX', 'version': 1}); verifie('v1 refusée : 409', s == 409)
 s, _ = req('PUT', f'/kunfox/{ident}', {'paquet': 'BBBB', 'version': 3}); verifie('écriture v3', s == 200)
-s, j = req('GET', f'/kunfox/{ident}'); verifie('relecture v3', j.get('paquet') == 'BBBB')
+s, j = req('GET', f'/kunfox/{ident}'); print('   reçu', s, j); verifie('relecture v3', j.get('paquet') == 'BBBB')
 s, _ = req('GET', '/kunfox/court'); verifie('identifiant mal formé : 400', s == 400)
 s, _ = req('PUT', f'/kunfox/{ident}', {'paquet': 'x' * 300000, 'version': 9}); verifie('trop grand : 413', s == 413)
 sys.exit(0 if ok else 1)
