@@ -1,0 +1,34 @@
+# Les essais automatiques des serveurs (annuaire et boîte aux lettres).
+# Tournent sur la branche de travail et sur `serveurs` : un essai qui échoue
+# fait échouer la CI. Les clés utilisées sont tirées au hasard ici même —
+# jamais celles de la production.
+name: Essais des serveurs
+on:
+  push:
+    branches: [travail-serveurs, serveurs, verif-serveurs]
+    paths: ['droplet_directory/**', 'droplet_mailbox/**', '.github/workflows/tests-serveurs.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  essais:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [droplet_directory, droplet_mailbox]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - name: Dépendances
+        working-directory: ${{ matrix.service }}
+        run: dart pub get
+      - name: Analyse
+        working-directory: ${{ matrix.service }}
+        run: dart analyze lib test
+      - name: Essais
+        working-directory: ${{ matrix.service }}
+        run: |
+          export CLE_SERVEUR="$(head -c 32 /dev/urandom | base64)"
+          export CLE_INTERNE="essai-$(head -c 12 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')"
+          dart test --reporter expanded

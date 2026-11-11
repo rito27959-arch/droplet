@@ -15,3 +15,6 @@ dependencies:
   http: ^1.2.0
   # La signature ES256 des notifications de Droplet Web (VAPID).
   pointycastle: ^3.9.1
+
+dev_dependencies:
+  test: ^1.25.0
