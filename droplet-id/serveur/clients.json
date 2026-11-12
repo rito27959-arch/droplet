@@ -1,0 +1,35 @@
+[
+  {
+    "client_id": "demo-kola",
+    "client_name": "Kola Café (démo)",
+    "client_uri": "https://demo-kola.dropletmesh.app",
+    "redirect_uris": [
+      "https://demo-kola.dropletmesh.app/"
+    ],
+    "post_logout_redirect_uris": [
+      "https://demo-kola.dropletmesh.app/"
+    ]
+  },
+  {
+    "client_id": "demo-baobab",
+    "client_name": "Librairie Baobab (démo)",
+    "client_uri": "https://demo-baobab.dropletmesh.app",
+    "redirect_uris": [
+      "https://demo-baobab.dropletmesh.app/connexion/retour"
+    ],
+    "post_logout_redirect_uris": [
+      "https://demo-baobab.dropletmesh.app/"
+    ]
+  },
+  {
+    "client_id": "bac-a-sable",
+    "client_name": "Bac à sable Droplet ID",
+    "client_uri": "https://developpeurs-id.dropletmesh.app",
+    "redirect_uris": [
+      "https://developpeurs-id.dropletmesh.app/bac-a-sable"
+    ],
+    "post_logout_redirect_uris": [
+      "https://developpeurs-id.dropletmesh.app/bac-a-sable"
+    ]
+  }
+]

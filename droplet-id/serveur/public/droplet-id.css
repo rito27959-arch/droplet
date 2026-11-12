@@ -1,0 +1,230 @@
+/* Droplet ID — the pages of the identity service.
+   One quiet column; the only loud thing is the two-digit matching code,
+   because it is the security moment. */
+
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('/static/InstrumentSans.woff2') format('woff2');
+  font-weight: 400 700;
+  font-stretch: 75% 100%;
+  font-display: swap;
+}
+
+:root {
+  --paper: #f5f7f9;
+  --surface: #ffffff;
+  --ink: #0a1a24;
+  --muted: #5a6b76;
+  --line: #e1e7ec;
+  --accent: #0a7cff;
+  --accent-ink: #ffffff;
+  --accent-soft: #e7f1ff;
+  --ok: #0f9d6a;
+  --warn: #b4560a;
+  --danger: #d23a3a;
+  --qr-dark: #0a1a24;
+  --shadow: 0 1px 2px rgba(10, 26, 36, 0.05), 0 18px 48px -24px rgba(10, 26, 36, 0.22);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #061019;
+    --surface: #0c1a25;
+    --ink: #e7eef3;
+    --muted: #8a9dab;
+    --line: #1a2b38;
+    --accent: #3d9bff;
+    --accent-ink: #04111c;
+    --accent-soft: #0f2a45;
+    --ok: #34c58f;
+    --warn: #f0a050;
+    --danger: #ff6b6b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1rem/1.5 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-stretch: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+/* ── Frame ─────────────────────────────────────────────────────────── */
+.test {
+  background: repeating-linear-gradient(-45deg, #ffcf3f 0 14px, #ffd85c 14px 28px);
+  color: #2a2000;
+  text-align: center;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+}
+header.top, footer.bas {
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.marque { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--ink); text-decoration: none; font-weight: 640; letter-spacing: -0.01em; }
+.marque svg { width: 1.5rem; height: 1.5rem; color: var(--accent); }
+.langues { display: flex; gap: 0.25rem; font-size: 0.88rem; }
+.langues a { color: var(--muted); text-decoration: none; padding: 0.3rem 0.55rem; border-radius: 999px; }
+.langues a[aria-current] { color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+main { flex: 1; display: grid; place-items: center; padding: 0.5rem 1rem 2.5rem; }
+footer.bas { color: var(--muted); font-size: 0.84rem; justify-content: center; text-align: center; }
+
+/* ── Card ──────────────────────────────────────────────────────────── */
+.carte {
+  width: 100%;
+  max-width: 27rem;
+  background: var(--surface);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  padding: 2rem 1.75rem 1.6rem;
+}
+@media (max-width: 30rem) { .carte { padding: 1.6rem 1.2rem 1.3rem; border-radius: 24px; } }
+
+.site { display: flex; align-items: center; gap: 0.8rem; }
+.site .logo {
+  width: 2.75rem; height: 2.75rem; flex: none; border-radius: 12px;
+  display: grid; place-items: center; overflow: hidden;
+  background: var(--accent-soft); color: var(--accent); font-weight: 680; font-size: 1.15rem;
+}
+.site .logo img { width: 100%; height: 100%; object-fit: cover; }
+.site .nom { font-weight: 620; line-height: 1.2; }
+.site .hote { color: var(--muted); font-size: 0.86rem; }
+
+h1 { font-size: 1.6rem; line-height: 1.15; letter-spacing: -0.025em; font-weight: 640; margin: 1.4rem 0 0.4rem; font-stretch: 92%; }
+.lead { color: var(--muted); margin: 0; }
+
+/* ── The QR and the code ───────────────────────────────────────────── */
+.scan { display: grid; grid-template-columns: auto 1fr; gap: 1.25rem; align-items: center; margin: 1.6rem 0 0.4rem; }
+@media (max-width: 24rem) { .scan { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+
+.qr {
+  position: relative;
+  width: 11.5rem; aspect-ratio: 1;
+  padding: 0.75rem;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.qr svg.code { display: block; width: 100%; height: 100%; transition: filter 0.4s, opacity 0.4s; }
+.qr .goutte {
+  position: absolute; inset: 0; margin: auto;
+  width: 2.6rem; height: 2.6rem; border-radius: 12px; background: #fff;
+  display: grid; place-items: center;
+}
+.qr .goutte svg { width: 1.7rem; height: 1.7rem; color: var(--accent); }
+/* The remaining time runs around the frame. */
+.qr .temps { position: absolute; inset: -3px; width: calc(100% + 6px); height: calc(100% + 6px); pointer-events: none; }
+.qr .temps rect { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+.qr[data-expire] svg.code { filter: blur(6px); opacity: 0.35; }
+
+.correspondance .etiquette { font-size: 0.9rem; color: var(--muted); margin: 0 0 0.2rem; }
+.chiffres {
+  font-size: clamp(3.6rem, 2.6rem + 5vw, 4.6rem);
+  line-height: 0.95;
+  font-weight: 660;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  font-stretch: 85%;
+}
+.chiffres span { display: inline-block; }
+
+/* ── Steps (a real sequence) ───────────────────────────────────────── */
+ol.etapes { list-style: none; counter-reset: e; margin: 1.4rem 0 0; padding: 0; display: grid; gap: 0.55rem; }
+ol.etapes li { counter-increment: e; display: grid; grid-template-columns: 1.6rem 1fr; gap: 0.6rem; align-items: baseline; font-size: 0.95rem; }
+ol.etapes li::before {
+  content: counter(e);
+  width: 1.6rem; height: 1.6rem; border-radius: 999px; display: grid; place-items: center;
+  font-size: 0.8rem; font-weight: 640; color: var(--accent); background: var(--accent-soft);
+  transform: translateY(0.15rem);
+}
+
+/* ── Status ────────────────────────────────────────────────────────── */
+.etat {
+  margin-top: 1.4rem;
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.8rem 0.95rem; border-radius: 14px;
+  background: var(--paper); font-size: 0.93rem;
+}
+.etat .point { width: 0.55rem; height: 0.55rem; border-radius: 999px; background: var(--muted); flex: none; }
+.etat[data-etat='attente'] .point { background: var(--accent); animation: pouls 1.6s ease-in-out infinite; }
+.etat[data-etat='vue'] .point { background: var(--warn); animation: pouls 1s ease-in-out infinite; }
+.etat[data-etat='approuvee'] .point { background: var(--ok); }
+.etat[data-etat='refusee'] .point, .etat[data-etat='annulee'] .point { background: var(--danger); }
+@keyframes pouls { 50% { transform: scale(1.7); opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .etat .point { animation: none !important; } .qr .temps rect { transition: none; } }
+
+/* ── Buttons ───────────────────────────────────────────────────────── */
+.actions { display: grid; gap: 0.6rem; margin-top: 1.2rem; }
+.bouton {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
+  min-height: 3rem; padding: 0 1.2rem; border-radius: 999px; border: 0;
+  font: inherit; font-weight: 600; text-decoration: none; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink);
+  transition: transform 0.15s, filter 0.15s;
+}
+.bouton:hover { filter: brightness(1.06); }
+.bouton:active { transform: scale(0.98); }
+.bouton:disabled { opacity: 0.4; cursor: not-allowed; filter: none; transform: none; }
+.bouton.discret { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.bouton.test-b { background: #ffcf3f; color: #2a2000; }
+.bouton svg { width: 1.15rem; height: 1.15rem; }
+.seulement-mobile { display: none; }
+@media (max-width: 48rem) { .seulement-mobile { display: inline-flex; } }
+
+.promesse {
+  margin: 1.3rem 0 0; padding-top: 1.1rem; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 0.86rem; display: grid; grid-template-columns: 1.1rem 1fr; gap: 0.55rem;
+}
+.promesse svg { width: 1.1rem; height: 1.1rem; margin-top: 0.12rem; color: var(--ok); }
+.annuler { display: block; text-align: center; margin-top: 1rem; font-size: 0.9rem; color: var(--muted); }
+
+/* ── Generic content pages ─────────────────────────────────────────── */
+.page { width: 100%; max-width: 40rem; }
+.page h1 { font-size: clamp(2rem, 1.4rem + 3vw, 3.2rem); margin-top: 0.5rem; }
+.page p { max-width: 58ch; }
+.liste { display: grid; gap: 0.7rem; margin: 1.2rem 0; padding: 0; list-style: none; }
+.liste li { background: var(--surface); border-radius: 16px; padding: 0.9rem 1rem; box-shadow: inset 0 0 0 1px var(--line); }
+code, pre { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.88em; }
+pre { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); border-radius: 14px; padding: 1rem; overflow-x: auto; }
+
+/* ── Test device ───────────────────────────────────────────────────── */
+.appareil .codes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin: 1rem 0; }
+.appareil .codes button {
+  font: inherit; font-size: 1.8rem; font-weight: 640; font-variant-numeric: tabular-nums;
+  padding: 0.9rem 0; border-radius: 16px; border: 0; cursor: pointer;
+  background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line);
+}
+.appareil .codes button[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.champ { display: grid; gap: 0.35rem; margin: 0.9rem 0; font-size: 0.92rem; }
+.champ input[type='text'] {
+  font: inherit; padding: 0.75rem 0.9rem; border-radius: 12px; border: 0;
+  background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line);
+}
+.portee { display: flex; align-items: center; gap: 0.6rem; font-size: 0.95rem; margin: 0.4rem 0; }
+.portee input { width: 1.1rem; height: 1.1rem; accent-color: var(--accent); }
+.petit { font-size: 0.84rem; color: var(--muted); }
+.cache { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.champ input.nombre {
+  font-size: 2.6rem; font-weight: 640; letter-spacing: 0.4em; text-align: center; padding: 0.6rem 0 0.6rem 0.4em;
+  font-variant-numeric: tabular-nums; width: 9rem; justify-self: center;
+}

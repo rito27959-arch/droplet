@@ -1,0 +1,25 @@
+{
+  "name": "droplet-id-serveur",
+  "version": "0.1.0",
+  "description": "Droplet ID — connexion sans donnée personnelle (OpenID Connect)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "ENVIRONNEMENT_DE_TEST=1 CLIENTS=clients.local.json node --watch src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "oidc-provider": "^9.14.0",
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "openid-client": "^6.8.9"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  }
+}
