@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "droplet-id"
+version = "0.1.0"
+description = "Se connecter avec Droplet ID depuis un site Python : sans numéro, sans e-mail, sans nom."
+requires-python = ">=3.9"
+dependencies = ["cryptography>=41"]
+license = { text = "MIT" }
+keywords = ["droplet", "droplet-id", "openid-connect", "oidc", "login", "flask"]
+
+[project.optional-dependencies]
+flask = ["flask>=2.3"]
+
+[tool.setuptools]
+packages = ["droplet_id"]

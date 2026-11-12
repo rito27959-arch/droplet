@@ -1,0 +1,15 @@
+{
+  "name": "@droplet/id-node",
+  "version": "0.1.0",
+  "description": "Droplet ID côté serveur pour Node.js (Express inclus), par-dessus openid-client.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "files": ["src"],
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "openid-client": "^6.8.9"
+  },
+  "keywords": ["droplet", "droplet-id", "openid-connect", "express", "login"],
+  "license": "MIT"
+}

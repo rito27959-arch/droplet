@@ -1,0 +1,19 @@
+{
+  "name": "@droplet/id",
+  "version": "0.1.0",
+  "description": "Se connecter avec Droplet ID depuis un site web : sans numéro, sans e-mail, sans nom.",
+  "type": "module",
+  "main": "src/droplet-id.js",
+  "module": "src/droplet-id.js",
+  "types": "src/droplet-id.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/droplet-id.d.ts",
+      "default": "./src/droplet-id.js"
+    }
+  },
+  "files": ["src"],
+  "sideEffects": false,
+  "keywords": ["droplet", "droplet-id", "openid-connect", "oidc", "pkce", "login"],
+  "license": "MIT"
+}

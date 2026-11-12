@@ -1,0 +1,21 @@
+{
+  "name": "@droplet/id-react",
+  "version": "0.1.0",
+  "description": "Droplet ID pour React : <DropletIdProvider>, useDropletId(), <DropletIdButton>.",
+  "type": "module",
+  "main": "src/index.jsx",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.jsx"
+    }
+  },
+  "files": ["src"],
+  "peerDependencies": {
+    "react": ">=18",
+    "@droplet/id": "^0.1.0"
+  },
+  "keywords": ["droplet", "droplet-id", "react", "openid-connect", "login"],
+  "license": "MIT"
+}

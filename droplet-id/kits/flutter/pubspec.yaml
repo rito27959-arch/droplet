@@ -1,0 +1,17 @@
+name: droplet_id
+description: Se connecter avec Droplet ID depuis une app Flutter — sans numéro, sans e-mail, sans nom. Bouton officiel inclus.
+version: 0.1.0
+homepage: https://developpeurs-id.dropletmesh.app
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_appauth: ^9.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
