@@ -63,6 +63,7 @@ import 'features/group/group_create_screen.dart';
 import 'features/group/group_info_screen.dart';
 import 'features/droplet_id/approbation_screen.dart';
 import 'features/droplet_id/droplet_id_screen.dart';
+import 'features/droplet_id/droplet_id_service.dart';
 import 'features/settings/backup_export_screen.dart';
 import 'features/settings/app_icon_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -643,7 +644,11 @@ final _router = GoRouter(
     ),
     GoRoute(
       path: '/a/:demande',
-      pageBuilder: (context, state) => _pushPage(ApprobationScreen(demandeId: state.pathParameters['demande'] ?? '')),
+      pageBuilder: (context, state) => _pushPage(ApprobationScreen(
+        demandeId: state.pathParameters['demande'] ?? '',
+        // Lien d'application : l'hôte dit quel service (production par défaut).
+        service: DropletIdService.pourHote(state.uri.host),
+      )),
     ),
     GoRoute(
       path: '/safety',

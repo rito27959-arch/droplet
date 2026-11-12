@@ -18,8 +18,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'protocole.dart';
 
-/// Le service de test (phase actuelle). Passera à https://id.dropletmesh.app.
-const emetteurDropletId = 'https://id-test.dropletmesh.app';
+/// Le service en production, et celui de test (comptes séparés : une clé et
+/// un compte par service, jamais partagés).
+const emetteurDropletId = 'https://id.dropletmesh.app';
+const emetteurDropletIdTest = 'https://id-test.dropletmesh.app';
+const _hotes = {'id.dropletmesh.app': emetteurDropletId, 'id-test.dropletmesh.app': emetteurDropletIdTest};
+
+/// Un lien de demande scanné ou ouvert : quel service, quelle demande.
+typedef LienDropletId = ({String emetteur, String demandeId});
 
 class DemandeDropletId {
   DemandeDropletId({required this.id, required this.nomSite, required this.hote, required this.portees, required this.expireLe});
@@ -57,25 +63,50 @@ class ErreurDropletId implements Exception {
 }
 
 class DropletIdService {
-  DropletIdService._();
-  static final instance = DropletIdService._();
+  DropletIdService._(this.emetteur, String prefixe)
+      : _cleGraine = '${prefixe}_graine_ed25519',
+        _cleAppareil = '${prefixe}_appareil',
+        _cleCompte = '${prefixe}_compte';
+
+  /// Production (https://id.dropletmesh.app).
+  static final instance = DropletIdService._(emetteurDropletId, 'droplet_id_prod');
+
+  /// Service de test (https://id-test.dropletmesh.app), pour les démos.
+  static final test = DropletIdService._(emetteurDropletIdTest, 'droplet_id');
+
+  /// Le service qui correspond à un émetteur, ou null s'il n'est pas reconnu.
+  static DropletIdService? pour(String emetteur) => switch (emetteur) {
+        emetteurDropletId => instance,
+        emetteurDropletIdTest => test,
+        _ => null,
+      };
+
+  final String emetteur;
+  bool get estTest => emetteur == emetteurDropletIdTest;
 
   static const _coffre = FlutterSecureStorage();
-  static const _cleGraine = 'droplet_id_graine_ed25519';
-  static const _cleAppareil = 'droplet_id_appareil';
-  static const _cleCompte = 'droplet_id_compte';
+  final String _cleGraine;
+  final String _cleAppareil;
+  final String _cleCompte;
   final _ed = Ed25519();
 
-  /// L'identifiant d'une demande, si le texte scanné en est une
+  /// Le service et la demande, si le texte scanné est un lien de demande
   /// (https://id[-test].dropletmesh.app/a/<id>).
-  static String? demandeDepuis(String texte) {
+  static LienDropletId? lienDepuis(String texte) {
     final u = Uri.tryParse(texte.trim());
     if (u == null || u.scheme != 'https') return null;
-    if (u.host != 'id.dropletmesh.app' && u.host != 'id-test.dropletmesh.app') return null;
+    final emetteur = _hotes[u.host];
+    if (emetteur == null) return null;
     final s = u.pathSegments;
     if (s.length != 2 || s[0] != 'a' || !RegExp(r'^[A-Za-z0-9_-]{16,64}$').hasMatch(s[1])) return null;
-    return s[1];
+    return (emetteur: emetteur, demandeId: s[1]);
   }
+
+  /// L'identifiant seul (compatibilité).
+  static String? demandeDepuis(String texte) => lienDepuis(texte)?.demandeId;
+
+  /// Le service d'un lien d'application dont on ne connaît que l'hôte.
+  static DropletIdService pourHote(String? hote) => pour(_hotes[hote] ?? '') ?? instance;
 
   Future<bool> estActive() async => (await _coffre.read(key: _cleAppareil)) != null;
 
@@ -157,7 +188,7 @@ class DropletIdService {
     final ReponseDroplet r;
     try {
       r = await requeteSignee(
-        base: emetteurDropletId,
+        base: emetteur,
         methode: methode,
         chemin: chemin,
         corps: corps,

@@ -55,12 +55,12 @@ class _DropletIdScreenState extends State<DropletIdScreen> {
   Future<void> _scanner() async {
     final texte = await Navigator.of(context).push<String>(CupertinoPageRoute(builder: (_) => const QrScanScreen()));
     if (texte == null || !mounted) return;
-    final id = DropletIdService.demandeDepuis(texte);
-    if (id == null) {
+    final lien = DropletIdService.lienDepuis(texte);
+    if (lien == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ce code n'est pas une connexion Droplet ID.")));
       return;
     }
-    await Navigator.of(context).push(CupertinoPageRoute(builder: (_) => ApprobationScreen(demandeId: id)));
+    await Navigator.of(context).push(CupertinoPageRoute(builder: (_) => ApprobationScreen(demandeId: lien.demandeId, service: DropletIdService.pour(lien.emetteur))));
     _charger();
   }
 

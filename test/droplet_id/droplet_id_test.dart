@@ -9,5 +9,10 @@ void main() {
     expect(DropletIdService.demandeDepuis('https://pirate.example/a/AbCdEfGhIjKlMnOpQrSt12'), isNull);
     expect(DropletIdService.demandeDepuis('https://id.dropletmesh.app/a/court'), isNull);
     expect(DropletIdService.demandeDepuis('droplet:pair:xyz'), isNull);
+    expect(DropletIdService.lienDepuis('https://id-test.dropletmesh.app/a/AbCdEfGhIjKlMnOpQrSt12')?.emetteur, emetteurDropletIdTest);
+    expect(DropletIdService.lienDepuis('https://id.dropletmesh.app/a/AbCdEfGhIjKlMnOpQrSt12')?.emetteur, emetteurDropletId);
+    expect(DropletIdService.pourHote('id-test.dropletmesh.app').estTest, isTrue);
+    expect(DropletIdService.pourHote(null).estTest, isFalse);
+    expect(DropletIdService.pourHote('pirate.example').emetteur, emetteurDropletId);
   });
 }

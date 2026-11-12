@@ -11,15 +11,18 @@ import '../../design_system/ouro_colors.dart';
 import 'droplet_id_service.dart';
 
 class ApprobationScreen extends StatefulWidget {
-  const ApprobationScreen({super.key, required this.demandeId});
+  const ApprobationScreen({super.key, required this.demandeId, this.service});
   final String demandeId;
+
+  /// Le service qui a émis la demande (production par défaut).
+  final DropletIdService? service;
 
   @override
   State<ApprobationScreen> createState() => _ApprobationScreenState();
 }
 
 class _ApprobationScreenState extends State<ApprobationScreen> {
-  final _service = DropletIdService.instance;
+  late final _service = widget.service ?? DropletIdService.instance;
   final _code = TextEditingController();
   final _pseudo = TextEditingController();
   DemandeDropletId? _demande;
