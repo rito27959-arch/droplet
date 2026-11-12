@@ -4,6 +4,7 @@
 // l'appareil de test. Français et anglais. Aucun script ni police tiers :
 // tout est servi par le service lui-même (CSP stricte).
 // ============================================================================
+import { statique } from './statiques.js';
 
 const echapper = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -129,8 +130,8 @@ function gabarit({ langue, titre, corps, test, scripts = [], chemin = '', classe
 <meta name="referrer" content="no-referrer">
 <title>${echapper(titre)} – Droplet ID</title>
 <link rel="preload" href="/static/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/droplet-id.css">
-<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="${statique('droplet-id.css')}">
+<link rel="icon" href="${statique('favicon.svg')}" type="image/svg+xml">
 <meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#05080c" media="(prefers-color-scheme: dark)">
 </head>
@@ -214,7 +215,7 @@ export function pageConnexion({ langue, test, uid, demande, client, qrSvg, lienA
   <form method="post" action="/interaction/${echapper(uid)}/annuler" class="annuler"><button type="submit">${echapper(t.annuler(site))}</button></form>
 </section>
 <script type="application/json" id="textes">${JSON.stringify(t.etats).replace(/</g, '\\u003c')}</script>`;
-  return gabarit({ langue, titre: t.titreConnexion(site), corps, test, scripts: ['/static/connexion.js'], chemin: `/interaction/${uid}` });
+  return gabarit({ langue, titre: t.titreConnexion(site), corps, test, scripts: [statique('connexion.js')], chemin: `/interaction/${uid}` });
 }
 
 /** Déjà connecté dans ce navigateur : « Continuer vers … » en un geste. */
@@ -243,7 +244,7 @@ export function pageContinuer({ langue, test, uid, client, portees, appareil, de
   <a class="bouton secondaire" href="/interaction/${echapper(uid)}?autre=1&langue=${langue}">${t.autreCompte}</a>
   <form method="post" action="/interaction/${echapper(uid)}/annuler" class="annuler"><button type="submit">${echapper(t.annuler(site))}</button></form>
 </section>`;
-  return gabarit({ langue, titre: t.titreContinuer(site), corps, test, scripts: ['/static/continuer.js'], chemin: `/interaction/${uid}` });
+  return gabarit({ langue, titre: t.titreContinuer(site), corps, test, scripts: [statique('continuer.js')], chemin: `/interaction/${uid}` });
 }
 
 export function pageLienApp({ langue, test }) {
@@ -252,7 +253,7 @@ export function pageLienApp({ langue, test }) {
   <div class="liaison seule" aria-hidden="true"><span class="tuile tuile-droplet">${GOUTTE}</span></div>
   <h1>${t.titreLien}</h1><p class="texte">${t.texteLien}</p>
   ${test ? `<div class="actions"><a class="bouton test-b" data-vers-test href="/test/appareil">${t.appareilTest}</a></div>` : ''}</section>`;
-  return gabarit({ langue, titre: t.titreLien, corps, test, scripts: test ? ['/static/lien.js'] : [] });
+  return gabarit({ langue, titre: t.titreLien, corps, test, scripts: test ? [statique('lien.js')] : [] });
 }
 
 export function pageErreur({ langue = 'fr', detail, test }) {
@@ -383,5 +384,5 @@ export function pageAppareilTest({ langue }) {
     <button class="lien-discret" data-oublier>${fr ? 'Oublier cet appareil' : 'Forget this device'}</button>
   </div>
 </section>`;
-  return gabarit({ langue, titre: fr ? 'Appareil de test' : 'Test device', corps, test: true, scripts: ['/static/appareil.js'], chemin: '/test/appareil' });
+  return gabarit({ langue, titre: fr ? 'Appareil de test' : 'Test device', corps, test: true, scripts: [statique('appareil.js')], chemin: '/test/appareil' });
 }

@@ -288,3 +288,13 @@ test('pages aide, confidentialité, conditions', async () => {
     assert.match(await r.text(), /<article class="document">/);
   }
 });
+
+test('feuille de style versionnée : une nouvelle version change d’adresse', async () => {
+  const page = await (await fetch(`${BASE}/aide`)).text();
+  const css = page.match(/href="(\/static\/droplet-id\.css\?v=[A-Za-z0-9_-]{10})"/)[1];
+  const r = await fetch(BASE + css);
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('cache-control'), /immutable/);
+  const ancien = await fetch(`${BASE}/static/droplet-id.css`);
+  assert.equal(ancien.headers.get('cache-control'), 'no-cache');
+});

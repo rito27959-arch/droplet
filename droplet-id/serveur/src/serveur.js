@@ -8,7 +8,6 @@
 // ============================================================================
 
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { creerFournisseur } from './oidc.js';
 import { routesInteraction } from './interaction.js';
 import { routesApi } from './api.js';
@@ -16,16 +15,8 @@ import { langueDe, pageAccueil, pageAppareilTest, pageDocument, pageErreur, page
 import { stockageMemoire } from './stockage/memoire.js';
 import { stockagePostgres } from './stockage/postgres.js';
 import { limiteur } from './limites.js';
+import { STATIQUES, contenus, empreinte } from './statiques.js';
 
-const STATIQUES = {
-  'droplet-id.css': 'text/css; charset=utf-8',
-  'connexion.js': 'text/javascript; charset=utf-8',
-  'continuer.js': 'text/javascript; charset=utf-8',
-  'appareil.js': 'text/javascript; charset=utf-8',
-  'lien.js': 'text/javascript; charset=utf-8',
-  'InstrumentSans.woff2': 'font/woff2',
-  'favicon.svg': 'image/svg+xml',
-};
 
 const SECURITE = {
   'strict-transport-security': 'max-age=63072000; includeSubDomains',
@@ -69,9 +60,10 @@ export async function demarrer(config) {
         const nom = chemin.slice(8);
         const type = STATIQUES[nom];
         if (!type) return repondre(res, 404, { erreur: 'introuvable' });
-        const contenu = await readFile(new URL(`../public/${nom}`, import.meta.url));
-        res.writeHead(200, { ...SECURITE, 'content-type': type, 'cache-control': 'public, max-age=3600' });
-        return res.end(contenu);
+        // Bonne empreinte : gardé un an. Sinon (ancienne page) : toujours revérifié.
+        const cache = url.searchParams.get('v') === empreinte(nom) ? 'public, max-age=31536000, immutable' : 'no-cache';
+        res.writeHead(200, { ...SECURITE, 'content-type': type, 'cache-control': cache });
+        return res.end(contenus[nom]);
       }
       if (chemin === '/sante') return repondre(res, 200, { ok: true, stockage: stockage.nom });
 
