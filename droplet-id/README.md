@@ -21,7 +21,13 @@ La personne approuve sur son téléphone ; chaque site reçoit un identifiant qu
 | `demos/baobab` | Librairie Baobab (imaginaire) — Node.js côté serveur |
 | `developpeurs/` | Le portail développeurs et son bac à sable |
 
-## En ligne (test)
+## En ligne
+
+**Production** — https://id.dropletmesh.app (projet Railway `droplet-id-production`, sa propre base
+PostgreSQL et ses propres secrets ; déployé depuis la branche `droplet-id-prod` ; pas d'appareil de test).
+Pour livrer : `git push origin droplet-id:droplet-id-prod` une fois la CI verte.
+
+**Test** — démos et bac à sable, avec l'appareil de test dans le navigateur :
 
 - Service : https://id-test.dropletmesh.app
 - Développeurs : https://developpeurs-id.dropletmesh.app
