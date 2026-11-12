@@ -8,7 +8,8 @@
     ],
     "post_logout_redirect_uris": [
       "https://demo-kola.dropletmesh.app/"
-    ]
+    ],
+    "logo_uri": "https://demo-kola.dropletmesh.app/favicon.svg"
   },
   {
     "client_id": "demo-baobab",
@@ -19,7 +20,8 @@
     ],
     "post_logout_redirect_uris": [
       "https://demo-baobab.dropletmesh.app/"
-    ]
+    ],
+    "logo_uri": "https://demo-baobab.dropletmesh.app/static/favicon.svg"
   },
   {
     "client_id": "bac-a-sable",
@@ -30,6 +32,7 @@
     ],
     "post_logout_redirect_uris": [
       "https://developpeurs-id.dropletmesh.app/bac-a-sable"
-    ]
+    ],
+    "logo_uri": "https://developpeurs-id.dropletmesh.app/favicon.svg"
   }
 ]

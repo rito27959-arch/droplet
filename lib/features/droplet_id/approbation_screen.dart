@@ -92,6 +92,9 @@ class _ApprobationScreenState extends State<ApprobationScreen> {
     if (mounted) setState(() => _fini = 'Connexion refusée.');
   }
 
+  Widget _initiale(DemandeDropletId d) => Text(d.nomSite.characters.first.toUpperCase(),
+      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: OuroColors.accent));
+
   @override
   Widget build(BuildContext context) {
     final d = _demande;
@@ -130,9 +133,11 @@ class _ApprobationScreenState extends State<ApprobationScreen> {
                   width: 52,
                   height: 52,
                   alignment: Alignment.center,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(color: OuroColors.accent.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
-                  child: Text(d.nomSite.characters.first.toUpperCase(),
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: OuroColors.accent)),
+                  child: d.logo == null
+                      ? _initiale(d)
+                      : Image.network(d.logo!, width: 52, height: 52, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _initiale(d)),
                 ),
                 const SizedBox(width: 14),
                 Expanded(

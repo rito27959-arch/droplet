@@ -98,6 +98,7 @@ main { flex: 1; display: grid; place-items: center; padding: clamp(1.25rem, 5vh,
 }
 .tuile img { width: 100%; height: 100%; object-fit: cover; }
 .tuile-site { background: var(--champ); color: var(--encre); box-shadow: inset 0 0 0 1px var(--trait); }
+.tuile-site.avec-logo { background: transparent; box-shadow: 0 0 0 1px var(--trait); }
 .tuile-droplet { background: linear-gradient(160deg, #3d9bff, #0a62d8); color: #fff; box-shadow: 0 8px 20px -10px rgba(10, 98, 216, 0.8); }
 .tuile-droplet svg { width: 1.7rem; height: 1.7rem; }
 .tuile-erreur { background: color-mix(in oklab, var(--rouge) 14%, var(--carte)); color: var(--rouge); }

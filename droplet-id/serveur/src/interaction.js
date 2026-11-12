@@ -39,7 +39,7 @@ export function etatReel(d) {
   return d.etat;
 }
 
-export function routesInteraction({ fournisseur, stockage, config, repondre }) {
+export function routesInteraction({ fournisseur, stockage, config, repondre, logos }) {
   async function creerDemande(uid, details) {
     const portees = String(details.params.scope || 'openid')
       .split(' ')
@@ -100,7 +100,7 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
         repondre(
           res,
           200,
-          pageContinuer({ langue: pageLangue, test: config.environnementDeTest, uid, client, portees, appareil: deja.appareil.nom, depuis: deja.appareil.ajouteLe }),
+          pageContinuer({ langue: pageLangue, test: config.environnementDeTest, uid, client, logo: await logos.adresse(client), portees, appareil: deja.appareil.nom, depuis: deja.appareil.ajouteLe }),
           'html',
         );
         return true;
@@ -114,7 +114,7 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
       repondre(
         res,
         200,
-        pageConnexion({ langue: pageLangue, test: config.environnementDeTest, uid, demande, client, qrSvg, lienApp }),
+        pageConnexion({ langue: pageLangue, test: config.environnementDeTest, uid, demande, client, logo: await logos.adresse(client), qrSvg, lienApp }),
         'html',
       );
       return true;

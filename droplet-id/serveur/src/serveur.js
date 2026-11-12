@@ -16,6 +16,7 @@ import { stockageMemoire } from './stockage/memoire.js';
 import { stockagePostgres } from './stockage/postgres.js';
 import { limiteur } from './limites.js';
 import { STATIQUES, contenus, empreinte } from './statiques.js';
+import { logos as creerLogos } from './logos.js';
 
 
 const SECURITE = {
@@ -43,8 +44,9 @@ function repondre(res, statut, corps, type = 'json') {
 export async function demarrer(config) {
   const stockage = config.baseDeDonnees ? await stockagePostgres(config.baseDeDonnees) : stockageMemoire();
   const fournisseur = creerFournisseur({ config, stockage });
-  const interaction = routesInteraction({ fournisseur, stockage, config, repondre });
-  const api = routesApi({ fournisseur, stockage, config, repondre });
+  const logos = creerLogos({ environnementDeTest: config.environnementDeTest });
+  const interaction = routesInteraction({ fournisseur, stockage, config, repondre, logos });
+  const api = routesApi({ fournisseur, stockage, config, repondre, logos });
   const oidc = fournisseur.callback();
   const limiteApi = limiteur({ parMinute: 120 });
   const limitePages = limiteur({ parMinute: 60 });
@@ -55,6 +57,17 @@ export async function demarrer(config) {
     const url = new URL(req.url, config.emetteur);
     const chemin = url.pathname;
     try {
+      // Le logo d'un site, téléchargé et converti par le service.
+      const ml = chemin.match(/^\/logo\/([A-Za-z0-9_.-]{1,100})$/);
+      if (ml && req.method === 'GET') {
+        const client = await fournisseur.Client.find(ml[1]);
+        const l = client && (await logos.logo(client));
+        if (!l) return repondre(res, 404, { erreur: 'introuvable' });
+        const cache = url.searchParams.get('v') === l.empreinte ? 'public, max-age=31536000, immutable' : 'public, max-age=3600';
+        res.writeHead(200, { ...SECURITE, 'content-type': l.type, 'cache-control': cache, 'cross-origin-resource-policy': 'cross-origin', 'content-security-policy': "default-src 'none'" });
+        return res.end(l.octets);
+      }
+
       // Fichiers statiques.
       if (chemin.startsWith('/static/')) {
         const nom = chemin.slice(8);

@@ -27,10 +27,12 @@ async function lireCorps(req) {
   return Buffer.concat(morceaux).toString('utf8');
 }
 
-export function routesApi({ fournisseur, stockage, config, repondre }) {
+export function routesApi({ fournisseur, stockage, config, repondre, logos }) {
   const nomClient = async (id) => {
     const c = await fournisseur.Client.find(id);
-    return c ? { nom: c.clientName || id, site: c.clientUri ? new URL(c.clientUri).host : new URL(c.redirectUris[0]).host, logo: c.logoUri ?? null } : null;
+    if (!c) return null;
+    const logo = await logos.adresse(c);
+    return { nom: c.clientName || id, site: c.clientUri ? new URL(c.clientUri).host : new URL(c.redirectUris[0]).host, logo: logo ? config.emetteur + logo : null };
   };
 
   return async function api(req, res, chemin) {

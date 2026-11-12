@@ -10,12 +10,20 @@ import { nouvelAppareil, nouveauNavigateur } from './outils.js';
 const PORT = 18000 + Math.floor(Math.random() * 1000);
 const BASE = `http://localhost:${PORT}`;
 const CLIENTS = [
-  { client_id: 'site-a', client_name: 'Site A', redirect_uris: ['http://localhost:7001/retour'] },
+  { client_id: 'site-a', client_name: 'Site A', redirect_uris: ['http://localhost:7001/retour'], logo_uri: `http://localhost:${PORT + 1}/logo.svg` },
   { client_id: 'site-b', client_name: 'Site B', redirect_uris: ['http://localhost:7002/retour'] },
 ];
 let service;
+let siteLogo;
 
 before(async () => {
+  // Le site A publie son logo (SVG) ; le service le télécharge lui-même.
+  const { createServer } = await import('node:http');
+  siteLogo = createServer((req, res) => {
+    if (req.url !== '/logo.svg') return res.writeHead(404).end();
+    res.writeHead(200, { 'content-type': 'image/svg+xml' });
+    res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#c23a46"/></svg>');
+  }).listen(PORT + 1);
   service = await demarrer({
     port: PORT,
     emetteur: BASE,
@@ -30,7 +38,7 @@ before(async () => {
     derriereProxy: false,
   });
 });
-after(() => service.arreter());
+after(() => { service.arreter(); siteLogo.close(); });
 
 /** Démarre une connexion pour `clientId` ; rend la page et de quoi finir. */
 async function commencer(clientId, scope = 'openid') {
@@ -297,4 +305,22 @@ test('feuille de style versionnée : une nouvelle version change d’adresse', a
   assert.match(r.headers.get('cache-control'), /immutable/);
   const ancien = await fetch(`${BASE}/static/droplet-id.css`);
   assert.equal(ancien.headers.get('cache-control'), 'no-cache');
+});
+
+test('le logo du site : téléchargé par le service, converti en PNG, montré à la place de l’initiale', async () => {
+  const c = await commencer('site-a');
+  const src = c.page.match(/<img src="(\/logo\/site-a\?v=[A-Za-z0-9_-]{10})"/)[1];
+  const r = await fetch(BASE + src);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/png');
+  const octets = Buffer.from(await r.arrayBuffer());
+  assert.equal(octets.subarray(1, 4).toString(), 'PNG');
+  // Sans logo : l'initiale.
+  const b = await commencer('site-b');
+  assert.match(b.page, /<span class="tuile tuile-site">S<\/span>/);
+  // L'app reçoit l'adresse du logo servi par le service.
+  const tel = nouvelAppareil(BASE);
+  await tel.creerCompte();
+  const lu = await tel.appeler('GET', `/v1/demandes/${c.demandeId}`);
+  assert.equal(lu.corps.client.logo, BASE + src);
 });

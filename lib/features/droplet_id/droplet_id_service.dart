@@ -28,12 +28,15 @@ const _hotes = {'id.dropletmesh.app': emetteurDropletId, 'id-test.dropletmesh.ap
 typedef LienDropletId = ({String emetteur, String demandeId});
 
 class DemandeDropletId {
-  DemandeDropletId({required this.id, required this.nomSite, required this.hote, required this.portees, required this.expireLe});
+  DemandeDropletId({required this.id, required this.nomSite, required this.hote, required this.portees, required this.expireLe, this.logo});
   final String id;
   final String nomSite;
   final String hote;
   final List<String> portees;
   final DateTime expireLe;
+
+  /// Le logo du site (PNG servi par Droplet ID), ou null.
+  final String? logo;
   bool get demandeProfil => portees.contains('profile');
 }
 
@@ -140,6 +143,8 @@ class DropletIdService {
       hote: (client['site'] ?? '') as String,
       portees: List<String>.from(r['portees'] as List),
       expireLe: DateTime.parse(r['expire_le'] as String),
+      // Seulement un logo servi par le service lui-même.
+      logo: (client['logo'] is String && (client['logo'] as String).startsWith('$emetteur/logo/')) ? client['logo'] as String : null,
     );
   }
 

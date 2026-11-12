@@ -153,11 +153,11 @@ ${scripts.map((s) => `<script src="${s}" defer></script>`).join('')}
 }
 
 /** Le site ⋯ Droplet ID : les deux tuiles reliées, en tête de chaque page de connexion. */
-function liaison(client) {
+function liaison(client, logo) {
   const site = client.clientName || client.clientId;
   const initiale = echapper(site.trim().charAt(0).toUpperCase());
   return `<div class="liaison" aria-hidden="true">
-    <span class="tuile tuile-site">${client.logoUri ? `<img src="${echapper(client.logoUri)}" alt="">` : initiale}</span>
+    <span class="tuile tuile-site${logo ? ' avec-logo' : ''}">${logo ? `<img src="${echapper(logo)}" alt="" width="56" height="56">` : initiale}</span>
     <span class="fil"><i></i><i></i><i></i></span>
     <span class="tuile tuile-droplet">${GOUTTE}</span>
   </div>`;
@@ -176,7 +176,7 @@ function partage({ t, site, profil }) {
 }
 
 /** La page de connexion : QR, nombre à taper, état en direct. */
-export function pageConnexion({ langue, test, uid, demande, client, qrSvg, lienApp }) {
+export function pageConnexion({ langue, test, uid, demande, client, logo, qrSvg, lienApp }) {
   const t = TEXTES[langue];
   const site = client.clientName || client.clientId;
   const hote = hoteDe(client);
@@ -184,7 +184,7 @@ export function pageConnexion({ langue, test, uid, demande, client, qrSvg, lienA
   const [a, b] = demande.code.split('');
   const corps = `
 <section class="carte" data-connexion data-uid="${echapper(uid)}" data-expire="${echapper(demande.expireLe)}" data-duree="120" data-langue="${langue}">
-  ${liaison(client)}
+  ${liaison(client, logo)}
   <h1>${echapper(t.titreConnexion(site))}</h1>
   <p class="sous">${t.avec}${hote ? ` · <span class="hote">${echapper(hote)}</span>` : ''}</p>
 
@@ -219,7 +219,7 @@ export function pageConnexion({ langue, test, uid, demande, client, qrSvg, lienA
 }
 
 /** Déjà connecté dans ce navigateur : « Continuer vers … » en un geste. */
-export function pageContinuer({ langue, test, uid, client, portees, appareil, depuis }) {
+export function pageContinuer({ langue, test, uid, client, logo, portees, appareil, depuis }) {
   const t = TEXTES[langue];
   const site = client.clientName || client.clientId;
   const hote = hoteDe(client);
@@ -227,7 +227,7 @@ export function pageContinuer({ langue, test, uid, client, portees, appareil, de
   const date = depuis ? new Date(depuis).toLocaleDateString(langue === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
   const corps = `
 <section class="carte">
-  ${liaison(client)}
+  ${liaison(client, logo)}
   <h1>${echapper(t.titreContinuer(site))}</h1>
   <p class="sous">${t.avec}${hote ? ` · <span class="hote">${echapper(hote)}</span>` : ''}</p>
   <form method="post" action="/interaction/${echapper(uid)}/continuer" class="continuer">

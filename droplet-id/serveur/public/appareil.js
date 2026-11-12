@@ -77,7 +77,15 @@
     $('[data-demande]').classList.remove('cache');
     $('[data-nom]').textContent = demande.client.nom;
     $('[data-hote]').textContent = demande.client.site || '';
-    $('[data-logo]').textContent = demande.client.nom.charAt(0).toUpperCase();
+    const tuile = $('[data-logo]');
+    tuile.textContent = demande.client.nom.charAt(0).toUpperCase();
+    tuile.classList.remove('avec-logo');
+    if (demande.client.logo) {
+      const img = new Image(56, 56);
+      img.alt = '';
+      img.onload = () => { tuile.replaceChildren(img); tuile.classList.add('avec-logo'); };
+      img.src = demande.client.logo;
+    }
     $('[data-titre]').textContent = fr ? `Se connecter à ${demande.client.nom} ?` : `Sign in to ${demande.client.nom}?`;
     const saisie = $('[data-code]');
     saisie.value = '';
