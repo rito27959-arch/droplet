@@ -61,6 +61,8 @@ import 'features/call/group_call_screen.dart';
 import 'features/safety/emergency_mode_screen.dart';
 import 'features/group/group_create_screen.dart';
 import 'features/group/group_info_screen.dart';
+import 'features/droplet_id/approbation_screen.dart';
+import 'features/droplet_id/droplet_id_screen.dart';
 import 'features/settings/backup_export_screen.dart';
 import 'features/settings/app_icon_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -632,6 +634,16 @@ final _router = GoRouter(
     GoRoute(
       path: '/settings',
       pageBuilder: (context, state) => _pushPage(const SettingsScreen()),
+    ),
+    // Droplet ID : réglages, et l'approbation d'une connexion ouverte par le
+    // lien https://id.dropletmesh.app/a/<demande> (ou scannée).
+    GoRoute(
+      path: '/droplet-id',
+      pageBuilder: (context, state) => _pushPage(const DropletIdScreen()),
+    ),
+    GoRoute(
+      path: '/a/:demande',
+      pageBuilder: (context, state) => _pushPage(ApprobationScreen(demandeId: state.pathParameters['demande'] ?? '')),
     ),
     GoRoute(
       path: '/safety',

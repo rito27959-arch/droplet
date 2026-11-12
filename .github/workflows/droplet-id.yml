@@ -4,7 +4,7 @@ name: Droplet ID
 on:
   push:
     branches: [droplet-id]
-    paths: ['droplet-id/**', '.github/workflows/droplet-id.yml']
+    paths: ['droplet-id/**', 'lib/features/droplet_id/**', 'tool/droplet_id_appareil.dart', 'test/droplet_id/**', '.github/workflows/droplet-id.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -48,8 +48,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: { channel: stable }
-      - working-directory: droplet-id/kits/flutter
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Kit Flutter
+        working-directory: droplet-id/kits/flutter
         run: flutter pub get && flutter analyze --no-fatal-infos && flutter test
+      - name: App Droplet — module Droplet ID (analyse, tests, et une vraie connexion approuvée par le protocole Dart)
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib/features/droplet_id tool/droplet_id_appareil.dart lib/main.dart lib/features/settings/settings_screen.dart
+          flutter test test/droplet_id
+          (cd droplet-id/serveur && npm ci)
+          node droplet-id/kits/essais/e2e-appareil-dart.mjs
 
   kotlin:
     runs-on: ubuntu-latest

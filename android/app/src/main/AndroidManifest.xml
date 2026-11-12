@@ -85,6 +85,18 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="*/*"/>
             </intent-filter>
+            <!-- Droplet ID : le lien d'une demande de connexion
+                 (https://id[-test].dropletmesh.app/a/<demande>) ouvre l'écran
+                 d'approbation. Vérifié par /.well-known/assetlinks.json
+                 (variable EMPREINTES_APP du service : l'empreinte SHA-256
+                 du certificat de signature). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="id.dropletmesh.app" android:pathPrefix="/a/"/>
+                <data android:scheme="https" android:host="id-test.dropletmesh.app" android:pathPrefix="/a/"/>
+            </intent-filter>
         </activity>
 
         <!--

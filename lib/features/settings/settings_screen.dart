@@ -106,6 +106,22 @@ class SettingsScreen extends ConsumerWidget {
                 const SizedBox(height: DesignTokens.space5),
 
                 OuroListSection(
+                  header: 'Identité',
+                  footer: 'Se connecter à des sites et des apps sans numéro, sans e-mail, sans nom.',
+                  children: [
+                    OuroListRow(
+                      icon: Icons.water_drop_rounded,
+                      iconColor: OuroColors.accent,
+                      title: 'Droplet ID',
+                      subtitle: 'Approuver une connexion, sites connectés',
+                      onTap: () => context.push('/droplet-id'),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: DesignTokens.space5),
+
+                OuroListSection(
                   header: 'Réseau',
                   footer: 'Le relais en arrière-plan permet de transmettre '
                       'les messages des autres même quand Droplet est fermé.',
