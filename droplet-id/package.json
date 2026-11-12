@@ -1,0 +1,10 @@
+{
+  "name": "droplet-id-depot",
+  "private": true,
+  "description": "Racine du dossier Droplet ID : sert seulement à déployer la démo Librairie Baobab (qui utilise le kit Node du dépôt).",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build:baobab": "cd kits/node && npm ci && cd ../../demos/baobab && npm ci",
+    "start:baobab": "node demos/baobab/serveur.js"
+  }
+}
