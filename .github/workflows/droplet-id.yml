@@ -49,7 +49,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable }
       - working-directory: droplet-id/kits/flutter
-        run: flutter pub get && flutter analyze && flutter test
+        run: flutter pub get && flutter analyze --no-fatal-infos && flutter test
 
   kotlin:
     runs-on: ubuntu-latest

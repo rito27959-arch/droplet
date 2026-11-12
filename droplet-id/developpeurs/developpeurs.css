@@ -1,0 +1,84 @@
+/* Droplet ID — developers. Same family as the sign-in pages: cool paper,
+   ink, one blue. The code is the content, so it gets the room. */
+@font-face { font-family: 'Instrument Sans'; src: url('/InstrumentSans.woff2') format('woff2'); font-weight: 400 700; font-stretch: 75% 100%; font-display: swap; }
+:root { --paper: #f5f7f9; --surface: #fff; --ink: #0a1a24; --muted: #5a6b76; --line: #e1e7ec; --accent: #0a7cff; --code: #0d1d29; color-scheme: light; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 1.03rem/1.6 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+code { font: 500 .88em/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+.cache { display: none !important; }
+.petit { font-size: .88rem; color: var(--muted); }
+
+.haut { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem clamp(1rem, 4vw, 2.5rem); background: rgba(245, 247, 249, .86); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.marque { display: inline-flex; align-items: center; gap: .5rem; color: var(--ink); text-decoration: none; font-weight: 640; white-space: nowrap; }
+.marque svg { width: 1.3rem; height: 1.3rem; color: var(--accent); }
+.marque span { color: var(--muted); font-weight: 500; }
+.haut nav { display: flex; gap: .2rem; overflow-x: auto; }
+.haut nav a { color: var(--muted); text-decoration: none; font-size: .93rem; padding: .35rem .7rem; border-radius: 999px; white-space: nowrap; }
+.haut nav a:hover { color: var(--ink); background: var(--surface); }
+@media (max-width: 40rem) { .haut nav { display: none; } }
+
+main, .bas { max-width: 72rem; margin: 0 auto; padding-inline: clamp(1rem, 4vw, 2.5rem); }
+.ouverture { display: grid; grid-template-columns: 1.3fr 1fr; gap: clamp(2rem, 5vw, 4rem); align-items: center; padding-block: clamp(3rem, 8vw, 6rem); }
+@media (max-width: 56rem) { .ouverture { grid-template-columns: 1fr; } }
+h1 { font-size: clamp(2.4rem, 1.4rem + 4.2vw, 4.4rem); line-height: 1; letter-spacing: -.035em; font-weight: 640; font-stretch: 84%; margin: 0; max-width: 14ch; }
+.chapo { color: var(--muted); font-size: clamp(1.05rem, 1rem + .35vw, 1.22rem); max-width: 50ch; margin: 1.4rem 0 0; }
+.boutons-demo { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 2rem; }
+
+.flux { list-style: none; counter-reset: f; margin: 0; padding: 1.5rem; background: var(--surface); border-radius: 22px; box-shadow: 0 1px 2px rgba(10, 26, 36, .05), 0 22px 50px -28px rgba(10, 26, 36, .3); display: grid; gap: 1.1rem; }
+.flux li { counter-increment: f; display: grid; grid-template-columns: 2rem 1fr; gap: .8rem; align-items: baseline; }
+.flux li::before { content: counter(f); width: 2rem; height: 2rem; border-radius: 999px; display: grid; place-items: center; background: #e7f1ff; color: var(--accent); font-weight: 640; font-size: .9rem; transform: translateY(.3rem); }
+
+.bloc { padding-block: clamp(2.5rem, 6vw, 4.5rem); border-top: 1px solid var(--line); }
+.bloc h2 { font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.3rem); letter-spacing: -.025em; font-weight: 640; font-stretch: 88%; margin: 0 0 1.2rem; }
+.sous { color: var(--muted); max-width: 70ch; margin: -.4rem 0 1.4rem; }
+.etapes { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; counter-reset: e; }
+@media (max-width: 56rem) { .etapes { grid-template-columns: 1fr; } }
+.etapes li { background: var(--surface); border-radius: 18px; padding: 1.3rem; box-shadow: inset 0 0 0 1px var(--line); counter-increment: e; }
+.etapes li::before { content: counter(e); color: var(--accent); font-weight: 700; }
+.etapes h3 { margin: .3rem 0 .4rem; font-size: 1.1rem; }
+.etapes p { margin: 0; color: var(--muted); }
+
+.onglets { display: flex; gap: .3rem; overflow-x: auto; padding-bottom: .5rem; scrollbar-width: thin; }
+.onglets button { font: inherit; font-size: .93rem; font-weight: 560; border: 0; background: transparent; color: var(--muted); padding: .5rem .9rem; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+.onglets button[aria-selected='true'] { background: var(--ink); color: #fff; }
+.panneau { margin-top: .8rem; }
+.panneau h3 { font-size: 1rem; margin: 1.4rem 0 .5rem; }
+.statut { font-size: .93rem; color: var(--muted); margin: 0 0 .8rem; }
+.pastille { display: inline-block; font-size: .78rem; font-weight: 640; padding: .15rem .55rem; border-radius: 999px; vertical-align: .08em; }
+.pastille.ok { background: #dff5ea; color: #0b6b45; }
+.pastille.compile { background: #e7f1ff; color: #0a5bc0; }
+.pastille.guide { background: #f1f1f4; color: #4a5560; }
+pre { background: var(--code); color: #dce6ee; border-radius: 16px; padding: 1.2rem 1.3rem; overflow-x: auto; margin: 0; font-size: .92rem; line-height: 1.6; }
+pre code { font-size: inherit; }
+
+.sable { display: grid; grid-template-columns: 1fr 1.2fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+@media (max-width: 56rem) { .sable { grid-template-columns: 1fr; } }
+.sable p { color: var(--muted); max-width: 48ch; }
+.recu { background: var(--code); border-radius: 18px; min-height: 14rem; padding: 1.2rem; display: grid; }
+.recu .vide { color: #8ba0b0; margin: auto; }
+.recu pre { padding: 0; background: none; }
+.lien { font: inherit; background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; padding: 0; }
+
+.cartes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media (max-width: 40rem) { .cartes { grid-template-columns: 1fr; } }
+.carte { display: grid; gap: .3rem; padding: 1.4rem; border-radius: 18px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); text-decoration: none; transition: box-shadow .2s; }
+.carte:hover { box-shadow: inset 0 0 0 2px var(--accent); }
+.carte .nom { color: var(--ink); font-weight: 640; font-size: 1.2rem; }
+
+.ref { width: 100%; border-collapse: collapse; }
+.ref th { text-align: left; vertical-align: top; font-weight: 560; color: var(--muted); width: 11rem; padding: .7rem 1rem .7rem 0; border-bottom: 1px solid var(--line); }
+.ref td { padding: .7rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+@media (max-width: 40rem) { .ref th, .ref td { display: block; width: auto; border: 0; padding: .1rem 0; } .ref tr { display: block; padding: .6rem 0; border-bottom: 1px solid var(--line); } }
+
+.bas { border-top: 1px solid var(--line); padding-block: 2rem 3rem; color: var(--muted); font-size: .92rem; }
+
+/* The official button (same CSS as the kit). */
+.droplet-id-bouton{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:.6em;height:48px;padding:0 1.25em;border-radius:999px;cursor:pointer;font:600 15px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0a1a24;color:#fff}
+.droplet-id-bouton svg{width:1.25em;height:1.25em;color:#3d9bff}
+.droplet-id-bouton[data-variante=clair]{background:#fff;color:#0a1a24;box-shadow:inset 0 0 0 1px #d6dee4}
+.droplet-id-bouton[data-variante=clair] svg{color:#0a7cff}
+.droplet-id-bouton[data-variante=bleu]{background:#0a7cff;color:#fff}
+.droplet-id-bouton[data-variante=bleu] svg{color:#fff}

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Droplet ID — Développeurs</title>
+<meta name="description" content="Ajoutez « Continuer avec Droplet ID » à votre site ou votre app : kits pour JavaScript, React, Node.js, Python, PHP, Go, Flutter et Kotlin. Sans numéro, sans e-mail, sans nom.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/InstrumentSans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/developpeurs.css">
+<meta name="theme-color" content="#f5f7f9">
+</head>
+<body>
+<header class="haut">
+  <a class="marque" href="/"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-3.6 4.9-6 8.4-6 11.6a6 6 0 0 0 12 0c0-3.2-2.4-6.7-6-11.6Z"/></svg>Droplet ID <span>Développeurs</span></a>
+  <nav aria-label="Sections">
+    <a href="#demarrer">Démarrer</a>
+    <a href="#kits">Kits</a>
+    <a href="#bac-a-sable">Bac à sable</a>
+    <a href="#reference">Référence</a>
+  </nav>
+</header>
+
+<main>
+  <section class="ouverture">
+    <div>
+      <h1>Une connexion qui ne demande rien à personne.</h1>
+      <p class="chapo">Ajoutez « Continuer avec Droplet ID » à votre site ou votre app. Vos utilisateurs approuvent sur leur téléphone ; vous recevez un identifiant stable, propre à votre service. Pas de numéro, pas d’e-mail, pas de nom, pas de mot de passe à protéger.</p>
+      <div class="boutons-demo" aria-label="Le bouton officiel, en trois variantes">
+        <span class="droplet-id-bouton" data-variante="sombre"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-3.6 4.9-6 8.4-6 11.6a6 6 0 0 0 12 0c0-3.2-2.4-6.7-6-11.6Z"/></svg><span>Continuer avec Droplet ID</span></span>
+        <span class="droplet-id-bouton" data-variante="clair"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-3.6 4.9-6 8.4-6 11.6a6 6 0 0 0 12 0c0-3.2-2.4-6.7-6-11.6Z"/></svg><span>Continuer avec Droplet ID</span></span>
+        <span class="droplet-id-bouton" data-variante="bleu"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-3.6 4.9-6 8.4-6 11.6a6 6 0 0 0 12 0c0-3.2-2.4-6.7-6-11.6Z"/></svg><span>Continuer avec Droplet ID</span></span>
+      </div>
+    </div>
+    <ol class="flux" aria-label="Comment se passe une connexion">
+      <li><span><b>Votre site</b> envoie la personne vers Droplet ID.</span></li>
+      <li><span><b>Droplet ID</b> affiche un code QR et un nombre à deux chiffres.</span></li>
+      <li><span><b>Le téléphone</b> scanne, la personne tape le nombre et approuve.</span></li>
+      <li><span><b>Votre site</b> reçoit un identifiant fait pour lui seul.</span></li>
+    </ol>
+  </section>
+
+  <section id="demarrer" class="bloc">
+    <h2>Démarrer en trois étapes</h2>
+    <ol class="etapes">
+      <li><h3>Enregistrez votre site</h3><p>Écrivez à <a href="mailto:contact@dropletmesh.app?subject=Droplet%20ID%20%E2%80%94%20enregistrer%20un%20site">contact@dropletmesh.app</a> avec le nom de votre service et vos adresses de retour exactes. Vous recevez un <code>client_id</code>. Pendant la phase de test, l’enregistrement est manuel.</p></li>
+      <li><h3>Ajoutez le kit de votre langage</h3><p>Un kit = une connexion vérifiée de bout en bout (PKCE, state, nonce, signature de l’ID token) et le bouton officiel.</p></li>
+      <li><h3>Gardez le <code>sub</code></h3><p>C’est l’identifiant de la personne <em>pour votre service</em>. Stable d’une connexion à l’autre, différent sur chaque autre site. Ne redemandez pas de numéro ni d’e-mail pour vous connecter : c’est la promesse faite à vos utilisateurs.</p></li>
+    </ol>
+  </section>
+
+  <section id="kits" class="bloc">
+    <h2>Les kits</h2>
+    <p class="sous">Kits <span class="pastille ok">vérifié</span> : essayés de bout en bout contre le service, à chaque modification. Guides : la bibliothèque OpenID Connect habituelle du langage, avec la bonne configuration.</p>
+    <div class="onglets" role="tablist" aria-label="Langages">
+      <button role="tab" aria-selected="true" aria-controls="k-js" id="t-js">JavaScript</button>
+      <button role="tab" aria-selected="false" aria-controls="k-react" id="t-react">React</button>
+      <button role="tab" aria-selected="false" aria-controls="k-node" id="t-node">Node.js</button>
+      <button role="tab" aria-selected="false" aria-controls="k-python" id="t-python">Python</button>
+      <button role="tab" aria-selected="false" aria-controls="k-php" id="t-php">PHP</button>
+      <button role="tab" aria-selected="false" aria-controls="k-go" id="t-go">Go</button>
+      <button role="tab" aria-selected="false" aria-controls="k-flutter" id="t-flutter">Flutter</button>
+      <button role="tab" aria-selected="false" aria-controls="k-kotlin" id="t-kotlin">Kotlin</button>
+      <button role="tab" aria-selected="false" aria-controls="k-autres" id="t-autres">Java, C#, Ruby, Swift</button>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-js" aria-labelledby="t-js">
+      <p class="statut"><span class="pastille ok">vérifié</span> <code>@droplet/id</code> · navigateur · aucune dépendance · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/js">source</a></p>
+<pre><code>import { DropletId, boutonDropletId } from '@droplet/id';
+
+const did = new DropletId({
+  clientId: 'mon-site',
+  redirectUri: location.origin + '/',
+  portees: ['openid', 'profile'],   // 'profile' : le pseudo, si la personne accepte
+});
+
+if (did.estUnRetour()) {
+  const { sub, pseudo } = await did.terminerConnexion();   // ID token vérifié
+} else {
+  document.body.append(boutonDropletId({ onClick: () =&gt; did.connecter() }));
+}</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-react" aria-labelledby="t-react" hidden>
+      <p class="statut"><span class="pastille ok">vérifié</span> <code>@droplet/id-react</code> · utilisé par la démo Kola Café · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/react">source</a></p>
+<pre><code>import { DropletIdProvider, DropletIdButton, useDropletId } from '@droplet/id-react';
+
+&lt;DropletIdProvider clientId="mon-site" redirectUri={location.origin + '/'} portees={['openid', 'profile']}&gt;
+  &lt;App /&gt;
+&lt;/DropletIdProvider&gt;
+
+function App() {
+  const { utilisateur, chargement, erreur, deconnecter } = useDropletId();
+  if (!utilisateur) return &lt;DropletIdButton variante="sombre" /&gt;;
+  return &lt;p&gt;Bonjour {utilisateur.pseudo ?? 'vous'}&lt;/p&gt;;
+}</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-node" aria-labelledby="t-node" hidden>
+      <p class="statut"><span class="pastille ok">vérifié</span> <code>@droplet/id-node</code> · par-dessus <code>openid-client</code> · utilisé par la démo Librairie Baobab · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/node">source</a></p>
+<pre><code>import express from 'express';
+import { DropletIdServeur } from '@droplet/id-node';
+
+const did = await DropletIdServeur.creer({
+  clientId: 'mon-site',
+  redirectUri: 'https://mon-site.cm/connexion/retour',
+});
+
+const app = express();
+// GET /connexion et GET /connexion/retour, prêts :
+app.use(did.routesExpress({
+  secret: process.env.SECRET,                  // 32 caractères ou plus
+  ouvrirSession: (req, res, { sub, pseudo }) =&gt; { /* votre session */ },
+}));</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-python" aria-labelledby="t-python" hidden>
+      <p class="statut"><span class="pastille ok">vérifié</span> <code>droplet-id</code> · une seule dépendance (<code>cryptography</code>) · Flask inclus · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/python">source</a></p>
+<pre><code>from droplet_id import DropletId
+
+did = DropletId("mon-site", "https://mon-site.cm/connexion/retour")
+url, attente = did.commencer()          # gardez `attente` en session, puis redirigez vers url
+session = did.terminer(url_de_retour, attente)
+session["sub"]
+
+# Avec Flask, en une ligne :
+from droplet_id.flask import blueprint
+app.register_blueprint(blueprint(client_id="mon-site", redirect_uri="https://mon-site.cm/connexion/retour"))</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-php" aria-labelledby="t-php" hidden>
+      <p class="statut"><span class="pastille ok">vérifié</span> <code>dropletmesh/droplet-id</code> · sans dépendance, même sur un hébergement mutualisé · PHP 8.1+ · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/php">source</a></p>
+<pre><code>&lt;?php
+require 'DropletId.php';
+session_start();
+$did = new DropletMesh\DropletId('mon-site', 'https://mon-site.cm/connexion/retour');
+
+// connexion.php
+[$url, $_SESSION['droplet_id_attente']] = $did-&gt;commencer();
+header("Location: $url");
+
+// retour.php
+$session = $did-&gt;terminer($urlComplete, $_SESSION['droplet_id_attente'] ?? null);
+$_SESSION['utilisateur'] = $session['sub'];</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-go" aria-labelledby="t-go" hidden>
+      <p class="statut"><span class="pastille ok">vérifié</span> par-dessus <code>coreos/go-oidc</code> et <code>x/oauth2</code> · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/go">source</a></p>
+<pre><code>did, err := dropletid.Nouveau(ctx, dropletid.Options{
+    ClientID:    "mon-site",
+    RedirectURI: "https://mon-site.cm/connexion/retour",
+})
+url, attente := did.Commencer()                       // gardez `attente` en session
+session, err := did.Terminer(ctx, r.URL.Query(), attente)
+session.Sub</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-flutter" aria-labelledby="t-flutter" hidden>
+      <p class="statut"><span class="pastille compile">compilé et testé</span> <code>droplet_id</code> · par-dessus <code>flutter_appauth</code> · bouton officiel inclus · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/flutter">source</a></p>
+<pre><code>final did = DropletId(clientId: 'mon-app', redirectUri: 'cm.monapp:/connexion');
+
+DropletIdBouton(onPressed: () async {
+  final session = await did.connecter();   // onglet sécurisé, jamais une WebView
+  print(session.sub);
+});
+
+// android/app/build.gradle :
+// manifestPlaceholders += [appAuthRedirectScheme: 'cm.monapp']</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-kotlin" aria-labelledby="t-kotlin" hidden>
+      <p class="statut"><span class="pastille compile">compilé et testé</span> <code>app.dropletmesh.id</code> · par-dessus AppAuth-Android · bouton Compose inclus · <a href="https://github.com/rito27959-arch/droplet/tree/droplet-id/droplet-id/kits/kotlin">source</a></p>
+<pre><code>val did = DropletId(context, clientId = "mon-app", redirectUri = Uri.parse("cm.monapp:/connexion"))
+
+val lanceur = rememberLauncherForActivityResult(StartActivityForResult()) { r -&gt;
+    scope.launch { val session = did.terminer(r.data!!); /* session.sub */ }
+}
+DropletIdBouton(onClick = { scope.launch { lanceur.launch(did.intentionDeConnexion()) } })</code></pre>
+    </div>
+
+    <div class="panneau" role="tabpanel" id="k-autres" aria-labelledby="t-autres" hidden>
+      <p class="statut"><span class="pastille guide">guide</span> Droplet ID suit OpenID Connect : la bibliothèque standard de votre langage suffit. Réglages communs : émetteur <code>https://id.dropletmesh.app</code>, flux <code>authorization_code</code>, PKCE <code>S256</code>, portées <code>openid</code> (+ <code>profile</code>), client public sans secret.</p>
+      <h3>Java — Spring Security (<code>application.yml</code>)</h3>
+<pre><code>spring.security.oauth2.client:
+  registration.droplet:
+    client-id: mon-site
+    client-authentication-method: none
+    authorization-grant-type: authorization_code
+    redirect-uri: "{baseUrl}/login/oauth2/code/droplet"
+    scope: openid
+  provider.droplet:
+    issuer-uri: https://id.dropletmesh.app</code></pre>
+      <h3>C# — ASP.NET Core</h3>
+<pre><code>builder.Services.AddAuthentication(o =&gt; { o.DefaultScheme = "Cookies"; o.DefaultChallengeScheme = "droplet"; })
+  .AddCookie("Cookies")
+  .AddOpenIdConnect("droplet", o =&gt; {
+      o.Authority = "https://id.dropletmesh.app";
+      o.ClientId = "mon-site";
+      o.ResponseType = "code";
+      o.UsePkce = true;
+      o.Scope.Clear(); o.Scope.Add("openid");
+  });</code></pre>
+      <h3>Ruby — OmniAuth</h3>
+<pre><code>use OmniAuth::Builder do
+  provider :openid_connect,
+    issuer: "https://id.dropletmesh.app", discovery: true,
+    pkce: true, scope: [:openid], response_type: :code,
+    client_options: { identifier: "mon-site", redirect_uri: "https://mon-site.cm/auth/openid_connect/callback" }
+end</code></pre>
+      <h3>Swift — AppAuth-iOS</h3>
+<pre><code>OIDAuthorizationService.discoverConfiguration(forIssuer: URL(string: "https://id.dropletmesh.app")!) { conf, _ in
+  let req = OIDAuthorizationRequest(configuration: conf!, clientId: "mon-app", scopes: [OIDScopeOpenID],
+                                    redirectURL: URL(string: "cm.monapp:/connexion")!, responseType: OIDResponseTypeCode,
+                                    additionalParameters: nil)
+  session = OIDAuthState.authState(byPresenting: req, presenting: self) { etat, _ in /* etat?.lastTokenResponse?.idToken */ }
+}</code></pre>
+      <p class="petit">Ces quatre guides utilisent les bibliothèques officielles de chaque langage ; ils n’ont pas encore d’essai automatique contre le service.</p>
+    </div>
+  </section>
+
+  <section id="bac-a-sable" class="bloc sable">
+    <div>
+      <h2>Bac à sable</h2>
+      <p>Connectez-vous ici, dans l’environnement de test, et voyez exactement ce que reçoit un site. Pas de téléphone sous la main ? La page de connexion propose un <b>appareil de test</b> qui joue son rôle dans un autre onglet.</p>
+      <div data-sable-action></div>
+      <p class="petit">Le bac à sable utilise le kit JavaScript, comme le ferait votre site.</p>
+    </div>
+    <div class="recu" aria-live="polite">
+      <p class="vide" data-sable-vide>Rien reçu pour l’instant.</p>
+      <pre class="cache" data-sable-claims></pre>
+    </div>
+  </section>
+
+  <section class="bloc demos">
+    <h2>Deux sites de démonstration</h2>
+    <div class="cartes">
+      <a class="carte" href="https://demo-kola.dropletmesh.app"><span class="nom">Kola Café</span><span>Une carte de fidélité sans numéro de téléphone. React.</span></a>
+      <a class="carte" href="https://demo-baobab.dropletmesh.app"><span class="nom">Librairie Baobab</span><span>Une liste d’envies rendue côté serveur. Node.js.</span></a>
+    </div>
+  </section>
+
+  <section id="reference" class="bloc">
+    <h2>Référence</h2>
+    <table class="ref">
+      <tbody>
+        <tr><th scope="row">Émetteur</th><td><code>https://id.dropletmesh.app</code> · test : <code>https://id-test.dropletmesh.app</code></td></tr>
+        <tr><th scope="row">Découverte</th><td><code>/.well-known/openid-configuration</code></td></tr>
+        <tr><th scope="row">Flux</th><td><code>authorization_code</code> + PKCE <code>S256</code> obligatoire · <code>refresh_token</code> à usage unique</td></tr>
+        <tr><th scope="row">Portées</th><td><code>openid</code> · <code>profile</code> (pseudo choisi par site) · <code>offline_access</code>. Il n’existe ni <code>email</code> ni <code>phone</code>.</td></tr>
+        <tr><th scope="row">Identifiant</th><td><code>sub</code> « pairwise » : un par site, stable</td></tr>
+        <tr><th scope="row">Signature</th><td>ES256, clés sur <code>/.well-known/jwks.json</code></td></tr>
+        <tr><th scope="row">Durées</th><td>ID token 5 min · access token 10 min · refresh token 30 jours · code 60 s</td></tr>
+        <tr><th scope="row">Déconnexion</th><td><code>/oauth2/sessions/logout</code> (OpenID RP-Initiated Logout)</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<footer class="bas">
+  <p>Droplet ID est en <b>phase de test</b> : utilisez <code>id-test.dropletmesh.app</code>. Une initiative de <a href="https://labs.dropletmesh.app">Droplet Labs</a>.</p>
+</footer>
+<script type="module" src="/developpeurs.js"></script>
+</body>
+</html>

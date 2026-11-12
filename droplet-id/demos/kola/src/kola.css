@@ -1,0 +1,90 @@
+/* Kola Café — a fictional café. Leaf green and kola red; the loyalty card
+   is the one loud object, everything else stays quiet. */
+@font-face { font-family: 'Bricolage'; src: url('/Bricolage.woff2') format('woff2'); font-weight: 200 800; font-stretch: 75% 100%; font-display: swap; }
+
+:root {
+  --feuille: #e8f0ea;
+  --papier: #f7faf7;
+  --encre: #13281f;
+  --gris: #4f6358;
+  --ligne: #cfdcd3;
+  --kola: #c23a46;
+  --kola-sombre: #8f2430;
+  --or: #e2a62b;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--feuille); color: var(--encre); font: 400 1.0625rem/1.55 'Bricolage', system-ui, sans-serif; font-variation-settings: 'opsz' 14; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--kola); outline-offset: 3px; border-radius: 6px; }
+
+.demo { background: var(--encre); color: #dfe9e2; font-size: .82rem; text-align: center; padding: .5rem 1rem; }
+.entete, main, .pied { max-width: 68rem; margin: 0 auto; padding-inline: clamp(1rem, 4vw, 2.5rem); }
+.entete { display: flex; align-items: center; justify-content: space-between; padding-block: 1.25rem; }
+.logo { display: inline-flex; align-items: center; gap: .55rem; text-decoration: none; font-weight: 720; font-size: 1.25rem; letter-spacing: -.02em; font-variation-settings: 'opsz' 48, 'wdth' 85; }
+.logo .noix { width: 1.7rem; height: 1.7rem; }
+.lieu { color: var(--gris); font-size: .92rem; }
+
+.ouverture { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(2rem, 5vw, 4.5rem); align-items: center; padding-block: clamp(2rem, 6vw, 5rem) clamp(2.5rem, 6vw, 4.5rem); }
+@media (max-width: 52rem) { .ouverture { grid-template-columns: 1fr; } }
+h1 { font-size: clamp(2.5rem, 1.6rem + 4.2vw, 4.6rem); line-height: .98; letter-spacing: -.04em; font-weight: 760; margin: 0; font-variation-settings: 'opsz' 96, 'wdth' 82; max-width: 12ch; text-wrap: balance; }
+.chapo { font-size: clamp(1.1rem, 1rem + .4vw, 1.3rem); color: var(--gris); max-width: 38ch; margin: 1.4rem 0 0; }
+.action { margin-top: 2rem; display: grid; gap: .8rem; justify-items: start; }
+.etat { margin: 0; font-size: .95rem; color: var(--gris); }
+.etat.erreur { color: var(--kola-sombre); }
+
+/* ── The loyalty card ─────────────────────────────────────────────── */
+.carte {
+  position: relative; background: var(--papier); border-radius: 26px; padding: 1.6rem 1.6rem 1.4rem;
+  box-shadow: 0 1px 0 #fff inset, 0 30px 60px -30px rgba(19, 40, 31, .35), 0 0 0 1px var(--ligne);
+  transform: rotate(-1.5deg); transition: transform .5s cubic-bezier(.2, .8, .2, 1);
+}
+.carte[data-active] { transform: rotate(0); }
+.carte::before { /* perforation */
+  content: ''; position: absolute; left: 1.6rem; right: 1.6rem; top: 4.4rem; border-top: 2px dashed var(--ligne);
+}
+.carte-haut { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 1.6rem; }
+.carte-marque { font-weight: 760; font-size: 1.3rem; letter-spacing: -.02em; font-variation-settings: 'opsz' 48, 'wdth' 85; }
+.carte-type { color: var(--gris); font-size: .88rem; }
+.tampons { display: grid; grid-template-columns: repeat(4, 1fr); gap: .9rem; padding: .4rem 0 1.2rem; }
+.noix { width: 100%; aspect-ratio: 1; }
+.noix path { fill: none; stroke: var(--ligne); stroke-width: 2.2; transition: fill .35s, stroke .35s; }
+.noix .fente { stroke-linecap: round; }
+.noix[data-pleine] path:first-child { fill: var(--kola); stroke: var(--kola-sombre); }
+.noix[data-pleine] .fente { stroke: var(--kola-sombre); }
+.carte[data-active] .noix[data-pleine] { animation: tampon .45s cubic-bezier(.3, 1.6, .5, 1) both; animation-delay: calc(var(--i) * 45ms); }
+@keyframes tampon { from { transform: scale(.4) rotate(-20deg); opacity: 0; } }
+.logo .noix path:first-child { fill: var(--kola); stroke: none; }
+.logo .noix .fente { stroke: var(--feuille); }
+.carte-bas { border-top: 1px solid var(--ligne); padding-top: 1rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem; }
+.carte-bas p { margin: 0; color: var(--gris); }
+.carte-bas strong { color: var(--encre); }
+.commande { font: inherit; font-weight: 640; border: 0; border-radius: 999px; padding: .7rem 1.2rem; background: var(--encre); color: #fff; cursor: pointer; }
+.commande:hover { background: #1d3a2d; }
+@media (prefers-reduced-motion: reduce) { .carte, .carte[data-active] .noix[data-pleine] { transition: none; animation: none; } }
+
+/* ── What we know ──────────────────────────────────────────────────── */
+.savoir { background: var(--encre); color: #e6efe9; border-radius: 26px; padding: clamp(1.4rem, 3vw, 2.2rem); margin-bottom: 3.5rem; display: grid; gap: 1rem; }
+.savoir h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.02em; font-weight: 700; font-variation-settings: 'opsz' 48; }
+.savoir dl { margin: 0; display: grid; gap: .7rem; }
+.savoir dl div { display: grid; grid-template-columns: 12rem 1fr; gap: 1rem; }
+@media (max-width: 40rem) { .savoir dl div { grid-template-columns: 1fr; gap: .1rem; } }
+.savoir dt { color: #9fb5a8; }
+.savoir dd { margin: 0; overflow-wrap: anywhere; }
+.savoir code { font: 500 .92rem/1.4 ui-monospace, 'SF Mono', Menlo, monospace; color: #fff; }
+.rien { color: #9fb5a8; }
+.jamais { list-style: none; padding: 0; margin: .3rem 0 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+.jamais li { border: 1px solid #355345; border-radius: 999px; padding: .35rem .8rem; font-size: .9rem; text-decoration: line-through; text-decoration-color: var(--kola); text-decoration-thickness: 2px; }
+.note { margin: 0; color: #9fb5a8; font-size: .95rem; max-width: 60ch; }
+.lien { justify-self: start; font: inherit; background: none; border: 0; color: #fff; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 0; }
+
+/* ── Menu ──────────────────────────────────────────────────────────── */
+.menu { padding-bottom: 4rem; }
+.menu h2 { font-size: 1rem; color: var(--gris); font-weight: 560; margin: 0 0 .8rem; }
+.menu ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ligne); }
+.menu li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'nom prix' 'detail prix'; column-gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--ligne); }
+.menu .nom { grid-area: nom; font-weight: 640; font-size: 1.15rem; }
+.menu .detail { grid-area: detail; color: var(--gris); font-size: .95rem; }
+.menu .prix { grid-area: prix; align-self: center; font-variant-numeric: tabular-nums; font-weight: 560; }
+
+.pied { padding-block: 2rem 3rem; color: var(--gris); font-size: .9rem; border-top: 1px solid var(--ligne); }
