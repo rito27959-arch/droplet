@@ -21,9 +21,16 @@ const b64url = (octets) => btoa(String.fromCharCode(...new Uint8Array(octets))).
 const deB64url = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=')), (c) => c.charCodeAt(0));
 const aleatoire = (n = 32) => b64url(crypto.getRandomValues(new Uint8Array(n)));
 
+// The pending sign-in (PKCE verifier, state, nonce) belongs to one tab and
+// one round trip: sessionStorage. The signed-in session must outlive the
+// browser being closed: localStorage, until it expires or the person signs out.
+const magasin = (nom) => {
+  try { return globalThis[nom] ?? null; } catch { return null; }
+};
 const stockage = {
-  lire(k) { try { return JSON.parse(sessionStorage.getItem(`${CLE}:${k}`)); } catch { return null; } },
-  ecrire(k, v) { try { v == null ? sessionStorage.removeItem(`${CLE}:${k}`) : sessionStorage.setItem(`${CLE}:${k}`, JSON.stringify(v)); } catch { /* navigation privée : on garde en mémoire */ } },
+  _ou: (k) => magasin(k === 'attente' ? 'sessionStorage' : 'localStorage'),
+  lire(k) { try { return JSON.parse(this._ou(k)?.getItem(`${CLE}:${k}`) ?? 'null'); } catch { return null; } },
+  ecrire(k, v) { try { const m = this._ou(k); v == null ? m?.removeItem(`${CLE}:${k}`) : m?.setItem(`${CLE}:${k}`, JSON.stringify(v)); } catch { /* navigation privée : on garde en mémoire */ } },
 };
 
 export class ErreurDropletId extends Error {
@@ -42,15 +49,20 @@ export class DropletId {
    * @param {string} [o.emetteur]      https://id.dropletmesh.app (ou EMETTEUR_TEST)
    * @param {string[]} [o.portees]     ['openid'] ; ajouter 'profile' pour le pseudo
    * @param {'fr'|'en'} [o.langue]
+   * @param {number} [o.dureeSession]  combien de temps ce site garde la personne connectée, en jours (30)
    */
-  constructor({ clientId, redirectUri, emetteur = EMETTEUR, portees = ['openid'], langue } = {}) {
+  constructor({ clientId, redirectUri, emetteur = EMETTEUR, portees = ['openid'], langue, dureeSession = 30 } = {}) {
     if (!clientId || !redirectUri) throw new ErreurDropletId('configuration', 'clientId et redirectUri sont obligatoires');
     this.clientId = clientId;
     this.redirectUri = redirectUri;
     this.emetteur = emetteur.replace(/\/$/, '');
     this.portees = portees.includes('openid') ? portees : ['openid', ...portees];
     this.langue = langue;
-    this._session = stockage.lire('session');
+    this.dureeSession = dureeSession;
+    const s = stockage.lire('session');
+    // Une session d'un autre site ou d'un autre émetteur sur la même origine n'est pas la nôtre.
+    this._session = s && s.clientId === clientId && s.emetteur === this.emetteur && s.jusquA > Date.now() ? s : null;
+    if (s && !this._session) stockage.ecrire('session', null);
     this._config = null;
   }
 
@@ -132,7 +144,18 @@ export class DropletId {
       const i = await fetch(c.userinfo_endpoint, { headers: { authorization: `Bearer ${t.access_token}` } });
       if (i.ok) pseudo = (await i.json()).preferred_username ?? null;
     }
-    this._session = { sub: claims.sub, pseudo, idToken: t.id_token, accessToken: t.access_token, expireLe: Date.now() + t.expires_in * 1000 };
+    const maintenant = Date.now();
+    this._session = {
+      sub: claims.sub,
+      pseudo,
+      idToken: t.id_token,
+      accessToken: t.access_token,
+      expireLe: maintenant + t.expires_in * 1000, // le jeton d'accès (10 min)
+      connecteLe: maintenant,
+      jusquA: maintenant + this.dureeSession * 86400000, // la session du site
+      clientId: this.clientId,
+      emetteur: this.emetteur,
+    };
     stockage.ecrire('session', this._session);
     if (typeof history !== 'undefined' && url === location.href) {
       ['code', 'state', 'iss'].forEach((k) => u.searchParams.delete(k));
@@ -162,10 +185,10 @@ export class DropletId {
     return claims;
   }
 
-  /** La session en cours, ou null. */
+  /** La personne connectée sur ce site (même après avoir fermé le navigateur), ou null. */
   utilisateur() {
     const s = this._session;
-    return s && s.expireLe > Date.now() ? { sub: s.sub, pseudo: s.pseudo } : null;
+    return s && s.jusquA > Date.now() ? { sub: s.sub, pseudo: s.pseudo } : null;
   }
 
   /** Oublie la session ici ; avec `partout`, termine aussi la session Droplet ID. */

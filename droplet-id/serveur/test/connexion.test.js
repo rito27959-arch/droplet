@@ -69,7 +69,7 @@ async function jetons(c, retour) {
 test('la page de connexion montre un QR, le nombre, et rien de personnel', async () => {
   const c = await commencer('site-a');
   assert.match(c.page, /<svg class="code"/);
-  assert.match(c.page, /Ni numéro, ni e-mail, ni nom|No phone number, no email, no name/);
+  assert.match(c.page, /<s>Numéro<\/s><s>E-mail<\/s><s>Nom<\/s>|<s>Phone number<\/s>/);
   assert.equal((await (await c.nav.aller(`${c.interaction.href}/etat`)).json()).etat, 'attente');
 });
 
@@ -191,4 +191,100 @@ test('les portées e-mail et téléphone n’existent pas', async () => {
   assert.ok(!conf.scopes_supported.includes('phone'));
   assert.deepEqual(conf.subject_types_supported, ['pairwise']);
   assert.deepEqual(conf.code_challenge_methods_supported, ['S256']);
+});
+
+// ── Rester connecté ─────────────────────────────────────────────────────
+/** Lance une connexion dans un navigateur existant ; rend la 1re réponse. */
+async function lancer(nav, clientId, scope = 'openid') {
+  const conf = await oidc.discovery(new URL(BASE), clientId, undefined, oidc.None(), { execute: [oidc.allowInsecureRequests] });
+  const verifier = oidc.randomPKCECodeVerifier();
+  const state = oidc.randomState();
+  const redirect = CLIENTS.find((c) => c.client_id === clientId).redirect_uris[0];
+  const url = oidc.buildAuthorizationUrl(conf, { redirect_uri: redirect, scope, code_challenge: await oidc.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256', state });
+  const r = await nav.aller(url.href);
+  return { conf, verifier, state, redirect, nav, r };
+}
+
+/** Suit les redirections jusqu'au site. */
+async function jusquAuSite(c, r) {
+  while (r.status >= 300 && r.status < 400 && !r.headers.get('location').startsWith(c.redirect)) {
+    r = await c.nav.aller(new URL(r.headers.get('location'), BASE).href);
+  }
+  return new URL(r.headers.get('location'));
+}
+
+test('session mémorisée : cookie persistant, « Continuer » sans téléphone, puis retour direct', async () => {
+  const tel = nouvelAppareil(BASE);
+  await tel.creerCompte();
+  const nav = nouveauNavigateur();
+
+  // 1. Première connexion, au téléphone.
+  const a = await lancer(nav, 'site-a');
+  const inter = new URL(a.r.headers.get('location'), BASE);
+  const page = await (await nav.aller(inter.href)).text();
+  const demandeId = page.match(/\/a\/([A-Za-z0-9_-]{16,})/)[1];
+  const code = page.match(/class="chiffres" aria-label="(\d\d)"/)[1];
+  await tel.appeler('POST', `/v1/demandes/${demandeId}/decision`, { decision: 'approuver', code, portees: ['openid'] });
+  const t = await nav.aller(`${inter.href}/terminer`, { method: 'POST' });
+  const subA = (await jetons(a, await jusquAuSite(a, await nav.aller(new URL((await t.json()).redirection, BASE).href)))).claims().sub;
+
+  // Le cookie de session survit à la fermeture du navigateur (Expires/Max-Age).
+  const session = nav.brut.filter((c) => /^_session=/.test(c) && !/expires=Thu, 01 Jan 1970/i.test(c)).pop();
+  assert.ok(session, 'cookie de session posé');
+  assert.match(session, /expires=|max-age=/i, 'cookie persistant, pas un cookie de session navigateur');
+
+  // 2. Un autre site : « Continuer vers Site B », sans téléphone.
+  const b = await lancer(nav, 'site-b', 'openid profile');
+  const interB = new URL(b.r.headers.get('location'), BASE);
+  const pageB = await (await nav.aller(interB.href)).text();
+  assert.match(pageB, /action="\/interaction\/[^"]+\/continuer"/);
+  assert.doesNotMatch(pageB, /<svg class="code"/, 'pas de QR');
+  // « Utiliser un autre compte » ramène au QR.
+  assert.match(await (await nav.aller(`${interB.href}?autre=1`)).text(), /<svg class="code"/);
+  const fin = await nav.aller(`${interB.href}/continuer`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'profil=1&pseudo=Ngono',
+  });
+  assert.equal(fin.status, 303);
+  const tb = await jetons(b, await jusquAuSite(b, await nav.aller(new URL(fin.headers.get('location'), BASE).href)));
+  assert.notEqual(tb.claims().sub, subA, 'identifiant propre au site');
+  assert.equal((await oidc.fetchUserInfo(b.conf, tb.access_token, tb.claims().sub)).preferred_username, 'Ngono');
+  assert.ok((await tel.appeler('GET', '/v1/connexions')).corps.connexions.some((x) => x.client_id === 'site-b'), 'visible dans l’app');
+
+  // 3. Retour sur le site A : aucune page, droit au site.
+  const a2 = await lancer(nav, 'site-a');
+  const retour = await jusquAuSite(a2, a2.r);
+  assert.ok(retour.searchParams.get('code'));
+  assert.equal((await jetons(a2, retour)).claims().sub, subA);
+});
+
+test('appareil retiré : plus de « Continuer », retour au QR', async () => {
+  const tel = nouvelAppareil(BASE);
+  await tel.creerCompte();
+  const nav = nouveauNavigateur();
+  const a = await lancer(nav, 'site-a');
+  const inter = new URL(a.r.headers.get('location'), BASE);
+  const page = await (await nav.aller(inter.href)).text();
+  const demandeId = page.match(/\/a\/([A-Za-z0-9_-]{16,})/)[1];
+  const code = page.match(/class="chiffres" aria-label="(\d\d)"/)[1];
+  await tel.appeler('POST', `/v1/demandes/${demandeId}/decision`, { decision: 'approuver', code, portees: ['openid'] });
+  const t = await nav.aller(`${inter.href}/terminer`, { method: 'POST' });
+  await jusquAuSite(a, await nav.aller(new URL((await t.json()).redirection, BASE).href));
+
+  await tel.appeler('DELETE', `/v1/appareils/${tel.appareilId}`);
+  const b = await lancer(nav, 'site-b');
+  const pageB = await (await nav.aller(new URL(b.r.headers.get('location'), BASE).href)).text();
+  assert.match(pageB, /<svg class="code"/);
+  const refus = await nav.aller(`${new URL(b.r.headers.get('location'), BASE).href}/continuer`, { method: 'POST', body: '' });
+  assert.equal(refus.status, 303);
+  assert.match(refus.headers.get('location'), /^\/interaction\//);
+});
+
+test('pages aide, confidentialité, conditions', async () => {
+  for (const p of ['aide', 'confidentialite', 'conditions']) {
+    const r = await fetch(`${BASE}/${p}?langue=en`);
+    assert.equal(r.status, 200);
+    assert.match(await r.text(), /<article class="document">/);
+  }
 });

@@ -8,6 +8,8 @@
 //                                    au site (code ou access_denied)
 //   POST /interaction/:uid/nouvelle  nouveau code après expiration
 //   POST /interaction/:uid/annuler   la personne abandonne
+//   POST /interaction/:uid/continuer déjà connecté dans ce navigateur : un
+//                                    nouveau site en un geste, sans téléphone
 //
 // Chaque route exige le cookie d'interaction posé par oidc-provider : seul le
 // navigateur qui a commencé la connexion peut la terminer.
@@ -15,7 +17,7 @@
 
 import { randomBytes, randomInt } from 'node:crypto';
 import QRCode from 'qrcode';
-import { langueDe, pageConnexion, pageErreur } from './pages.js';
+import { langueDe, pageConnexion, pageContinuer, pageErreur } from './pages.js';
 
 const PORTEES_CONNUES = ['openid', 'profile', 'offline_access'];
 
@@ -68,7 +70,7 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
   }
 
   return async function interaction(req, res, chemin, url) {
-    const m = chemin.match(/^\/interaction\/([A-Za-z0-9_-]+)(?:\/(etat|terminer|nouvelle|annuler))?$/);
+    const m = chemin.match(/^\/interaction\/([A-Za-z0-9_-]+)(?:\/(etat|terminer|nouvelle|annuler|continuer))?$/);
     if (!m) return false;
     const [, uid, action] = m;
     const langue = langueDe(req.headers, url.searchParams.get('langue') || undefined);
@@ -79,8 +81,30 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
       return true;
     }
 
+    // Déjà connecté dans ce navigateur (cookie de session, 14 jours) et un
+    // appareil toujours actif : « Continuer vers … » sans sortir le téléphone.
+    const sessionActive = async () => {
+      const compteId = d.session?.accountId;
+      if (!compteId || d.prompt?.name !== 'consent') return null;
+      const appareils = (await stockage.appareilsDe(compteId)).filter((a) => !a.revoqueLe);
+      return appareils.length ? { compteId, appareil: appareils[0] } : null;
+    };
+
     // ── La page ──────────────────────────────────────────────────────
     if (!action && req.method === 'GET') {
+      const pageLangue = langueDe(req.headers, url.searchParams.get('langue') || d.params.ui_locales);
+      const deja = url.searchParams.get('autre') ? null : await sessionActive();
+      if (deja) {
+        const client = await fournisseur.Client.find(d.params.client_id);
+        const portees = String(d.params.scope || 'openid').split(' ').filter((p) => PORTEES_CONNUES.includes(p));
+        repondre(
+          res,
+          200,
+          pageContinuer({ langue: pageLangue, test: config.environnementDeTest, uid, client, portees, appareil: deja.appareil.nom, depuis: deja.appareil.ajouteLe }),
+          'html',
+        );
+        return true;
+      }
       let demande = await stockage.demandeParUid(uid);
       if (!demande || etatReel(demande) === 'expiree') demande = await creerDemande(uid, d);
       const client = await fournisseur.Client.find(d.params.client_id);
@@ -90,7 +114,7 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
       repondre(
         res,
         200,
-        pageConnexion({ langue: langueDe(req.headers, url.searchParams.get('langue') || d.params.ui_locales), test: config.environnementDeTest, uid, demande, client, qrSvg, lienApp }),
+        pageConnexion({ langue: pageLangue, test: config.environnementDeTest, uid, demande, client, qrSvg, lienApp }),
         'html',
       );
       return true;
@@ -98,6 +122,31 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
 
     if (req.method !== 'POST' && action !== 'etat') {
       repondre(res, 405, { erreur: 'methode' });
+      return true;
+    }
+
+    if (action === 'continuer') {
+      const deja = await sessionActive();
+      if (!deja) {
+        res.writeHead(303, { location: `/interaction/${uid}` });
+        res.end();
+        return true;
+      }
+      const form = new URLSearchParams(await lireCorps(req));
+      const portees = String(d.params.scope || 'openid').split(' ').filter((p) => PORTEES_CONNUES.includes(p));
+      const acceptees = portees.filter((p) => p !== 'profile' || form.get('profil') === '1');
+      if (!acceptees.includes('openid')) acceptees.unshift('openid');
+      const pseudo = acceptees.includes('profile') && form.get('pseudo') ? form.get('pseudo').trim().slice(0, 40) || null : null;
+      const grant = new fournisseur.Grant({ accountId: deja.compteId, clientId: d.params.client_id });
+      for (const p of portees) {
+        if (acceptees.includes(p)) grant.addOIDCScope(p);
+        else grant.rejectOIDCScope(p);
+      }
+      const grantId = await grant.save();
+      await stockage.enregistrerAccord({ compteId: deja.compteId, clientId: d.params.client_id, portees: acceptees, pseudo });
+      const redirection = await fournisseur.interactionResult(req, res, { consent: { grantId } }, { mergeWithLastSubmission: true });
+      res.writeHead(303, { location: redirection });
+      res.end();
       return true;
     }
 
@@ -140,7 +189,7 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
         else grant.rejectOIDCScope(p);
       }
       const grantId = await grant.save();
-      resultat = { login: { accountId: demande.compteId, amr: ['hwk', 'user'], remember: false }, consent: { grantId } };
+      resultat = { login: { accountId: demande.compteId, amr: ['hwk', 'user'], remember: true }, consent: { grantId } };
     } else if (e === 'refusee' || e === 'annulee') {
       await stockage.deciderDemande(demande.demandeId, demande.etat, { etat: 'terminee' });
       resultat = { error: 'access_denied', error_description: e === 'annulee' ? 'mauvais_code' : 'refus' };
@@ -152,4 +201,18 @@ export function routesInteraction({ fournisseur, stockage, config, repondre }) {
     repondre(res, 200, { redirection });
     return true;
   };
+}
+
+// Corps d'un formulaire (petit : quelques champs).
+function lireCorps(req) {
+  return new Promise((ok, ko) => {
+    let corps = '';
+    req.setEncoding('utf8');
+    req.on('data', (x) => {
+      corps += x;
+      if (corps.length > 4096) { ko(new Error('corps_trop_grand')); req.destroy(); }
+    });
+    req.on('end', () => ok(corps));
+    req.on('error', ko);
+  });
 }

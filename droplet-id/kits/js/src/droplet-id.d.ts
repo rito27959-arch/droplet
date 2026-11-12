@@ -13,6 +13,8 @@ export interface OptionsDropletId {
   /** ['openid'] par défaut ; ajouter 'profile' pour recevoir le pseudo choisi. */
   portees?: Array<'openid' | 'profile' | 'offline_access'>;
   langue?: 'fr' | 'en';
+  /** Combien de jours votre site garde la personne connectée (30). Survit à la fermeture du navigateur. */
+  dureeSession?: number;
 }
 
 export interface SessionDropletId {
@@ -22,8 +24,14 @@ export interface SessionDropletId {
   pseudo: string | null;
   idToken: string;
   accessToken: string;
-  /** Millisecondes depuis 1970. */
+  /** Fin de validité du jeton d'accès (10 min), en ms depuis 1970. */
   expireLe: number;
+  /** Début de la session sur votre site, en ms depuis 1970. */
+  connecteLe: number;
+  /** Fin de la session sur votre site (dureeSession, 30 jours par défaut), en ms depuis 1970. */
+  jusquA: number;
+  clientId: string;
+  emetteur: string;
 }
 
 export declare class ErreurDropletId extends Error {

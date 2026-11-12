@@ -59,6 +59,12 @@
     setTimeout(suivre, 1500);
   };
 
+  // On a phone: the QR is folded away behind "Approve from another phone".
+  carte.querySelector('[data-montrer-qr]')?.addEventListener('click', () => {
+    carte.dataset.qrOuvert = '';
+    carte.querySelector('[data-scan]').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
   nouveau.addEventListener('click', async () => {
     await fetch(`/interaction/${uid}/nouvelle`, { method: 'POST' });
     location.reload();

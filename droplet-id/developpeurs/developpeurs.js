@@ -50,5 +50,5 @@ if (did.estUnRetour()) {
     .then((s) => { montrer(s); history.replaceState(null, '', '/#bac-a-sable'); document.getElementById('bac-a-sable').scrollIntoView(); })
     .catch((e) => { vide.textContent = `La connexion n’a pas abouti : ${e.code ?? e.message}`; history.replaceState(null, '', '/#bac-a-sable'); });
 } else {
-  try { const s = JSON.parse(sessionStorage.getItem('droplet-id:session')); if (s?.idToken) montrer(s); } catch {}
+  try { const s = JSON.parse(localStorage.getItem('droplet-id:session')); if (s?.idToken) montrer(s); } catch {}
 }

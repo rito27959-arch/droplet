@@ -38,7 +38,9 @@ export function nouvelAppareil(base) {
 
 export function nouveauNavigateur() {
   const cookies = new Map();
+  const brut = [];
   return {
+    brut,
     async aller(url, options = {}) {
       const r = await fetch(url, {
         ...options,
@@ -46,6 +48,7 @@ export function nouveauNavigateur() {
         headers: { ...(options.headers ?? {}), cookie: [...cookies].map(([k, v]) => `${k}=${v}`).join('; ') },
       });
       for (const c of r.headers.getSetCookie()) {
+        brut.push(c);
         const [paire] = c.split(';');
         const i = paire.indexOf('=');
         cookies.set(paire.slice(0, i), paire.slice(i + 1));

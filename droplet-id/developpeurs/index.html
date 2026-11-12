@@ -250,6 +250,7 @@ end</code></pre>
         <tr><th scope="row">Identifiant</th><td><code>sub</code> « pairwise » : un par site, stable</td></tr>
         <tr><th scope="row">Signature</th><td>ES256, clés sur <code>/.well-known/jwks.json</code></td></tr>
         <tr><th scope="row">Durées</th><td>ID token 5 min · access token 10 min · refresh token 30 jours · code 60 s</td></tr>
+        <tr><th scope="row">Rester connecté</th><td>Session Droplet ID : 14 jours dans le navigateur (cookie persistant). Session du site avec le kit JS : 30 jours (<code>dureeSession</code>), conservée après fermeture du navigateur.</td></tr>
         <tr><th scope="row">Déconnexion</th><td><code>/oauth2/sessions/logout</code> (OpenID RP-Initiated Logout)</td></tr>
       </tbody>
     </table>

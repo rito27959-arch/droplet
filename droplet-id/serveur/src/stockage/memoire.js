@@ -68,7 +68,7 @@ export function stockageMemoire() {
     // ── Comptes et appareils ────────────────────────────────────────
     async creerCompte(compte, appareil) {
       comptes.set(compte.compteId, compte);
-      appareils.set(appareil.appareilId, appareil);
+      appareils.set(appareil.appareilId, { ajouteLe: new Date().toISOString(), ...appareil });
     },
     async compte(id) {
       return comptes.get(id) ?? null;
@@ -115,7 +115,7 @@ export function stockageMemoire() {
 
     // ── Accords (sites connectés) ───────────────────────────────────
     async enregistrerAccord(a) {
-      accords.set(`${a.compteId}:${a.clientId}`, { ...a });
+      accords.set(`${a.compteId}:${a.clientId}`, { ...a, accordeLe: new Date().toISOString() });
     },
     async accord(compteId, clientId) {
       return accords.get(`${compteId}:${clientId}`) ?? null;

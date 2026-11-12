@@ -12,7 +12,7 @@ import { readFile } from 'node:fs/promises';
 import { creerFournisseur } from './oidc.js';
 import { routesInteraction } from './interaction.js';
 import { routesApi } from './api.js';
-import { langueDe, pageAccueil, pageAppareilTest, pageErreur, pageLienApp } from './pages.js';
+import { langueDe, pageAccueil, pageAppareilTest, pageDocument, pageErreur, pageLienApp } from './pages.js';
 import { stockageMemoire } from './stockage/memoire.js';
 import { stockagePostgres } from './stockage/postgres.js';
 import { limiteur } from './limites.js';
@@ -20,6 +20,7 @@ import { limiteur } from './limites.js';
 const STATIQUES = {
   'droplet-id.css': 'text/css; charset=utf-8',
   'connexion.js': 'text/javascript; charset=utf-8',
+  'continuer.js': 'text/javascript; charset=utf-8',
   'appareil.js': 'text/javascript; charset=utf-8',
   'lien.js': 'text/javascript; charset=utf-8',
   'InstrumentSans.woff2': 'font/woff2',
@@ -95,6 +96,8 @@ export async function demarrer(config) {
         if (!config.environnementDeTest) return repondre(res, 404, pageErreur({ langue, detail: 'introuvable' }), 'html');
         return repondre(res, 200, pageAppareilTest({ langue }), 'html');
       }
+      if (['/aide', '/confidentialite', '/conditions'].includes(chemin) && req.method === 'GET')
+        return repondre(res, 200, pageDocument({ nom: chemin.slice(1), langue, test: config.environnementDeTest }), 'html');
       if (chemin === '/' && req.method === 'GET') return repondre(res, 200, pageAccueil({ langue, test: config.environnementDeTest }), 'html');
       // Lien d'application Android : Droplet ouvrira /a/… directement.
       if (chemin === '/.well-known/assetlinks.json') {
