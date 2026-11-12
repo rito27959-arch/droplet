@@ -175,6 +175,17 @@ function partage({ t, site, profil }) {
   </section>`;
 }
 
+/**
+ * « Ouvrir dans Droplet » sur Android : un lien d'intention qui ouvre l'app
+ * directement (droplet://droplet/a/<demande>?e=<hôte>), sans dépendre de la
+ * vérification des liens https ; si Droplet n'est pas installé, le
+ * navigateur suit `browser_fallback_url` (la page /a/<demande>).
+ */
+export function lienAndroid(lienApp, demandeId) {
+  const hote = new URL(lienApp).host;
+  return `intent://droplet/a/${encodeURIComponent(demandeId)}?e=${encodeURIComponent(hote)}#Intent;scheme=droplet;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${encodeURIComponent(lienApp)};end`;
+}
+
 /** La page de connexion : QR, nombre à taper, état en direct. */
 export function pageConnexion({ langue, test, uid, demande, client, logo, qrSvg, lienApp }) {
   const t = TEXTES[langue];
@@ -188,7 +199,7 @@ export function pageConnexion({ langue, test, uid, demande, client, logo, qrSvg,
   <h1>${echapper(t.titreConnexion(site))}</h1>
   <p class="sous">${t.avec}${hote ? ` · <span class="hote">${echapper(hote)}</span>` : ''}</p>
 
-  <a class="bouton principal seulement-mobile" href="${echapper(lienApp)}">${ICONES.telephone}${t.ouvrirDroplet}</a>
+  <a class="bouton principal seulement-mobile" href="${echapper(lienApp)}" data-android="${echapper(lienAndroid(lienApp, demande.demandeId))}">${ICONES.telephone}${t.ouvrirDroplet}</a>
   <button class="lien-discret seulement-mobile" type="button" data-montrer-qr>${ICONES.qr}${t.montrerQr}</button>
 
   <div class="scan" data-scan>

@@ -13,6 +13,7 @@
   const duree = Number(carte.dataset.duree) * 1000;
   let fini = false;
   let echecs = 0;
+  let prochain;
 
   const afficher = (e) => {
     etat.dataset.etat = e;
@@ -56,8 +57,17 @@
       echecs += 1;
       if (echecs > 2) afficher('erreur');
     }
-    setTimeout(suivre, 1500);
+    prochain = setTimeout(suivre, 1500);
   };
+
+  // Android: open the app directly (intent link, with the web page as fallback).
+  const ouvrir = carte.querySelector('[data-android]');
+  if (ouvrir && /Android/i.test(navigator.userAgent)) ouvrir.href = ouvrir.dataset.android;
+
+  // Back from the app: check at once (timers sleep while the tab is hidden).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !fini) { clearTimeout(prochain); suivre(); }
+  });
 
   // On a phone: the QR is folded away behind "Approve from another phone".
   carte.querySelector('[data-montrer-qr]')?.addEventListener('click', () => {

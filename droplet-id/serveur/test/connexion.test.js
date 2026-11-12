@@ -324,3 +324,11 @@ test('le logo du site : téléchargé par le service, converti en PNG, montré �
   const lu = await tel.appeler('GET', `/v1/demandes/${c.demandeId}`);
   assert.equal(lu.corps.client.logo, BASE + src);
 });
+
+test('« Ouvrir dans Droplet » : lien d’intention Android vers droplet://droplet/a/<demande>, page web en secours', async () => {
+  const c = await commencer('site-a');
+  const lien = c.page.match(/data-android="([^"]+)"/)[1].replace(/&amp;/g, '&');
+  const hote = new URL(BASE).host;
+  assert.ok(lien.startsWith(`intent://droplet/a/${c.demandeId}?e=${encodeURIComponent(hote)}#Intent;scheme=droplet;`));
+  assert.match(lien, new RegExp(`S\\.browser_fallback_url=${encodeURIComponent(`${BASE}/a/${c.demandeId}`).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')};end$`));
+});
