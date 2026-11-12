@@ -137,6 +137,7 @@ export function stockageMemoire() {
       return true;
     },
 
+    async viderTout() {},
     async fermer() {},
   };
 }

@@ -252,6 +252,10 @@ export async function stockagePostgres(url) {
       return rowCount === 1;
     },
 
+    /** Efface toutes les données (comptes, appareils, sites, sessions, jetons) ; garde les tables. */
+    async viderTout() {
+      await q('truncate table oidc, accords, demandes, appareils, comptes, nonces');
+    },
     async fermer() {
       clearInterval(menage);
       await pool.end();
