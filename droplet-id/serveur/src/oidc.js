@@ -12,11 +12,12 @@
 import Provider from 'oidc-provider';
 import { createHmac } from 'node:crypto';
 import { pageErreur } from './pages.js';
+import { clientConsole } from './console/console.js';
 
 export function creerFournisseur({ config, stockage }) {
   const fournisseur = new Provider(config.emetteur, {
     adapter: (modele) => stockage.adaptateur(modele),
-    clients: config.clients,
+    clients: [...config.clients, ...(config.console ? [clientConsole(config)] : [])],
     clientDefaults: {
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
@@ -30,8 +31,11 @@ export function creerFournisseur({ config, stockage }) {
     // Un `sub` par site : HMAC(sel secret, compte ‖ secteur du site). Stable
     // pour un même site, impossible à recouper d'un site à l'autre.
     subjectTypes: ['pairwise'],
+    // Les apps de la console (app_…) ont leur propre secteur : l'app elle-même,
+    // même si ses adresses de retour sont sur plusieurs domaines.
     async pairwiseIdentifier(ctx, compteId, client) {
-      return createHmac('sha256', config.selPairwise).update(`${compteId}|${client.sectorIdentifier}`).digest('base64url');
+      const secteur = client.clientId.startsWith('app_') ? `app:${client.clientId}` : client.sectorIdentifier;
+      return createHmac('sha256', config.selPairwise).update(`${compteId}|${secteur}`).digest('base64url');
     },
 
     pkce: { required: () => true },
@@ -102,6 +106,12 @@ export function creerFournisseur({ config, stockage }) {
       ctx.type = 'html';
       ctx.body = pageErreur({ langue: ctx.acceptsLanguages('fr', 'en') || 'fr', detail: out.error });
     },
+  });
+
+  // Les statistiques de la console : une connexion réussie de plus, ce jour.
+  fournisseur.on('authorization.success', (ctx) => {
+    const id = ctx.oidc?.client?.clientId;
+    if (id) stockage.noterConnexion(id).catch(() => {});
   });
 
   fournisseur.proxy = config.derriereProxy;

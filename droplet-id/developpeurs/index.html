@@ -19,6 +19,7 @@
     <a href="#bac-a-sable">Bac à sable</a>
     <a href="#reference">Référence</a>
   </nav>
+  <a class="vers-console" href="https://id-test.dropletmesh.app/console">Console</a>
 </header>
 
 <main>
@@ -26,6 +27,7 @@
     <div>
       <h1>Une connexion qui ne demande rien à personne.</h1>
       <p class="chapo">Ajoutez « Continuer avec Droplet ID » à votre site ou votre app. Vos utilisateurs approuvent sur leur téléphone ; vous recevez un identifiant stable, propre à votre service. Pas de numéro, pas d’e-mail, pas de nom, pas de mot de passe à protéger.</p>
+      <p class="actions-ouverture"><a class="bouton-console" href="https://id-test.dropletmesh.app/console">Créer une app dans la console</a><a class="lien-doc" href="#kits">Voir les kits</a></p>
       <div class="boutons-demo" aria-label="Le bouton officiel, en trois variantes">
         <span class="droplet-id-bouton" data-variante="sombre"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-3.6 4.9-6 8.4-6 11.6a6 6 0 0 0 12 0c0-3.2-2.4-6.7-6-11.6Z"/></svg><span>Continuer avec Droplet ID</span></span>
         <span class="droplet-id-bouton" data-variante="clair"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M12 2.2c-3.6 4.9-6 8.4-6 11.6a6 6 0 0 0 12 0c0-3.2-2.4-6.7-6-11.6Z"/></svg><span>Continuer avec Droplet ID</span></span>
@@ -43,7 +45,7 @@
   <section id="demarrer" class="bloc">
     <h2>Démarrer en trois étapes</h2>
     <ol class="etapes">
-      <li><h3>Enregistrez votre site</h3><p>Écrivez à <a href="mailto:contact@dropletmesh.app?subject=Droplet%20ID%20%E2%80%94%20enregistrer%20un%20site">contact@dropletmesh.app</a> avec le nom de votre service et vos adresses de retour exactes. Vous recevez un <code>client_id</code>. Pendant la phase de test, l’enregistrement est manuel.</p></li>
+      <li><h3>Créez votre app dans la console</h3><p>Connectez-vous à la <a href="https://id-test.dropletmesh.app/console">console</a> avec Droplet ID, donnez un nom, un type et vos adresses de retour : le <code>client_id</code> (et le secret pour un site avec serveur) arrive tout de suite, avec le code déjà rempli pour votre langage. L’app marche aussitôt sur le service de test ; la production se demande depuis la console, après une vérification.</p></li>
       <li><h3>Ajoutez le kit de votre langage</h3><p>Un kit = une connexion vérifiée de bout en bout (PKCE, state, nonce, signature de l’ID token) et le bouton officiel.</p></li>
       <li><h3>Gardez le <code>sub</code></h3><p>C’est l’identifiant de la personne <em>pour votre service</em>. Stable d’une connexion à l’autre, différent sur chaque autre site. Ne redemandez pas de numéro ni d’e-mail pour vous connecter : c’est la promesse faite à vos utilisateurs.</p></li>
     </ol>

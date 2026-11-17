@@ -17,6 +17,7 @@ import { stockagePostgres } from './stockage/postgres.js';
 import { limiteur } from './limites.js';
 import { STATIQUES, contenus, empreinte } from './statiques.js';
 import { logos as creerLogos } from './logos.js';
+import { routesConsole } from './console/console.js';
 
 
 const SECURITE = {
@@ -47,6 +48,7 @@ export async function demarrer(config) {
   const logos = creerLogos({ environnementDeTest: config.environnementDeTest });
   const interaction = routesInteraction({ fournisseur, stockage, config, repondre, logos });
   const api = routesApi({ fournisseur, stockage, config, repondre, logos });
+  const consoleDev = config.console ? routesConsole({ fournisseur, stockage, config, repondre, logos }) : null;
   const oidc = fournisseur.callback();
   const limiteApi = limiteur({ parMinute: 120 });
   const limitePages = limiteur({ parMinute: 60 });
@@ -93,6 +95,11 @@ export async function demarrer(config) {
       if (chemin.startsWith('/interaction/')) {
         if (req.method === 'GET' && !chemin.endsWith('/etat') && !limitePages(ip(req))) return repondre(res, 429, { erreur: 'trop_de_requetes' });
         if (await interaction(req, res, chemin, url)) return;
+      }
+
+      if (consoleDev && chemin.startsWith('/console')) {
+        if (!limitePages(ip(req))) return repondre(res, 429, { erreur: 'trop_de_requetes' });
+        if (await consoleDev(req, res, chemin, url)) return;
       }
 
       const langue = langueDe(req.headers, url.searchParams.get('langue') || undefined);

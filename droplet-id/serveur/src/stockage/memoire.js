@@ -12,6 +12,10 @@ export function stockageMemoire() {
   const demandes = new Map();
   const accords = new Map(); // `${compte}:${client}` → accord
   const nonces = new Map();
+  const apps = new Map();
+  const connexions = new Map(); // `${client}|${jour}` → nombre
+  const journal = [];
+  const jourDe = (d) => d.toISOString().slice(0, 10);
 
   const vivant = (e) => e && (!e.expire || e.expire > maintenant());
 
@@ -135,6 +139,52 @@ export function stockageMemoire() {
       if (nonces.has(nonce)) return false;
       nonces.set(nonce, t + expireDans);
       return true;
+    },
+
+    // ── Console développeurs ────────────────────────────────────────
+    async creerApp(a) {
+      const t = new Date().toISOString();
+      apps.set(a.clientId, { statut: 'test', ...structuredClone(a), creeLe: t, majLe: t });
+    },
+    async app(id) {
+      const a = apps.get(id);
+      return a ? structuredClone(a) : null;
+    },
+    async appsDe(proprietaire) {
+      return [...apps.values()].filter((a) => a.proprietaire === proprietaire).reverse().map((a) => structuredClone(a));
+    },
+    async majApp(id, { infos, statut }) {
+      const a = apps.get(id);
+      if (!a) return;
+      if (infos) a.infos = structuredClone(infos);
+      if (statut) a.statut = statut;
+      a.majLe = new Date().toISOString();
+    },
+    async supprimerApp(id) {
+      apps.delete(id);
+      for (const [k, a] of accords) if (a.clientId === id) accords.delete(k);
+      for (const [k, e] of oidc) if (k === `Client:${id}` || e.donnees?.clientId === id) oidc.delete(k);
+    },
+    async noterConnexion(id) {
+      const k = `${id}|${jourDe(new Date())}`;
+      connexions.set(k, (connexions.get(k) ?? 0) + 1);
+    },
+    async connexionsParJour(id, jours) {
+      const r = [];
+      for (let i = jours - 1; i >= 0; i--) {
+        const jour = jourDe(new Date(Date.now() - i * 86400000));
+        r.push({ jour, nombre: connexions.get(`${id}|${jour}`) ?? 0 });
+      }
+      return r;
+    },
+    async utilisateursDe(id) {
+      return [...accords.values()].filter((a) => a.clientId === id).length;
+    },
+    async journaliser(clientId, quoi) {
+      journal.push({ clientId, quand: new Date().toISOString(), quoi });
+    },
+    async journalDe(clientId, combien = 50) {
+      return journal.filter((j) => j.clientId === clientId).reverse().slice(0, combien).map(({ quand, quoi }) => ({ quand, quoi }));
     },
 
     async viderTout() {},

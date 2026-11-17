@@ -12,6 +12,8 @@ export const STATIQUES = {
   'lien.js': 'text/javascript; charset=utf-8',
   'InstrumentSans.woff2': 'font/woff2',
   'favicon.svg': 'image/svg+xml',
+  'console.css': 'text/css; charset=utf-8',
+  'console-ui.js': 'text/javascript; charset=utf-8',
 };
 
 export const contenus = {};

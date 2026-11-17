@@ -64,6 +64,30 @@ create table if not exists accords (
   primary key (compte_id, client_id)
 );
 
+-- La console développeurs : les apps, leurs connexions par jour, leur journal.
+create table if not exists apps (
+  client_id    text primary key,
+  proprietaire text not null,
+  statut       text not null default 'test',
+  infos        jsonb not null,
+  cree_le      timestamptz not null default now(),
+  maj_le       timestamptz not null default now()
+);
+create index if not exists apps_proprietaire on apps (proprietaire);
+create table if not exists connexions_jour (
+  client_id text not null,
+  jour      date not null,
+  nombre    integer not null default 0,
+  primary key (client_id, jour)
+);
+create table if not exists journal_apps (
+  id        bigserial primary key,
+  client_id text not null,
+  quand     timestamptz not null default now(),
+  quoi      text not null
+);
+create index if not exists journal_apps_client on journal_apps (client_id, quand desc);
+
 create table if not exists nonces (
   nonce     text primary key,
   expire_le timestamptz not null
@@ -96,6 +120,9 @@ const versAppareil = (r) =>
     ajouteLe: r.ajoute_le.toISOString(),
     revoqueLe: r.revoque_le?.toISOString() ?? null,
   };
+
+const versApp = (r) =>
+  r && { clientId: r.client_id, proprietaire: r.proprietaire, statut: r.statut, infos: r.infos, creeLe: r.cree_le.toISOString(), majLe: r.maj_le.toISOString() };
 
 const versAccord = (r) =>
   r && { compteId: r.compte_id, clientId: r.client_id, portees: r.portees, pseudo: r.pseudo, accordeLe: r.accorde_le.toISOString() };
@@ -252,9 +279,55 @@ export async function stockagePostgres(url) {
       return rowCount === 1;
     },
 
-    /** Efface toutes les données (comptes, appareils, sites, sessions, jetons) ; garde les tables. */
+    // ── Console développeurs ─────────────────────────────────────────
+    async creerApp(a) {
+      await q(`insert into apps (client_id, proprietaire, statut, infos) values ($1,$2,$3,$4)`, [a.clientId, a.proprietaire, a.statut ?? 'test', a.infos]);
+    },
+    async app(clientId) {
+      const { rows } = await q(`select * from apps where client_id=$1`, [clientId]);
+      return versApp(rows[0]) ?? null;
+    },
+    async appsDe(proprietaire) {
+      const { rows } = await q(`select * from apps where proprietaire=$1 order by cree_le desc`, [proprietaire]);
+      return rows.map(versApp);
+    },
+    async majApp(clientId, { infos, statut }) {
+      await q(`update apps set infos=coalesce($2, infos), statut=coalesce($3, statut), maj_le=now() where client_id=$1`, [clientId, infos ?? null, statut ?? null]);
+    },
+    async supprimerApp(clientId) {
+      await q(`delete from apps where client_id=$1`, [clientId]);
+      await q(`delete from accords where client_id=$1`, [clientId]);
+      await q(`delete from oidc where donnees->>'clientId'=$1 or (modele='Client' and id=$1)`, [clientId]);
+    },
+    async noterConnexion(clientId) {
+      await q(`insert into connexions_jour (client_id, jour, nombre) values ($1, current_date, 1)
+               on conflict (client_id, jour) do update set nombre = connexions_jour.nombre + 1`, [clientId]);
+    },
+    /** Les connexions des `jours` derniers jours, du plus ancien au plus récent (jours sans connexion inclus). */
+    async connexionsParJour(clientId, jours) {
+      const { rows } = await q(
+        `select to_char(j, 'YYYY-MM-DD') as jour, coalesce(c.nombre, 0) as nombre
+         from generate_series(current_date - ($2::int - 1), current_date, interval '1 day') j
+         left join connexions_jour c on c.client_id=$1 and c.jour=j::date order by j`,
+        [clientId, jours],
+      );
+      return rows.map((r) => ({ jour: r.jour, nombre: Number(r.nombre) }));
+    },
+    async utilisateursDe(clientId) {
+      const { rows } = await q(`select count(*)::int as n from accords where client_id=$1`, [clientId]);
+      return rows[0].n;
+    },
+    async journaliser(clientId, quoi) {
+      await q(`insert into journal_apps (client_id, quoi) values ($1,$2)`, [clientId, quoi]);
+    },
+    async journalDe(clientId, combien = 50) {
+      const { rows } = await q(`select quand, quoi from journal_apps where client_id=$1 order by quand desc, id desc limit $2`, [clientId, combien]);
+      return rows.map((r) => ({ quand: r.quand.toISOString(), quoi: r.quoi }));
+    },
+
+    /** Efface toutes les données (comptes, appareils, sites, sessions, jetons, apps) ; garde les tables. */
     async viderTout() {
-      await q('truncate table oidc, accords, demandes, appareils, comptes, nonces');
+      await q('truncate table oidc, accords, demandes, appareils, comptes, nonces, apps, connexions_jour, journal_apps');
     },
     async fermer() {
       clearInterval(menage);

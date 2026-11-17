@@ -43,6 +43,8 @@ export const config = {
   clients: JSON.parse(readFileSync(env.CLIENTS ?? new URL('../clients.json', import.meta.url), 'utf8')),
   /** Environnement de test : bandeau visible et « appareil de test » dans le navigateur. */
   environnementDeTest: env.ENVIRONNEMENT_DE_TEST === '1',
+  /** La console développeurs (/console) : en test d'abord ; en production quand CONSOLE=1. */
+  console: env.ENVIRONNEMENT_DE_TEST === '1' || env.CONSOLE === '1',
   /** Durée de vie d'une demande de connexion, en secondes. */
   dureeDemande: 120,
   /** Fenêtre de validité d'une requête signée, en secondes. */
