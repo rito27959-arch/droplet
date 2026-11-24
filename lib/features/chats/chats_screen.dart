@@ -26,6 +26,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../shared/widgets/feuille_confiance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:liquid_glass_ui_design/liquid_glass_ui.dart';
@@ -383,6 +384,8 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
               );
             },
           ),
+          // En bas de la liste, la mention qui rassure : un toucher l'explique.
+          const SliverToBoxAdapter(child: MentionChiffrementPied()),
         ],
       ],
       ),

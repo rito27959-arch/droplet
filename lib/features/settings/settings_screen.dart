@@ -20,6 +20,7 @@
 
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import '../../shared/widgets/feuille_confiance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/providers/appearance_provider.dart';
@@ -783,10 +784,12 @@ class _AboutSheet extends StatelessWidget {
             const _AboutPoint(
               icon: Icons.wifi_tethering_rounded,
               text: 'Réseau direct entre appareils — aucun serveur',
+              sujet: SujetConfiance.relais,
             ),
             const _AboutPoint(
               icon: Icons.lock_rounded,
               text: 'Chiffrement de bout en bout sur tous les messages',
+              sujet: SujetConfiance.chiffrement,
             ),
             const _AboutPoint(
               icon: Icons.visibility_off_rounded,
@@ -832,14 +835,17 @@ class _Attribution extends StatelessWidget {
 }
 
 class _AboutPoint extends StatelessWidget {
-  const _AboutPoint({required this.icon, required this.text});
+  const _AboutPoint({required this.icon, required this.text, this.sujet});
 
   final IconData icon;
   final String text;
 
+  /// Un point qui a une explication : un toucher fait monter sa feuille.
+  final SujetConfiance? sujet;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final rangee = Padding(
       padding: const EdgeInsets.only(bottom: DesignTokens.space3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -856,6 +862,12 @@ class _AboutPoint extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (sujet == null) return rangee;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => montrerFeuilleConfiance(context, sujet!),
+      child: Semantics(button: true, hint: 'En savoir plus', child: rangee),
     );
   }
 }

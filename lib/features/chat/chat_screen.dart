@@ -38,6 +38,7 @@ import 'package:flutter/cupertino.dart' show CupertinoSearchTextField;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import '../../shared/widgets/feuille_confiance.dart';
 import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase;
 import 'package:motor/motor.dart';
@@ -2186,7 +2187,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 ),
                               );
                             }
-                            return const SizedBox.shrink();
+                            // En haut du fil, la bulle qui dit que la
+                            // discussion est chiffrée (pas pour la diffusion,
+                            // faite pour être lue par tous à portée).
+                            return _isBroadcast
+                                ? const SizedBox.shrink()
+                                : MentionChiffrementBulle(pseudo: _isGroup ? null : peerPseudo);
                           }
                           if (peerTyping && i == items.length + 1) {
                             return const Padding(
@@ -2695,6 +2701,10 @@ class _EmptyChat extends StatelessWidget {
                 : 'Vos échanges sont relayés pair à pair, sans Internet.',
             style: TextStyle(fontSize: 12, color: OuroColors.textTertiary),
           ),
+          if (!isBroadcast) ...[
+            const SizedBox(height: 18),
+            MentionChiffrementBulle(pseudo: peerPseudo),
+          ],
         ],
       ),
     );
