@@ -27,6 +27,8 @@ dependencies:
   crypto: ^3.0.6
   path_provider: ^2.1.5
   share_plus: ^10.1.4
+  # Ouvre la bonne section du site depuis les feuilles d'explication.
+  url_launcher: ^6.3.1
   file_picker: ^8.0.0
   bluetooth_low_energy: ^6.2.1
   nsd: ^5.0.1

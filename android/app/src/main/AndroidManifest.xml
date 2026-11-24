@@ -48,6 +48,14 @@
     <uses-feature android:name="android.hardware.wifi" android:required="false"/>
     <uses-feature android:name="android.hardware.wifi.direct" android:required="false"/>
 
+    <!-- Ouvrir les pages du site (feuilles « En savoir plus ») dans le navigateur. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:label="Droplet"
         android:name="${applicationName}"

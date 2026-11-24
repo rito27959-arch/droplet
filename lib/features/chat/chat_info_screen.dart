@@ -14,6 +14,7 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../shared/widgets/feuille_confiance.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -856,10 +857,25 @@ class _EphemeralTimerRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.only(top: 16, bottom: 6),
               child: Text(
                 'Durée avant disparition',
                 style: OuroTypography.headline.copyWith(color: OuroColors.label),
+              ),
+            ),
+            // Ce que veut dire « éphémère », avant de choisir.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 14),
+              child: GestureDetector(
+                onTap: () => montrerFeuilleConfiance(sheetContext, SujetConfiance.ephemeres),
+                child: Text.rich(
+                  TextSpan(children: [
+                    const TextSpan(text: 'Les nouveaux messages s\'effaceront des deux côtés après ce délai. '),
+                    TextSpan(text: 'En savoir plus', style: TextStyle(color: OuroColors.accent, fontWeight: FontWeight.w600)),
+                  ]),
+                  textAlign: TextAlign.center,
+                  style: OuroTypography.footnote.copyWith(color: OuroColors.secondaryLabel, height: 1.35),
+                ),
               ),
             ),
             for (final o in _options) ...[
