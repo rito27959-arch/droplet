@@ -1,113 +1,165 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/rito27959-arch/droplet-site/main/public/favicon.svg" width="88" height="88" alt="Droplet">
+
 # Droplet
 
-Une messagerie qui fonctionne **sans internet, sans opérateur et sans
-serveur**. Les messages passent de téléphone en téléphone, chiffrés, par
-Bluetooth et par Wi-Fi.
+**Messaging that keeps working when the network doesn't.**
 
-Conçue et développée à Yaoundé.
+End-to-end encrypted messages, calls and files that hop from phone to phone over Bluetooth and Wi-Fi.<br>
+No internet. No carrier. No server in the middle.
 
----
+[![Tests](https://github.com/rito27959-arch/droplet/actions/workflows/tests.yml/badge.svg)](https://github.com/rito27959-arch/droplet/actions/workflows/tests.yml)
+![Platform](https://img.shields.io/badge/platform-Android%207.0%2B-0A0A0A?style=flat-square&logo=android&logoColor=white)
+![Flutter](https://img.shields.io/badge/built%20with-Flutter-0A0A0A?style=flat-square&logo=flutter&logoColor=white)
+![Encryption](https://img.shields.io/badge/encryption-X25519%20%C2%B7%20AES--256--GCM-ff2d55?style=flat-square)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0A0A0A?style=flat-square)](LICENSE)
 
-## Le principe
+[**Website**](https://dropletmesh.app) &nbsp;·&nbsp; [**Download**](../../releases/latest) &nbsp;·&nbsp; [**Security**](https://dropletmesh.app/security/) &nbsp;·&nbsp; [**Support**](https://dropletmesh.app/support/)
 
-Toutes les messageries supposent que le réseau est là. Le jour où la
-couverture tombe — coupure, zone blanche, crédit épuisé — elles
-s'arrêtent toutes ensemble, exactement au moment où l'on a le plus
-besoin de joindre quelqu'un.
+<br>
 
-Droplet part de l'hypothèse inverse : **il n'y a pas de réseau**.
+<img src="https://raw.githubusercontent.com/rito27959-arch/droplet-site/main/public/apercu.png" width="860" alt="Droplet on three phones: the chat list and an end-to-end encrypted conversation over Bluetooth">
 
-Votre téléphone possède déjà deux radios capables d'atteindre un autre
-téléphone sans passer par quoi que ce soit. Droplet ne fait rien d'autre
-que s'en servir :
+</div>
 
-| Transport | Portée | Usage |
-|---|---|---|
-| Bluetooth LE | ~10 à 100 m | découverte, messages |
-| Wi-Fi local | débit élevé | fichiers, appels |
-| Wi-Fi Direct | ~50 à 200 m | sans infrastructure |
+<br>
 
-Hors de portée directe, le message emprunte les appareils qui se
-trouvent entre les deux — **jusqu'à cinq de suite**. Et s'il n'y a
-personne, il attend sur le téléphone et repart dès qu'un appareil passe
-à portée : c'est le stockage et retransmission.
+## Why Droplet
 
-## Ce qu'elle sait faire
+Every messenger assumes the network is there. When coverage drops — an outage, a dead zone, no credit left — they all stop at once, exactly when you most need to reach someone.
 
-- Conversations et groupes — réponses citées, réactions, accusés de
-  réception, recherche
-- Appels audio et vidéo (liaison Wi-Fi : le Bluetooth, à dix-neuf octets
-  par écriture, ne peut pas porter de la voix)
-- Photos, vidéos, fichiers, notes vocales
-- Statuts, effacés après vingt-quatre heures
-- Carte hors connexion, positions partagées par le maillage
-- Signal « je vais bien » et mode d'urgence
+Droplet starts from the opposite assumption: **there is no network.** Your phone already carries two radios that can reach another phone directly. Droplet uses them.
 
-## Sécurité
+| Transport | Range | Used for |
+|:--|:--|:--|
+| Bluetooth LE | ~10–100 m | discovery, messages |
+| Local Wi-Fi | high throughput | files, calls |
+| Wi-Fi Direct | ~50–200 m | links without any infrastructure |
 
-- **Identité** : paire de clés X25519 créée sur l'appareil, clé privée
-  dans le coffre du système, jamais en base
-- **Messages privés** : ECDH → HKDF → AES-256-GCM, nonce aléatoire par
-  message
-- **Groupes** : cliquet à clé d'expéditeur, dérivation HMAC par message
-- **Relais** : un téléphone qui fait suivre un message transporte des
-  octets qu'il ne peut pas lire
+Out of direct range, a message travels through the devices in between — **up to five hops**. If nobody is around, it waits on the phone and leaves as soon as a device comes within reach (store-and-forward).
 
-## Ce qu'elle ne sait PAS faire
+```mermaid
+flowchart LR
+    A["📱 Amina"] -- "BLE" --> R1["📱 Relay"]
+    R1 -- "Wi-Fi Direct" --> R2["📱 Relay"]
+    R2 -- "BLE" --> B["📱 Bilal"]
+    A -. "out of range" .-x B
+    classDef relay fill:#1c1c1e,stroke:#636366,color:#fff
+    classDef peer fill:#ff2d55,stroke:#ff2d55,color:#fff
+    class R1,R2 relay
+    class A,B peer
+```
 
-Une application qui ne parle que de ses qualités demande qu'on la croie
-sur parole.
+<sub>Relays carry bytes they cannot read. Only Amina and Bilal hold the keys.</sub>
 
-- **Elle ne remplace pas internet.** Elle joint le voisinage, étendu par
-  les relais — pas l'autre bout du pays.
-- **Elle ne cache pas votre présence.** Pour se trouver, les appareils
-  s'annoncent. Le contenu est illisible, la présence ne l'est pas.
-- **Elle est plus lente qu'un réseau.** Un message relayé peut attendre
-  des heures qu'un chemin s'ouvre.
-- **Elle n'a rien pour vous rendre votre identité.** Pas de serveur
-  signifie pas de récupération de compte : sans sauvegarde exportée, un
-  téléphone perdu emporte tout.
-- **Seule, elle ne sert à rien.** Un maillage se construit à plusieurs.
+## Features
 
-## Installation
+<table>
+<tr>
+<td width="50%" valign="top">
 
-Android 7.0 ou plus récent. Les versions sont publiées dans
-[Releases](../../releases/latest) — un fichier par architecture :
+**Conversations**
+Chats and groups, quoted replies, reactions, read receipts, search.
 
-| Fichier | Pour |
-|---|---|
-| `app-arm64-v8a-release.apk` | la plupart des téléphones récents |
-| `app-armeabi-v7a-release.apk` | téléphones plus anciens |
-| `app-x86_64-release.apk` | émulateurs, quelques tablettes |
+**Calls**
+Audio and video over a Wi-Fi link — Bluetooth, at nineteen bytes per write, cannot carry a voice.
 
-L'application sait aussi **s'envoyer elle-même** par Bluetooth ou Wi-Fi
-Direct : ni l'expéditeur ni le destinataire n'a besoin de connexion.
-C'est le seul mode de distribution cohérent avec ce qu'elle prétend
-être.
+**Media**
+Photos, videos, files and voice notes.
 
-## Construire
+</td>
+<td width="50%" valign="top">
+
+**Statuses**
+Erased automatically after twenty-four hours.
+
+**Offline map**
+Works without a connection; positions are shared over the mesh.
+
+**Safety**
+An “I'm OK” signal and an emergency mode.
+
+</td>
+</tr>
+</table>
+
+## Security
+
+| Layer | Design |
+|:--|:--|
+| **Identity** | An X25519 key pair generated on the device. The private key lives in the system keystore, never in the database. |
+| **Direct messages** | ECDH → HKDF → AES-256-GCM, with a fresh random nonce for every message. |
+| **Groups** | Sender-key ratchet with per-message HMAC derivation. |
+| **Relays** | A phone that forwards a message carries ciphertext it cannot read. |
+
+The full model is described at [dropletmesh.app/security](https://dropletmesh.app/security/).
+
+## What Droplet does *not* do
+
+An app that only lists its strengths asks to be taken at its word. So here are the limits, stated plainly.
+
+- **It does not replace the internet.** It reaches your neighbourhood, extended by relays — not the other side of the country.
+- **It does not hide your presence.** Devices announce themselves to find each other. The content is unreadable; the presence is not.
+- **It is slower than a network.** A relayed message can wait hours for a path to open.
+- **It cannot give your identity back.** No server means no account recovery: without an exported backup, a lost phone takes everything with it.
+- **On its own, it does nothing.** A mesh is built by many.
+
+## Install
+
+Android 7.0 or later. Each release ships one APK per architecture:
+
+| File | For |
+|:--|:--|
+| `app-arm64-v8a-release.apk` | most recent phones |
+| `app-armeabi-v7a-release.apk` | older phones |
+| `app-x86_64-release.apk` | emulators, some tablets |
+
+Droplet can also **share itself** over Bluetooth or Wi-Fi Direct — neither sender nor recipient needs a connection. It is the only distribution channel consistent with what the app claims to be.
+
+## Build from source
 
 ```bash
 flutter pub get
-flutter test                                    # 139 tests
+flutter test
 flutter build apk --release --split-per-abi
 ```
 
-La signature de publication demande un `android/key.properties`, qui
-n'est pas dans ce dépôt — voir `android/app/build.gradle.kts`.
+Release signing reads `android/key.properties`, which is intentionally **not** in this repository — see `android/app/build.gradle.kts`.
 
-## Le site
+<details>
+<summary><strong>Repository layout</strong></summary>
 
-`site/index.html` est la source ; `python3 site/construire.py` produit
-la version déployable dans `site/public/`.
+<br>
 
-## État
+| Path | Contents |
+|:--|:--|
+| `lib/` | The Flutter app: mesh transports, crypto, chats, calls, design system |
+| `droplet_server/`, `serveur/` | Small companion services (call signalling, push wake-ups) |
+| `droplet_directory/`, `droplet_mailbox/` | Directory and mailbox services used when a connection exists |
+| `android/`, `ios/` | Platform projects |
+| `site/` | Legacy static site (`python3 site/construire.py` builds `site/public/`) |
+| `test/` | Unit and widget tests |
 
-**Phase de test.** L'application fonctionne, elle n'est pas finie. Si
-vous l'essayez : Réglages → Journal des erreurs → **Envoyer**. Droplet
-n'ayant aucun serveur, aucun rapport de plantage ne remonte nulle part —
-sans votre envoi, le défaut n'existe pour personne.
+</details>
 
-## Licence
+## Status
 
-MIT — voir [LICENSE](LICENSE).
+**Public testing.** The app works; it is not finished. If you try it: *Settings → Error log → **Send***. Droplet has no server collecting crash reports, so a bug you don't send does not exist for anyone.
+
+## License
+
+[MIT](LICENSE)
+
+<br>
+
+<div align="center">
+<sub>
+<a href="https://dropletmesh.app">Droplet</a> &nbsp;·&nbsp;
+<a href="https://dropletid.dropletmesh.app">Droplet ID</a> &nbsp;·&nbsp;
+<a href="https://drop.dropletmesh.app">Droplet Drop</a> &nbsp;·&nbsp;
+<a href="https://web.dropletmesh.app">Droplet Web</a>
+<br><br>
+Designed and built in Yaoundé, Cameroon.
+</sub>
+</div>
