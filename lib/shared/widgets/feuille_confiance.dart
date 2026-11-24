@@ -28,7 +28,7 @@ import '../../design_system/ouro_haptics.dart';
 import '../../design_system/ouro_typography.dart';
 
 /// Les sujets qu'une mention peut expliquer, chacun relié à sa section du site.
-enum SujetConfiance { chiffrement, relais, identite, appels, limites }
+enum SujetConfiance { chiffrement, relais, identite, appels, ephemeres, limites }
 
 class _Point {
   const _Point(this.icone, this.texte);
@@ -109,6 +109,21 @@ const Map<SujetConfiance, _Explication> _explications = {
           'Sinon, un relais fait suivre le son et l\'image chiffrés, sans pouvoir les écouter.'),
     ],
     ancre: 'appels',
+  ),
+  SujetConfiance.ephemeres: _Explication(
+    icone: Icons.timer_rounded,
+    titre: 'Messages éphémères',
+    chapeau:
+        'Les nouveaux messages de cette discussion s\'effacent tout seuls après le délai choisi.',
+    points: [
+      _Point(Icons.devices_rounded,
+          'Ils disparaissent des deux côtés : sur votre téléphone et sur celui de votre correspondant.'),
+      _Point(Icons.history_toggle_off_rounded,
+          'Les messages déjà envoyés avant l\'activation ne sont pas concernés.'),
+      _Point(Icons.screenshot_rounded,
+          'Votre correspondant peut toujours faire une capture d\'écran avant qu\'ils s\'effacent.'),
+    ],
+    ancre: 'sur-le-telephone',
   ),
   SujetConfiance.limites: _Explication(
     icone: Icons.info_rounded,
