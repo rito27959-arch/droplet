@@ -10,7 +10,7 @@
 //   DELETE /v1/appareils/:id              retirer un appareil
 // ============================================================================
 
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, sign } from 'node:crypto';
 import { ErreurSignature, verifierRequete, clePublique } from './signature.js';
 import { etatReel } from './interaction.js';
 
@@ -161,7 +161,36 @@ export function routesApi({ fournisseur, stockage, config, repondre, logos }) {
       return repondre(res, 200, { ok: true }), true;
     }
 
+    // ── Attestation pour un service Droplet (Droplet Pay) ─────────────
+    //
+    // Dit, signé par Droplet ID : « l'appareil X, de clé K, appartient au
+    // compte S ». S est un identifiant propre au service (HMAC du compte et
+    // du service, comme les `sub` pairwise des sites) : Droplet Pay ne
+    // connaît jamais le vrai identifiant du compte, et ne peut pas recouper.
+    // C'est ce qui attache un solde à la personne et non au téléphone.
+    if (req.method === 'POST' && chemin === '/v1/attestations') {
+      const service = SERVICES_ATTESTES[donnees.aud];
+      if (!service) return repondre(res, 400, { erreur: 'service_inconnu' }), true;
+      if (!config.cleAttestation) return repondre(res, 503, { erreur: 'attestation_non_configuree' }), true;
+      const maintenant = Math.floor(Date.now() / 1000);
+      const charge = {
+        iss: config.emetteur,
+        aud: donnees.aud,
+        sub: createHmac('sha256', config.selPairwise).update(`${compteId}|${service}`).digest('base64url'),
+        appareil: qui.appareil.appareilId,
+        cle: qui.appareil.clePub,
+        iat: maintenant,
+        exp: maintenant + 300,
+      };
+      const corpsJeton = Buffer.from(JSON.stringify(charge)).toString('base64url');
+      const sig = sign(null, Buffer.from(`DIA1\n${corpsJeton}`), config.cleAttestation).toString('base64url');
+      return repondre(res, 200, { attestation: `DIA1.${corpsJeton}.${sig}` }), true;
+    }
+
     repondre(res, 404, { erreur: 'introuvable' });
     return true;
   };
 }
+
+/** Les services qui peuvent recevoir une attestation, et leur « secteur ». */
+const SERVICES_ATTESTES = Object.freeze({ 'droplet-pay': 'service:droplet-pay' });

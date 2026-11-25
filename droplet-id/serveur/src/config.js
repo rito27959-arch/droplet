@@ -5,7 +5,7 @@
 // ============================================================================
 
 import { readFileSync } from 'node:fs';
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, randomBytes } from 'node:crypto';
 
 const env = process.env;
 
@@ -49,4 +49,17 @@ export const config = {
   fenetreSignature: 300,
   /** Derrière le proxy de Railway : faire confiance à X-Forwarded-*. */
   derriereProxy: env.DERRIERE_PROXY === '1',
+  /**
+   * La clé qui signe les attestations pour Droplet Pay (graine Ed25519 de
+   * 32 octets, base64url, dans ATTESTATION_GRAINE). Facultative : sans elle,
+   * /v1/attestations répond 503 et rien d'autre ne change.
+   */
+  cleAttestation: env.ATTESTATION_GRAINE ? clePriveeEd25519(env.ATTESTATION_GRAINE) : null,
 };
+
+/** Une clé privée Ed25519 à partir de sa graine brute (32 octets, base64url). */
+export function clePriveeEd25519(graine64) {
+  const graine = Buffer.from(graine64, 'base64url');
+  if (graine.length !== 32) throw new Error('ATTESTATION_GRAINE : 32 octets attendus');
+  return createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), graine]), format: 'der', type: 'pkcs8' });
+}
